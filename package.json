@@ -1,0 +1,14 @@
+{
+  "name": "nodenote",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5173 --open",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 4173 --open"
+  },
+  "devDependencies": {
+    "vite": "^6.3.5"
+  }
+}

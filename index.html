@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NodeNote - Universal JSON Notebook</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <!-- DIAGNOSTIC OVERLAY -->
+    <div id="sys-diag" style="position:fixed; top:0; left:0; right:0; z-index:99999; background:#444; color:#fff; padding:8px; font-family:monospace; border-bottom:2px solid #58a6ff; pointer-events:none; display:flex; justify-content:space-between;">
+      <div id="diag-status">NodeNote: Loading modules...</div>
+      <div id="diag-version" style="font-size:0.7rem; opacity:0.8;">Ver: Initializing...</div>
+      <div id="diag-errors" style="color:#ff7b72; font-size:0.8rem; white-space:pre-wrap; position:absolute; top:35px; left:8px;"></div>
+    </div>
+    <script>
+      window.addEventListener('error', (e) => {
+        const errDiv = document.getElementById('diag-errors');
+        if(errDiv) errDiv.innerHTML += `\n[ERROR] ${e.message} at ${e.filename}:${e.lineno}:${e.colno}`;
+        window.alert("DETECTED ERROR: " + e.message); // Emergency alert to be visible
+      });
+      window.addEventListener('unhandledrejection', (e) => {
+        const errDiv = document.getElementById('diag-errors');
+        if(errDiv) errDiv.innerHTML += `\n[PROMISE ERROR] ${e.reason}`;
+      });
+    </script>
+    
+    <!-- Top toolbar for tray and actions -->
+    <div id="toolbar" class="glass-panel">
+      <div class="tray-slots" id="tray-slots">
+        <!-- 1-15 Tray slots will be injected here later -->
+      </div>
+      <div class="actions">
+        <button id="btn-undo">Undo</button>
+        <button id="btn-redo">Redo</button>
+      </div>
+    </div>
+
+    <!-- The infinite whiteboard main container -->
+    <div id="viewport">
+      <!-- Grid background overlay -->
+      <div id="grid-bg"></div>
+      
+      <!-- The pannable/zoomable canvas surface -->
+      <div id="canvas">
+        <!-- SVG layer for bezier curves -->
+        <svg id="svg-layer"></svg>
+        
+        <!-- DOM layer for HTML nodes -->
+        <div id="node-layer"></div>
+      </div>
+    </div>
+
+    <!-- Minimap UI overlay -->
+    <div id="minimap" class="glass-panel">
+      <div id="minimap-content"></div>
+      <div id="minimap-viewport"></div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
