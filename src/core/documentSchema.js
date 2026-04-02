@@ -945,7 +945,7 @@ function applyFolderAutoLayout(document = {}, folderId = ROOT_FOLDER_ID) {
   const memberEntities = layout.memberIds
     .map((id) => entities[id])
     .filter(Boolean);
-  if (memberEntities.length < 3) {
+  if (memberEntities.length < 2) {
     return false;
   }
 

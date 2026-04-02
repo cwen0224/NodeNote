@@ -645,14 +645,24 @@ class Renderer {
 
     const sourceVector = getPortDirectionVector(sourcePortSide);
     const targetVector = getPortDirectionVector(targetPortSide);
-    const travelDistance = Math.max(1, Math.hypot(tX - sX, tY - sY));
-    const bend = Math.max(32, Math.min(180, travelDistance * 0.35));
-    const cp1x = sX + (sourceVector.x * bend);
-    const cp1y = sY + (sourceVector.y * bend);
-    const cp2x = tX - (targetVector.x * bend);
-    const cp2y = tY - (targetVector.y * bend);
+    const dx = Math.abs(tX - sX);
+    const dy = Math.abs(tY - sY);
+    const dominantAxis = dx >= dy ? 'horizontal' : 'vertical';
+    const travelDistance = Math.max(1, dominantAxis === 'horizontal' ? dx : dy);
+    const bend = Math.max(40, Math.min(220, travelDistance * 0.45));
 
-    path.setAttribute("d", `M ${sX} ${sY} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${tX} ${tY}`);
+    let d;
+    if (dominantAxis === 'horizontal') {
+      const cp1x = sX + (sourceVector.x || 1) * bend;
+      const cp2x = tX - (targetVector.x || -1) * bend;
+      d = `M ${sX} ${sY} C ${cp1x} ${sY}, ${cp2x} ${tY}, ${tX} ${tY}`;
+    } else {
+      const cp1y = sY + (sourceVector.y || 1) * bend;
+      const cp2y = tY - (targetVector.y || -1) * bend;
+      d = `M ${sX} ${sY} C ${sX} ${cp1y}, ${tX} ${cp2y}, ${tX} ${tY}`;
+    }
+
+    path.setAttribute("d", d);
     this.svgLayer.appendChild(path);
 
     const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
