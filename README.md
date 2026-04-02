@@ -6,8 +6,9 @@ NodeNote is a node-based JSON notebook for structured notes, media-linked conten
 
 - The canonical document JSON is the source of truth.
 - UI/session state stays outside the document.
-- Folder nodes can contain nested sub-documents, up to seven levels deep.
-- Nodes, edges, assets, and metadata are the persistent layer.
+- Folders are manifest-driven sub-whiteboards: entering a folder only changes the active context, not the editor shell.
+- Nodes, edges, assets, and metadata are kept in flat registries.
+- Folder depth is a view-layer concept used for navigation and color themes, with up to seven visible layers.
 - Local autosave keeps the current working draft in the browser, with a longer undo history.
 - Cloud sync is a secondary snapshot layer for GitHub Contents API backups.
 - Clipboard, Git, and AI integrations are adapters, not core state.

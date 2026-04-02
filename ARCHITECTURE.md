@@ -5,7 +5,7 @@
 The canonical JSON document is the source of truth.
 
 - `document` is persistent data: nodes, edges, assets, metadata, exportable graph content.
-- `folder` nodes may contain a nested document, so the graph can become a stack of subpages.
+- `folder` should be a manifest layer, not a recursive document container. The graph stays flat; folders point to the content they own.
 - `session` is ephemeral editor state: viewport, selection, hover, drag, edit focus, popups, tray UI, folder path.
 - `commands` are the only way to mutate document data.
 - `renderers` are projections of document + session, not owners of state.
@@ -20,7 +20,7 @@ Recommended structure:
 
 ```jsonc
 {
-  "schemaVersion": "1.0.0",
+  "schemaVersion": "2.0.0",
   "meta": {
     "title": "Untitled",
     "description": "",
@@ -28,52 +28,58 @@ Recommended structure:
     "createdAt": null,
     "updatedAt": null
   },
-  "entryNodeId": null,
+  "rootFolderId": "folder_root",
+  "folders": {},
   "nodes": {},
-  "edges": [],
+  "edges": {},
   "assets": [],
   "extras": {}
 }
 ```
 
-Folder node shape:
+### 2. Folder manifest
+
+Folders are a separate registry. A folder points to node and folder references; it does not own an embedded sub-document.
+
+Recommended shape:
 
 ```jsonc
 {
-  "id": "folder_1",
-  "type": "folder",
-  "title": "Folder · Example",
-  "content": "3 nodes · 4 links",
-  "folder": {
-    "depth": 1,
-    "colorIndex": 1,
-    "summary": "3 nodes · 4 links",
-    "collapsed": false,
-    "sourceNodeIds": ["node_a", "node_b"],
-    "boundaryLinks": {
-      "incoming": [],
-      "outgoing": []
+  "folders": {
+    "folder_root": {
+      "id": "folder_root",
+      "parentFolderId": null,
+      "name": "Root",
+      "depth": 0,
+      "colorIndex": 0,
+      "children": [
+        { "kind": "node", "id": "node_a" },
+        { "kind": "folder", "id": "folder_1" }
+      ],
+      "boundaryLinks": []
     },
-    "document": {
-      "schemaVersion": "1.0.0",
-      "meta": {
-        "title": "Folder · Example",
-        "description": "",
-        "tags": [],
-        "createdAt": null,
-        "updatedAt": null
-      },
-      "entryNodeId": "node_a",
-      "nodes": {},
-      "edges": [],
-      "assets": [],
-      "extras": {}
+    "folder_1": {
+      "id": "folder_1",
+      "parentFolderId": "folder_root",
+      "name": "Folder · Example",
+      "depth": 1,
+      "colorIndex": 1,
+      "children": [
+        { "kind": "node", "id": "node_b" }
+      ],
+      "boundaryLinks": []
     }
   }
 }
 ```
 
-### 2. Session state
+### 3. Node and edge registries
+
+Nodes and edges remain flat, global registries. A node belongs to a folder by reference, not by deep embedding.
+
+The active folder determines which subset is visible and editable.
+
+### 4. Session state
 
 Ephemeral UI state that should not be saved into the canonical document.
 
@@ -81,13 +87,13 @@ Examples:
 
 - viewport pan / zoom
 - current selection
-- current folder path
+- current folder path / active folder id
 - active editing node
 - hovered node / edge / port
 - temporary connection preview
 - modal / tray open state
 
-### 3. Command layer
+### 5. Command layer
 
 All document mutations should eventually pass through commands.
 
@@ -101,7 +107,7 @@ Examples:
 - `attachAsset`
 - `setEntryNode`
 
-### 4. Projections
+### 6. Projections
 
 Renderers should consume state and render projections:
 
@@ -111,7 +117,18 @@ Renderers should consume state and render projections:
 - toolbars
 - overlays
 
-### 5. Adapters
+### 7. Shared sub-whiteboard rule
+
+The folder page is not a second app or a separate editor implementation.
+
+- Entering a folder only swaps the active folder context.
+- The same node creation, connection, clipboard, tray, search, undo, redo, and shortcut system must work inside and outside folders.
+- The same shell renders root and sub-whiteboards.
+- Only the active context changes: `currentFolderId`, theme depth, visible nodes, and visible edges.
+- Folder colors are a view-layer projection of depth, not separate schema branches.
+- The folder UI may visually cap at seven layers, but the data model stays flat.
+
+### 8. Adapters
 
 External integrations should stay outside the core document model.
 
@@ -134,10 +151,12 @@ External integrations should stay outside the core document model.
 
 1. Keep the current editor working while splitting document/session storage.
 2. Move mutations into command functions.
-3. Make `edges` the canonical graph representation.
+3. Make the folder manifest the canonical ownership layer and keep node/edge registries flat.
 4. Convert node-specific UI into registry-driven templates.
-5. Move clipboard/Git/AI integration behind adapters.
+5. Make clipboard/Git/AI integration consume the active folder context, not a nested editor.
 
 ## Migration rule
 
 Any future schema change must be versioned and migrated, not patched ad hoc.
+
+The current nested-folder implementation is a transition path. The target model is the flat registry + folder manifest structure above.
