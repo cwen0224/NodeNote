@@ -35,7 +35,9 @@ function getFolderNodeText(node = {}) {
 
   const title = typeof node.title === 'string' ? node.title : '';
   const content = typeof node.content === 'string' ? node.content : '';
-  const summary = typeof node.folder?.summary === 'string' ? node.folder.summary : '';
+  const summary = typeof node.summary === 'string'
+    ? node.summary
+    : (typeof node.folder?.summary === 'string' ? node.folder.summary : '');
   const parts = [title];
   if (content) {
     parts.push(content);

@@ -98,6 +98,8 @@ function isDocumentLikePayload(payload) {
     typeof payload.schemaVersion === 'string' ||
     isPlainObject(payload.meta) ||
     Object.prototype.hasOwnProperty.call(payload, 'entryNodeId') ||
+    Object.prototype.hasOwnProperty.call(payload, 'rootFolderId') ||
+    isPlainObject(payload.folders) ||
     Array.isArray(payload.edges) ||
     Object.prototype.hasOwnProperty.call(payload, 'assets') ||
     Object.prototype.hasOwnProperty.call(payload, 'extras')

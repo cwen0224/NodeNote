@@ -160,13 +160,11 @@ class Renderer {
     }
 
     const crumbItems = ['Root'];
-    let activeDocument = store.document;
 
     path.forEach((folderId) => {
-      const folderNode = activeDocument?.nodes?.[folderId];
-      const label = folderNode?.title || folderNode?.content || folderId || 'Folder';
+      const folderNode = store.document?.folders?.[folderId];
+      const label = folderNode?.name || folderNode?.title || folderNode?.summary || folderId || 'Folder';
       crumbItems.push(label);
-      activeDocument = folderNode?.folder?.document || activeDocument;
     });
 
     breadcrumb.innerHTML = crumbItems
@@ -386,13 +384,13 @@ class Renderer {
     const div = document.createElement('div');
     const isFolderNode = node.type === 'folder';
     const nodeLabel = this.getNodeLabel(node) || node.id;
-    const folderTheme = isFolderNode ? getFolderTheme(node.folder?.depth ?? (store.getCurrentDepth?.() ?? 0)) : null;
+    const folderTheme = isFolderNode ? getFolderTheme(node.depth ?? (store.getCurrentDepth?.() ?? 0)) : null;
 
     div.className = `node glass-panel${isFolderNode ? ' is-folder' : ''}`;
     div.dataset.id = node.id;
     div.dataset.type = node.type || 'note';
     if (isFolderNode && folderTheme) {
-      div.dataset.folderDepth = String(node.folder?.depth ?? 0);
+      div.dataset.folderDepth = String(node.depth ?? 0);
       const cssVars = folderThemeToCssVars(folderTheme);
       Object.entries(cssVars).forEach(([key, value]) => {
         div.style.setProperty(key, value);

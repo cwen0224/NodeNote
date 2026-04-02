@@ -1,8 +1,94 @@
 import { resolveNodeSize } from './nodeSizing.js';
 
-export const DOCUMENT_SCHEMA_VERSION = '1.0.0';
+export const DOCUMENT_SCHEMA_VERSION = '2.0.0';
+export const ROOT_FOLDER_ID = 'folder_root';
+
+function isPlainObject(value) {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function normalizeNumber(value, fallback = 0) {
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function normalizeString(value, fallback = '') {
+  return typeof value === 'string' ? value : fallback;
+}
+
+function normalizeChildRefs(children = []) {
+  if (!Array.isArray(children)) {
+    return [];
+  }
+
+  return children
+    .map((child) => {
+      if (typeof child === 'string') {
+        return { kind: 'node', id: child };
+      }
+
+      if (!isPlainObject(child)) {
+        return null;
+      }
+
+      const kind = child.kind === 'folder' ? 'folder' : 'node';
+      const id = normalizeString(child.id, '');
+      if (!id) {
+        return null;
+      }
+
+      return { kind, id };
+    })
+    .filter(Boolean);
+}
+
+export function createDefaultFolder({
+  id = ROOT_FOLDER_ID,
+  parentFolderId = null,
+  name = 'Root',
+  depth = 0,
+  colorIndex = 0,
+} = {}) {
+  return {
+    id,
+    type: 'folder',
+    parentFolderId,
+    name,
+    title: name,
+    content: '',
+    summary: '',
+    depth,
+    colorIndex,
+    x: 0,
+    y: 0,
+    size: {
+      width: 360,
+      height: 360,
+    },
+    params: {},
+    entryNodeId: null,
+    collapsed: false,
+    children: [],
+    boundaryLinks: [],
+    sourceNodeIds: [],
+    assets: [],
+    meta: {},
+    ui: {},
+  };
+}
 
 export function createDefaultDocument() {
+  const rootFolder = createDefaultFolder({
+    id: ROOT_FOLDER_ID,
+    parentFolderId: null,
+    name: 'Root',
+    depth: 0,
+    colorIndex: 0,
+  });
+
   return {
     schemaVersion: DOCUMENT_SCHEMA_VERSION,
     meta: {
@@ -12,7 +98,10 @@ export function createDefaultDocument() {
       createdAt: null,
       updatedAt: null,
     },
-    entryNodeId: null,
+    rootFolderId: ROOT_FOLDER_ID,
+    folders: {
+      [ROOT_FOLDER_ID]: rootFolder,
+    },
     nodes: {},
     edges: [],
     assets: [],
@@ -24,37 +113,20 @@ export function cloneDocument(document) {
   return JSON.parse(JSON.stringify(document));
 }
 
-function isPlainObject(value) {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function normalizeNode(node = {}, depth = 0) {
-  const next = cloneDocument(isPlainObject(node) ? node : {});
-  next.id = typeof next.id === 'string' ? next.id : '';
-  next.type = typeof next.type === 'string' ? next.type : 'note';
-  next.title = typeof next.title === 'string' ? next.title : '';
-  next.x = Number.isFinite(next.x) ? next.x : 0;
-  next.y = Number.isFinite(next.y) ? next.y : 0;
-  next.content = typeof next.content === 'string' ? next.content : '';
+function normalizeNodeRecord(node = {}, folderId = ROOT_FOLDER_ID) {
+  const next = clone(isPlainObject(node) ? node : {});
+  next.id = normalizeString(next.id, '');
+  next.type = typeof next.type === 'string' && next.type !== 'folder' ? next.type : 'note';
+  next.folderId = normalizeString(next.folderId, folderId || ROOT_FOLDER_ID) || ROOT_FOLDER_ID;
+  next.title = normalizeString(next.title, '');
+  next.x = normalizeNumber(next.x, 0);
+  next.y = normalizeNumber(next.y, 0);
+  next.content = normalizeString(next.content, '');
   next.params = isPlainObject(next.params) ? next.params : {};
-  next.assets = Array.isArray(next.assets) ? cloneDocument(next.assets) : [];
-  next.tags = Array.isArray(next.tags) ? cloneDocument(next.tags) : [];
-  next.meta = isPlainObject(next.meta) ? cloneDocument(next.meta) : {};
-  next.ui = isPlainObject(next.ui) ? cloneDocument(next.ui) : {};
-
-  if (next.type === 'folder' || isPlainObject(next.folder)) {
-    const folderSource = isPlainObject(next.folder) ? next.folder : {};
-    const folderDocument = isPlainObject(folderSource.document) ? folderSource.document : createDefaultDocument();
-    next.folder = {
-      ...cloneDocument(folderSource),
-      summary: typeof folderSource.summary === 'string' ? folderSource.summary : '',
-      depth: Number.isFinite(folderSource.depth) ? folderSource.depth : depth + 1,
-      colorIndex: Number.isFinite(folderSource.colorIndex) ? folderSource.colorIndex : depth + 1,
-      collapsed: Boolean(folderSource.collapsed),
-      boundaryLinks: Array.isArray(folderSource.boundaryLinks) ? cloneDocument(folderSource.boundaryLinks) : [],
-      document: normalizeDocument(folderDocument, { depth: depth + 1 }),
-    };
-  }
+  next.assets = Array.isArray(next.assets) ? clone(next.assets) : [];
+  next.tags = Array.isArray(next.tags) ? clone(next.tags) : [];
+  next.meta = isPlainObject(next.meta) ? clone(next.meta) : {};
+  next.ui = isPlainObject(next.ui) ? clone(next.ui) : {};
 
   const size = resolveNodeSize(next);
   next.size = {
@@ -65,9 +137,42 @@ function normalizeNode(node = {}, depth = 0) {
   return next;
 }
 
-function normalizeNodeMap(inputNodes = {}, depth = 0) {
-  const normalized = {};
+function normalizeFolderRecord(folder = {}, { fallbackId = ROOT_FOLDER_ID, fallbackParentId = null, depth = 0 } = {}) {
+  const next = clone(isPlainObject(folder) ? folder : {});
+  next.id = normalizeString(next.id, fallbackId || ROOT_FOLDER_ID);
+  next.type = 'folder';
+  next.parentFolderId = Object.prototype.hasOwnProperty.call(next, 'parentFolderId')
+    ? (typeof next.parentFolderId === 'string' ? next.parentFolderId : null)
+    : fallbackParentId;
+  next.name = normalizeString(next.name, normalizeString(next.title, 'Folder'));
+  next.title = normalizeString(next.title, next.name);
+  next.content = normalizeString(next.content, '');
+  next.summary = normalizeString(next.summary, normalizeString(next.content, ''));
+  next.depth = Number.isFinite(next.depth) ? next.depth : depth;
+  next.colorIndex = Number.isFinite(next.colorIndex) ? next.colorIndex : depth;
+  next.x = normalizeNumber(next.x, 0);
+  next.y = normalizeNumber(next.y, 0);
+  next.params = isPlainObject(next.params) ? next.params : {};
+  next.entryNodeId = typeof next.entryNodeId === 'string' ? next.entryNodeId : null;
+  next.collapsed = Boolean(next.collapsed);
+  next.children = normalizeChildRefs(next.children);
+  next.boundaryLinks = Array.isArray(next.boundaryLinks) ? clone(next.boundaryLinks) : [];
+  next.sourceNodeIds = Array.isArray(next.sourceNodeIds) ? clone(next.sourceNodeIds) : [];
+  next.assets = Array.isArray(next.assets) ? clone(next.assets) : [];
+  next.meta = isPlainObject(next.meta) ? clone(next.meta) : {};
+  next.ui = isPlainObject(next.ui) ? clone(next.ui) : {};
 
+  const size = resolveNodeSize(next);
+  next.size = {
+    width: size.width,
+    height: size.height,
+  };
+
+  return next;
+}
+
+function normalizeNodeMap(inputNodes = {}, folderId = ROOT_FOLDER_ID) {
+  const normalized = {};
   const entries = Array.isArray(inputNodes)
     ? inputNodes.map((node) => [node?.id, node])
     : Object.entries(isPlainObject(inputNodes) ? inputNodes : {});
@@ -77,37 +182,402 @@ function normalizeNodeMap(inputNodes = {}, depth = 0) {
       return;
     }
 
-    const nodeId = String(rawNode.id ?? key ?? '');
-    const node = normalizeNode(rawNode, depth);
-    node.id = nodeId;
+    if (rawNode.type === 'folder' || isPlainObject(rawNode.folder)) {
+      return;
+    }
+
+    const nodeId = normalizeString(rawNode.id, normalizeString(key, ''));
+    if (!nodeId) {
+      return;
+    }
+
+    const node = normalizeNodeRecord({ ...rawNode, id: nodeId }, folderId);
     normalized[nodeId] = node;
   });
 
   return normalized;
 }
 
-export function normalizeDocument(input = {}, { depth = 0 } = {}) {
-  const defaults = createDefaultDocument();
-  const next = cloneDocument(defaults);
+function normalizeFolderMap(inputFolders = {}, rootFolderId = ROOT_FOLDER_ID) {
+  const normalized = {};
+  const entries = Array.isArray(inputFolders)
+    ? inputFolders.map((folder) => [folder?.id, folder])
+    : Object.entries(isPlainObject(inputFolders) ? inputFolders : {});
 
-  if (typeof input !== 'object' || input === null) {
-    return next;
+  entries.forEach(([key, rawFolder]) => {
+    if (!rawFolder || typeof rawFolder !== 'object') {
+      return;
+    }
+
+    const folderId = normalizeString(rawFolder.id, normalizeString(key, ''));
+    if (!folderId) {
+      return;
+    }
+
+    normalized[folderId] = normalizeFolderRecord(rawFolder, {
+      fallbackId: folderId,
+      fallbackParentId: folderId === rootFolderId ? null : rootFolderId,
+      depth: Number.isFinite(rawFolder.depth) ? rawFolder.depth : 0,
+    });
+  });
+
+  return normalized;
+}
+
+function collectEntities(document = {}) {
+  return {
+    ...(isPlainObject(document.nodes) ? document.nodes : {}),
+    ...(isPlainObject(document.folders) ? document.folders : {}),
+  };
+}
+
+function applyEdgesToEntities(document, edges = []) {
+  if (!Array.isArray(edges) || !edges.length) {
+    return;
   }
 
-  next.schemaVersion = typeof input.schemaVersion === 'string' ? input.schemaVersion : defaults.schemaVersion;
+  const entities = collectEntities(document);
+
+  edges.forEach((edge) => {
+    if (!isPlainObject(edge)) {
+      return;
+    }
+
+    const sourceId = normalizeString(edge.fromNodeId, normalizeString(edge.sourceNodeId, ''));
+    const targetId = normalizeString(edge.toNodeId, normalizeString(edge.targetNodeId, ''));
+    const key = normalizeString(edge.key, normalizeString(edge.label, ''));
+    if (!sourceId || !targetId || !key || !entities[sourceId] || !entities[targetId]) {
+      return;
+    }
+
+    const sourceEntity = entities[sourceId];
+    if (!isPlainObject(sourceEntity.params)) {
+      sourceEntity.params = {};
+    }
+
+    sourceEntity.params[key] = {
+      targetId,
+      sourcePort: normalizeString(edge.fromPortId, normalizeString(edge.sourcePort, 'right')) || 'right',
+      targetPort: normalizeString(edge.toPortId, normalizeString(edge.targetPort, 'left')) || 'left',
+    };
+  });
+}
+
+function buildEdgesFromEntities(entities = {}) {
+  const edges = [];
+
+  Object.entries(isPlainObject(entities) ? entities : {}).forEach(([sourceId, entity]) => {
+    if (!isPlainObject(entity?.params)) {
+      return;
+    }
+
+    const scopeFolderId = entity.type === 'folder'
+      ? (typeof entity.parentFolderId === 'string' ? entity.parentFolderId : ROOT_FOLDER_ID)
+      : (typeof entity.folderId === 'string' ? entity.folderId : ROOT_FOLDER_ID);
+
+    Object.entries(entity.params).forEach(([key, linkValue]) => {
+      const targetId = typeof linkValue === 'string' ? linkValue : linkValue?.targetId;
+      if (!targetId || !entities[targetId]) {
+        return;
+      }
+
+      edges.push({
+        id: `${sourceId}_${key}_${targetId}`,
+        kind: 'flow',
+        scopeFolderId,
+        key,
+        label: key,
+        fromNodeId: sourceId,
+        fromPortId: typeof linkValue === 'object' && linkValue ? (linkValue.sourcePort || 'right') : 'right',
+        toNodeId: targetId,
+        toPortId: typeof linkValue === 'object' && linkValue ? (linkValue.targetPort || 'left') : 'left',
+      });
+    });
+  });
+
+  return edges;
+}
+
+function ensureFolderHierarchy(document) {
+  const folders = isPlainObject(document.folders) ? document.folders : {};
+  const nodes = isPlainObject(document.nodes) ? document.nodes : {};
+
+  Object.values(folders).forEach((folder) => {
+    if (!folder || typeof folder !== 'object') {
+      return;
+    }
+
+    folder.children = normalizeChildRefs(folder.children);
+  });
+
+  Object.values(nodes).forEach((node) => {
+    if (!node || typeof node !== 'object') {
+      return;
+    }
+
+    if (!folders[node.folderId]) {
+      node.folderId = document.rootFolderId || ROOT_FOLDER_ID;
+    }
+  });
+
+  Object.values(folders).forEach((folder) => {
+    if (!folder || typeof folder !== 'object') {
+      return;
+    }
+
+    if (folder.id !== document.rootFolderId && !folders[folder.parentFolderId]) {
+      folder.parentFolderId = document.rootFolderId || ROOT_FOLDER_ID;
+    }
+
+    const childRefs = [];
+    const childKeySet = new Set();
+    const pushRef = (kind, id) => {
+      if (!id || childKeySet.has(`${kind}:${id}`)) {
+        return;
+      }
+      childKeySet.add(`${kind}:${id}`);
+      childRefs.push({ kind, id });
+    };
+
+    folder.children.forEach((ref) => {
+      if (ref.kind === 'folder' && folders[ref.id]) {
+        pushRef('folder', ref.id);
+      } else if (ref.kind === 'node' && nodes[ref.id]) {
+        pushRef('node', ref.id);
+      }
+    });
+
+    Object.values(nodes).forEach((node) => {
+      if (node.folderId === folder.id) {
+        pushRef('node', node.id);
+      }
+    });
+
+    Object.values(folders).forEach((childFolder) => {
+      if (childFolder.id !== folder.id && childFolder.parentFolderId === folder.id) {
+        pushRef('folder', childFolder.id);
+      }
+    });
+
+    folder.children = childRefs;
+  });
+}
+
+function normalizeFlatDocument(input = {}) {
+  const defaults = createDefaultDocument();
+  const next = clone(defaults);
+
+  next.schemaVersion = normalizeString(input.schemaVersion, defaults.schemaVersion);
   next.meta = {
     ...defaults.meta,
-    ...(typeof input.meta === 'object' && input.meta ? input.meta : {}),
+    ...(isPlainObject(input.meta) ? input.meta : {}),
   };
-  next.entryNodeId = typeof input.entryNodeId === 'string' ? input.entryNodeId : null;
-  next.nodes = normalizeNodeMap(input.nodes, depth);
-  next.edges = Array.isArray(input.edges) ? cloneDocument(input.edges) : [];
-  next.assets = Array.isArray(input.assets) ? cloneDocument(input.assets) : [];
-  next.extras = typeof input.extras === 'object' && input.extras ? cloneDocument(input.extras) : {};
+  next.rootFolderId = normalizeString(input.rootFolderId, defaults.rootFolderId) || defaults.rootFolderId;
+  next.assets = Array.isArray(input.assets) ? clone(input.assets) : [];
+  next.extras = isPlainObject(input.extras) ? clone(input.extras) : {};
+  next.nodes = normalizeNodeMap(input.nodes, next.rootFolderId);
+  next.folders = normalizeFolderMap(input.folders, next.rootFolderId);
 
-  if (!next.entryNodeId || !next.nodes[next.entryNodeId]) {
-    next.entryNodeId = Object.keys(next.nodes)[0] || null;
+  if (!next.folders[next.rootFolderId]) {
+    next.folders[next.rootFolderId] = createDefaultFolder({
+      id: next.rootFolderId,
+      parentFolderId: null,
+      name: next.meta.title || 'Root',
+      depth: 0,
+      colorIndex: 0,
+    });
   }
 
+  applyEdgesToEntities(next, Array.isArray(input.edges) ? input.edges : []);
+  ensureFolderHierarchy(next);
+  next.edges = buildEdgesFromEntities(collectEntities(next));
+  next.entryNodeId = next.folders[next.rootFolderId]?.entryNodeId || null;
+
   return next;
+}
+
+function flattenLegacyDocument(input = {}) {
+  const defaults = createDefaultDocument();
+  const next = clone(defaults);
+
+  next.schemaVersion = normalizeString(input.schemaVersion, defaults.schemaVersion);
+  next.meta = {
+    ...defaults.meta,
+    ...(isPlainObject(input.meta) ? input.meta : {}),
+  };
+  next.rootFolderId = ROOT_FOLDER_ID;
+  next.assets = Array.isArray(input.assets) ? clone(input.assets) : [];
+  next.extras = isPlainObject(input.extras) ? clone(input.extras) : {};
+
+  const walkDocument = (sourceDoc, folderId, parentFolderId, depth) => {
+    const folderSource = isPlainObject(sourceDoc) ? sourceDoc : {};
+    const folderRecord = next.folders[folderId] || createDefaultFolder({
+      id: folderId,
+      parentFolderId,
+      name: depth === 0
+        ? normalizeString(folderSource?.meta?.title, defaults.meta.title)
+        : normalizeString(folderSource?.meta?.title, folderId),
+      depth,
+      colorIndex: depth,
+    });
+
+    folderRecord.parentFolderId = parentFolderId;
+    folderRecord.depth = depth;
+    folderRecord.colorIndex = depth;
+    folderRecord.name = depth === 0
+      ? normalizeString(folderSource?.meta?.title, defaults.meta.title)
+      : normalizeString(folderSource?.meta?.title, folderId);
+    folderRecord.title = folderRecord.name;
+    folderRecord.content = normalizeString(folderSource?.meta?.description, folderRecord.content);
+    folderRecord.summary = normalizeString(folderSource?.meta?.description, folderRecord.summary);
+    folderRecord.entryNodeId = typeof folderSource.entryNodeId === 'string' ? folderSource.entryNodeId : null;
+    folderRecord.children = [];
+    folderRecord.params = isPlainObject(folderRecord.params) ? folderRecord.params : {};
+    folderRecord.boundaryLinks = Array.isArray(folderRecord.boundaryLinks) ? folderRecord.boundaryLinks : [];
+    folderRecord.sourceNodeIds = Array.isArray(folderRecord.sourceNodeIds) ? folderRecord.sourceNodeIds : [];
+    next.folders[folderId] = folderRecord;
+
+    Object.entries(isPlainObject(folderSource.nodes) ? folderSource.nodes : {}).forEach(([key, rawNode]) => {
+      if (!rawNode || typeof rawNode !== 'object') {
+        return;
+      }
+
+      if (rawNode.type === 'folder' && isPlainObject(rawNode.folder) && isPlainObject(rawNode.folder.document)) {
+        const childFolderId = normalizeString(rawNode.id, normalizeString(key, ''));
+        if (!childFolderId) {
+          return;
+        }
+
+        const childFolder = normalizeFolderRecord(rawNode, {
+          fallbackId: childFolderId,
+          fallbackParentId: folderId,
+          depth: depth + 1,
+        });
+        childFolder.parentFolderId = folderId;
+        childFolder.depth = depth + 1;
+        childFolder.colorIndex = depth + 1;
+        childFolder.summary = normalizeString(rawNode.folder?.summary, childFolder.summary);
+        childFolder.boundaryLinks = Array.isArray(rawNode.folder?.boundaryLinks) ? clone(rawNode.folder.boundaryLinks) : [];
+        childFolder.sourceNodeIds = Array.isArray(rawNode.folder?.sourceNodeIds) ? clone(rawNode.folder.sourceNodeIds) : [];
+        childFolder.entryNodeId = typeof rawNode.folder?.document?.entryNodeId === 'string' ? rawNode.folder.document.entryNodeId : null;
+        childFolder.children = [];
+        next.folders[childFolderId] = childFolder;
+        folderRecord.children.push({ kind: 'folder', id: childFolderId });
+        walkDocument(rawNode.folder.document, childFolderId, folderId, depth + 1);
+        return;
+      }
+
+      const nodeId = normalizeString(rawNode.id, normalizeString(key, ''));
+      if (!nodeId) {
+        return;
+      }
+
+      const node = normalizeNodeRecord({ ...rawNode, id: nodeId, folderId }, folderId);
+      next.nodes[nodeId] = node;
+      folderRecord.children.push({ kind: 'node', id: nodeId });
+    });
+
+    if (!folderRecord.entryNodeId || (!next.nodes[folderRecord.entryNodeId] && !next.folders[folderRecord.entryNodeId])) {
+      const firstChild = folderRecord.children[0];
+      folderRecord.entryNodeId = firstChild ? firstChild.id : null;
+    }
+  };
+
+  walkDocument(input, ROOT_FOLDER_ID, null, 0);
+  ensureFolderHierarchy(next);
+  next.edges = buildEdgesFromEntities(collectEntities(next));
+  next.entryNodeId = next.folders[ROOT_FOLDER_ID]?.entryNodeId || null;
+
+  return next;
+}
+
+export function normalizeDocument(input = {}) {
+  if (typeof input !== 'object' || input === null) {
+    return createDefaultDocument();
+  }
+
+  if (Object.prototype.hasOwnProperty.call(input, 'rootFolderId')
+    || isPlainObject(input.folders)
+    || normalizeString(input.schemaVersion, '') === DOCUMENT_SCHEMA_VERSION) {
+    return normalizeFlatDocument(input);
+  }
+
+  return flattenLegacyDocument(input);
+}
+
+export function buildEdgesFromDocument(document = {}) {
+  return buildEdgesFromEntities(collectEntities(document));
+}
+
+export function buildFolderDocumentView(document = {}, folderId = ROOT_FOLDER_ID) {
+  const rootFolderId = normalizeString(document.rootFolderId, ROOT_FOLDER_ID) || ROOT_FOLDER_ID;
+  const folders = isPlainObject(document.folders) ? document.folders : {};
+  const nodes = isPlainObject(document.nodes) ? document.nodes : {};
+  const currentFolderId = folders[folderId] ? folderId : rootFolderId;
+  const currentFolder = folders[currentFolderId] || createDefaultFolder({
+    id: currentFolderId,
+    parentFolderId: currentFolderId === rootFolderId ? null : rootFolderId,
+    name: currentFolderId === rootFolderId ? normalizeString(document.meta?.title, 'Root') : currentFolderId,
+    depth: currentFolderId === rootFolderId ? 0 : 1,
+    colorIndex: currentFolderId === rootFolderId ? 0 : 1,
+  });
+
+  const visible = {};
+  const orderedIds = [];
+  const pushId = (id) => {
+    if (!id || !visible[id] || orderedIds.includes(id)) {
+      return;
+    }
+    orderedIds.push(id);
+  };
+
+  currentFolder.children.forEach((ref) => {
+    if (ref.kind === 'node' && nodes[ref.id]) {
+      visible[ref.id] = nodes[ref.id];
+      pushId(ref.id);
+    } else if (ref.kind === 'folder' && folders[ref.id]) {
+      visible[ref.id] = folders[ref.id];
+      pushId(ref.id);
+    }
+  });
+
+  Object.values(nodes).forEach((node) => {
+    if (node.folderId === currentFolderId) {
+      visible[node.id] = node;
+      pushId(node.id);
+    }
+  });
+
+  Object.values(folders).forEach((folder) => {
+    if (folder.id !== currentFolderId && folder.parentFolderId === currentFolderId) {
+      visible[folder.id] = folder;
+      pushId(folder.id);
+    }
+  });
+
+  const orderedNodes = {};
+  orderedIds.forEach((id) => {
+    if (visible[id]) {
+      orderedNodes[id] = visible[id];
+    }
+  });
+
+  const visibleEdges = buildEdgesFromEntities(orderedNodes);
+  const fallbackEntry = currentFolder.entryNodeId && orderedNodes[currentFolder.entryNodeId]
+    ? currentFolder.entryNodeId
+    : orderedIds[0] || null;
+
+  return {
+    schemaVersion: document.schemaVersion || DOCUMENT_SCHEMA_VERSION,
+    meta: clone(document.meta || createDefaultDocument().meta),
+    rootFolderId,
+    currentFolderId,
+    entryNodeId: fallbackEntry,
+    nodes: orderedNodes,
+    edges: visibleEdges,
+    assets: Array.isArray(document.assets) ? document.assets : [],
+    extras: isPlainObject(document.extras) ? document.extras : {},
+    folders,
+    folder: currentFolder,
+  };
 }

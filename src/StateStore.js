@@ -5,7 +5,14 @@
  * separation lets us move toward a command-driven architecture.
  */
 
-import { cloneDocument, createDefaultDocument, normalizeDocument } from './core/documentSchema.js';
+import {
+  buildEdgesFromDocument,
+  buildFolderDocumentView,
+  cloneDocument,
+  createDefaultDocument,
+  normalizeDocument,
+  ROOT_FOLDER_ID,
+} from './core/documentSchema.js';
 import { createDefaultSession } from './core/sessionSchema.js';
 import { MAX_FOLDER_DEPTH } from './core/folderTheme.js';
 
@@ -39,26 +46,18 @@ export class StateStore {
     };
 
     define('document', () => this.getCurrentDocument());
-    define('schemaVersion', () => this.getCurrentDocument().schemaVersion);
-    define('meta', () => this.getCurrentDocument().meta);
+    define('schemaVersion', () => this.document.schemaVersion);
+    define('meta', () => this.document.meta);
+    define('rootFolderId', () => this.document.rootFolderId || ROOT_FOLDER_ID);
+    define('folders', () => this.document.folders);
     define('entryNodeId', () => this.getCurrentDocument().entryNodeId, (value) => {
-      this.getCurrentDocument().entryNodeId = value;
+      this.setCurrentEntryNodeId(value);
     });
-    define('nodes', () => this.getCurrentDocument().nodes, (value) => {
-      this.getCurrentDocument().nodes = value;
-    });
-    define('edges', () => this.getCurrentDocument().edges, (value) => {
-      this.getCurrentDocument().edges = value;
-    });
-    define('links', () => this.getCurrentDocument().edges, (value) => {
-      this.getCurrentDocument().edges = value;
-    });
-    define('assets', () => this.getCurrentDocument().assets, (value) => {
-      this.getCurrentDocument().assets = value;
-    });
-    define('extras', () => this.getCurrentDocument().extras, (value) => {
-      this.getCurrentDocument().extras = value;
-    });
+    define('nodes', () => this.getCurrentDocument().nodes);
+    define('edges', () => this.getCurrentDocument().edges);
+    define('links', () => this.getCurrentDocument().edges);
+    define('assets', () => this.document.assets);
+    define('extras', () => this.document.extras);
     define('x', () => this.session.viewport.x, (value) => {
       this.session.viewport.x = value;
     });
@@ -96,41 +95,55 @@ export class StateStore {
     return view;
   }
 
-  getCurrentDocumentPath(path = this.session.navigation?.path) {
-    return this.resolveDocumentPath(path).path;
+  getRootFolderId() {
+    return this.document.rootFolderId || ROOT_FOLDER_ID;
+  }
+
+  getFolderRecord(folderId = this.getCurrentFolderId()) {
+    const rootFolderId = this.getRootFolderId();
+    const safeId = typeof folderId === 'string' && folderId ? folderId : rootFolderId;
+    return this.document.folders?.[safeId] || this.document.folders?.[rootFolderId] || null;
+  }
+
+  getCurrentFolderId(path = this.session.navigation?.path) {
+    return this.resolveFolderPath(path).folderId;
   }
 
   getCurrentDepth() {
     return this.getCurrentDocumentPath().length;
   }
 
-  resolveDocumentPath(path = this.session.navigation?.path) {
-    const requested = Array.isArray(path) ? path : [];
+  resolveFolderPath(path = this.session.navigation?.path) {
+    const requested = Array.isArray(path) ? path.filter((id) => typeof id === 'string' && id) : [];
     const resolved = [];
-    let currentDocument = this.document;
+    const rootFolderId = this.getRootFolderId();
+    let currentFolderId = rootFolderId;
+    let currentFolder = this.getFolderRecord(rootFolderId);
 
     for (const folderId of requested) {
-      if (!currentDocument || typeof currentDocument !== 'object') {
-        break;
-      }
-
-      const folderNode = currentDocument.nodes?.[folderId];
-      if (!folderNode || folderNode.type !== 'folder' || !folderNode.folder || !folderNode.folder.document) {
+      const nextFolder = this.document.folders?.[folderId];
+      if (!nextFolder || nextFolder.parentFolderId !== currentFolderId) {
         break;
       }
 
       resolved.push(folderId);
-      currentDocument = folderNode.folder.document;
+      currentFolderId = folderId;
+      currentFolder = nextFolder;
     }
 
     return {
       path: resolved,
-      document: currentDocument,
+      folderId: currentFolderId,
+      folder: currentFolder,
     };
   }
 
+  getCurrentDocumentPath(path = this.session.navigation?.path) {
+    return this.resolveFolderPath(path).path;
+  }
+
   getCurrentDocument() {
-    return this.resolveDocumentPath().document;
+    return buildFolderDocumentView(this.document, this.getCurrentFolderId());
   }
 
   getCurrentDocumentSnapshot() {
@@ -139,6 +152,23 @@ export class StateStore {
 
   getNavigationSnapshot() {
     return cloneDocument(this.session.navigation);
+  }
+
+  getDocumentSnapshot() {
+    this.rebuildDerivedState();
+    return cloneDocument(this.document);
+  }
+
+  getEntityById(id) {
+    if (typeof id !== 'string' || !id) {
+      return null;
+    }
+
+    return this.document.nodes?.[id] || this.document.folders?.[id] || null;
+  }
+
+  getVisibleEntities(folderId = this.getCurrentFolderId()) {
+    return this.getCurrentDocument()?.nodes || buildFolderDocumentView(this.document, folderId).nodes;
   }
 
   clearTransientFocus() {
@@ -155,8 +185,15 @@ export class StateStore {
     this.session.interaction.lastActiveNodeAt = null;
   }
 
+  setCurrentEntryNodeId(value) {
+    const folder = this.getFolderRecord();
+    if (folder) {
+      folder.entryNodeId = typeof value === 'string' ? value : null;
+    }
+  }
+
   syncNavigationPathToDocument() {
-    const resolved = this.resolveDocumentPath();
+    const resolved = this.resolveFolderPath();
     const nextPath = resolved.path;
     const currentPath = Array.isArray(this.session.navigation?.path) ? this.session.navigation.path : [];
     const currentStack = Array.isArray(this.session.navigation?.viewportStack) ? this.session.navigation.viewportStack : [];
@@ -198,9 +235,9 @@ export class StateStore {
       return false;
     }
 
-    const currentDocument = this.getCurrentDocument();
-    const folderNode = currentDocument.nodes?.[folderId];
-    if (!folderNode || folderNode.type !== 'folder' || !folderNode.folder || !folderNode.folder.document) {
+    const currentFolderId = this.getCurrentFolderId();
+    const folderNode = this.document.folders?.[folderId];
+    if (!folderNode || folderNode.parentFolderId !== currentFolderId) {
       return false;
     }
 
@@ -215,8 +252,9 @@ export class StateStore {
       this.session.navigation.viewportStack = [];
     }
 
-    const nextEntryNodeId = folderNode.folder?.document?.entryNodeId
-      || Object.keys(folderNode.folder?.document?.nodes || {})[0]
+    const nextEntryNodeId = folderNode.entryNodeId
+      || folderNode.children?.find((child) => child.kind === 'node')?.id
+      || folderNode.children?.find((child) => child.kind === 'folder')?.id
       || null;
     this.session.navigation.viewportStack.push({ ...this.getTransform() });
     this.session.navigation.path = [...this.getCurrentDocumentPath(), folderId];
@@ -294,7 +332,7 @@ export class StateStore {
       y: Number.isFinite(item?.y) ? item.y : 0,
       scale: Number.isFinite(item?.scale) ? item.scale : 1,
     })) : [];
-    const resolved = this.resolveDocumentPath(nextPath);
+    const resolved = this.resolveFolderPath(nextPath);
 
     this.session.navigation.path = resolved.path;
     this.session.navigation.viewportStack = nextStack.slice(0, resolved.path.length);
@@ -326,6 +364,7 @@ export class StateStore {
   }
 
   _cloneDocument() {
+    this.rebuildDerivedState();
     return cloneDocument(this.document);
   }
 
@@ -334,6 +373,10 @@ export class StateStore {
     this.syncNavigationPathToDocument();
     this.emit('document:updated', this.document);
     this.emit('state:updated', this.state);
+  }
+
+  rebuildDerivedState() {
+    this.document.edges = buildEdgesFromDocument(this.document);
   }
 
   saveHistory() {
@@ -371,6 +414,10 @@ export class StateStore {
     this.emit('transform:updated', { x, y, scale });
   }
 
+  getTransform() {
+    return { ...this.session.viewport };
+  }
+
   setLastActiveNode(nodeId) {
     this.session.interaction.lastActiveNodeId = nodeId ?? null;
     this.session.interaction.lastActiveNodeAt = nodeId ? Date.now() : null;
@@ -397,12 +444,118 @@ export class StateStore {
     this.emit('selection:updated', this.session.selection);
   }
 
-  getTransform() {
-    return { ...this.session.viewport };
+  addNodeToFolder(node, folderId = this.getCurrentFolderId()) {
+    const safeFolderId = this.document.folders?.[folderId] ? folderId : this.getRootFolderId();
+    if (!isPlainObject(node) || typeof node.id !== 'string' || !node.id) {
+      return null;
+    }
+
+    const normalizedNode = node;
+    normalizedNode.folderId = safeFolderId;
+    this.document.nodes[normalizedNode.id] = normalizedNode;
+
+    const folder = this.document.folders?.[safeFolderId];
+    if (folder) {
+      folder.children = Array.isArray(folder.children) ? folder.children : [];
+      folder.children.push({ kind: 'node', id: normalizedNode.id });
+    }
+
+    return normalizedNode;
   }
 
-  getDocumentSnapshot() {
-    return this._cloneDocument();
+  addFolderToFolder(folder, parentFolderId = this.getCurrentFolderId()) {
+    const safeParentId = this.document.folders?.[parentFolderId] ? parentFolderId : this.getRootFolderId();
+    if (!isPlainObject(folder) || typeof folder.id !== 'string' || !folder.id) {
+      return null;
+    }
+
+    const normalizedFolder = folder;
+    normalizedFolder.parentFolderId = safeParentId;
+    normalizedFolder.type = 'folder';
+    this.document.folders[normalizedFolder.id] = normalizedFolder;
+
+    const parentFolder = this.document.folders?.[safeParentId];
+    if (parentFolder) {
+      parentFolder.children = Array.isArray(parentFolder.children) ? parentFolder.children : [];
+      parentFolder.children.push({ kind: 'folder', id: normalizedFolder.id });
+    }
+
+    return normalizedFolder;
+  }
+
+  removeNodeFromFolder(nodeId) {
+    const node = this.document.nodes?.[nodeId];
+    if (!node) {
+      return false;
+    }
+
+    const parentFolder = this.document.folders?.[node.folderId || this.getRootFolderId()];
+    if (parentFolder && Array.isArray(parentFolder.children)) {
+      parentFolder.children = parentFolder.children.filter((child) => !(child.kind === 'node' && child.id === nodeId));
+    }
+
+    delete this.document.nodes[nodeId];
+    return true;
+  }
+
+  removeFolderRecursive(folderId) {
+    const folder = this.document.folders?.[folderId];
+    if (!folder || folderId === this.getRootFolderId()) {
+      return false;
+    }
+
+    const children = Array.isArray(folder.children) ? [...folder.children] : [];
+    children.forEach((child) => {
+      if (child.kind === 'folder') {
+        this.removeFolderRecursive(child.id);
+      } else if (child.kind === 'node') {
+        this.removeNodeFromFolder(child.id);
+      }
+    });
+
+    const parentFolder = this.document.folders?.[folder.parentFolderId || this.getRootFolderId()];
+    if (parentFolder && Array.isArray(parentFolder.children)) {
+      parentFolder.children = parentFolder.children.filter((child) => !(child.kind === 'folder' && child.id === folderId));
+    }
+
+    delete this.document.folders[folderId];
+    return true;
+  }
+
+  moveNodeToFolder(nodeId, folderId) {
+    const node = this.document.nodes?.[nodeId];
+    const nextFolder = this.document.folders?.[folderId];
+    if (!node || !nextFolder) {
+      return false;
+    }
+
+    const previousFolder = this.document.folders?.[node.folderId || this.getRootFolderId()];
+    if (previousFolder && Array.isArray(previousFolder.children)) {
+      previousFolder.children = previousFolder.children.filter((child) => !(child.kind === 'node' && child.id === nodeId));
+    }
+
+    nextFolder.children = Array.isArray(nextFolder.children) ? nextFolder.children : [];
+    nextFolder.children.push({ kind: 'node', id: nodeId });
+    node.folderId = folderId;
+    return true;
+  }
+
+  moveFolderToFolder(folderId, parentFolderId) {
+    const folder = this.document.folders?.[folderId];
+    const nextParent = this.document.folders?.[parentFolderId];
+    if (!folder || !nextParent || folderId === this.getRootFolderId()) {
+      return false;
+    }
+
+    const previousParent = this.document.folders?.[folder.parentFolderId || this.getRootFolderId()];
+    if (previousParent && Array.isArray(previousParent.children)) {
+      previousParent.children = previousParent.children.filter((child) => !(child.kind === 'folder' && child.id === folderId));
+    }
+
+    nextParent.children = Array.isArray(nextParent.children) ? nextParent.children : [];
+    nextParent.children.push({ kind: 'folder', id: folderId });
+    folder.parentFolderId = parentFolderId;
+    return true;
   }
 
   replaceDocument(nextDocument, { saveToHistory = true, resetHistory = false } = {}) {

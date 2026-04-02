@@ -3,7 +3,7 @@
  * Handles node lifecycle: creation, removal, dragging, and content updates.
  */
 import { store } from './StateStore.js';
-import { createDefaultDocument } from './core/documentSchema.js';
+import { createDefaultFolder } from './core/documentSchema.js';
 import { createNodeId, materializeClipboardPayload } from './core/graphClipboard.js';
 import { resolveNodeSize } from './core/nodeSizing.js';
 import { MAX_FOLDER_DEPTH } from './core/folderTheme.js';
@@ -265,11 +265,19 @@ class NodeManager {
   }
 
   createNode(x, y) {
-    const id = createNodeId(new Set(Object.keys(store.state.nodes)));
+    const existingIds = new Set([
+      ...Object.keys(store.document.nodes || {}),
+      ...Object.keys(store.document.folders || {}),
+    ]);
+    const id = createNodeId(existingIds);
+    const folderId = typeof store.getCurrentFolderId === 'function'
+      ? store.getCurrentFolderId()
+      : (store.document.rootFolderId || 'folder_root');
     const size = resolveNodeSize({ content: '' });
     const node = {
       id,
       type: 'note',
+      folderId,
       title: '',
       x,
       y,
@@ -281,17 +289,17 @@ class NodeManager {
       params: {}
     };
     
-    store.state.nodes[id] = node;
+    store.addNodeToFolder(node, folderId);
     store.setSelectionNodeIds([id]);
     store.setLastActiveNode(id);
-    store.emit('nodes:updated', store.state.nodes);
+    store.emit('nodes:updated', store.getCurrentDocument().nodes);
     store.saveHistory();
   }
 
   groupSelectionIntoFolder() {
     const currentDocument = typeof store.getCurrentDocument === 'function'
       ? store.getCurrentDocument()
-      : store.document;
+      : null;
     if (!currentDocument || !currentDocument.nodes) {
       return false;
     }
@@ -318,33 +326,46 @@ class NodeManager {
     const folderTitleSource = this.getNodeLabel(currentDocument.nodes[selectedIds[0]]);
     const folderTitle = folderTitleSource ? `Folder · ${folderTitleSource.slice(0, 24)}` : 'Folder';
     const summaryText = `${selectedIds.length} nodes`;
-    const folderNodeId = createNodeId(new Set(Object.keys(currentDocument.nodes)), 'folder');
-
-    const childDocument = createDefaultDocument();
-    childDocument.meta.title = folderTitle;
-    childDocument.assets = this.cloneValue(currentDocument.assets || []);
-    childDocument.extras = this.cloneValue(currentDocument.extras || {});
-    childDocument.entryNodeId = selectedSet.has(currentDocument.entryNodeId)
-      ? currentDocument.entryNodeId
-      : selectedIds[0];
-
-    const childNodes = {};
+    const existingIds = new Set([
+      ...Object.keys(store.document.nodes || {}),
+      ...Object.keys(store.document.folders || {}),
+    ]);
+    const folderNodeId = createNodeId(existingIds, 'folder');
     const folderParams = {};
     const boundaryLinks = {
       incoming: [],
       outgoing: [],
     };
 
+    const currentFolderId = typeof store.getCurrentFolderId === 'function'
+      ? store.getCurrentFolderId()
+      : (store.document.rootFolderId || 'folder_root');
+    const currentFolder = store.getFolderRecord?.(currentFolderId) || store.document.folders?.[currentFolderId];
+    const folderNode = createDefaultFolder({
+      id: folderNodeId,
+      parentFolderId: currentFolderId,
+      name: folderTitle,
+      depth: currentDepth + 1,
+      colorIndex: currentDepth + 1,
+    });
+    folderNode.title = folderTitle;
+    folderNode.content = `${summaryText}`;
+    folderNode.summary = `${summaryText} · 0 links`;
+    folderNode.x = selectionBounds.minX - margin;
+    folderNode.y = selectionBounds.minY - margin;
+    folderNode.params = {};
+    folderNode.boundaryLinks = boundaryLinks;
+    folderNode.sourceNodeIds = selectedIds;
+    folderNode.entryNodeId = selectedIds[0] || null;
+    folderNode.children = [];
+
+    store.addFolderToFolder(folderNode, currentFolderId);
+
     selectedIds.forEach((nodeId) => {
       const sourceNode = currentDocument.nodes[nodeId];
       if (!sourceNode) {
         return;
       }
-
-      const cloned = this.cloneValue(sourceNode);
-      cloned.x = (Number(sourceNode.x) || 0) - selectionBounds.minX + margin;
-      cloned.y = (Number(sourceNode.y) || 0) - selectionBounds.minY + margin;
-      cloned.params = {};
 
       if (this.isPlainObject(sourceNode.params)) {
         Object.entries(sourceNode.params).forEach(([key, linkValue]) => {
@@ -357,13 +378,9 @@ class NodeManager {
           const targetPort = typeof linkValue === 'object' && linkValue ? (linkValue.targetPort || 'left') : 'left';
 
           if (selectedSet.has(targetId)) {
-            cloned.params[key] = typeof linkValue === 'string'
-              ? {
-                targetId,
-                sourcePort,
-                targetPort,
-              }
-              : this.cloneValue(linkValue);
+            folderNode.children.push(sourceNode.type === 'folder'
+              ? { kind: 'folder', id: nodeId }
+              : { kind: 'node', id: nodeId });
             return;
           }
 
@@ -375,6 +392,7 @@ class NodeManager {
             originNodeId: nodeId,
             originKey: key,
           };
+          delete sourceNode.params[key];
           boundaryLinks.outgoing.push({
             sourceNodeId: nodeId,
             key,
@@ -385,7 +403,11 @@ class NodeManager {
         });
       }
 
-      childNodes[nodeId] = cloned;
+      if (sourceNode.type === 'folder') {
+        store.moveFolderToFolder(nodeId, folderNodeId);
+      } else {
+        store.moveNodeToFolder(nodeId, folderNodeId);
+      }
     });
 
     Object.values(currentDocument.nodes).forEach((node) => {
@@ -418,44 +440,14 @@ class NodeManager {
       });
     });
 
-    selectedIds.forEach((nodeId) => {
-      delete currentDocument.nodes[nodeId];
-    });
-
-    const childEdges = this.buildEdgesFromNodes(childNodes);
-    childDocument.nodes = childNodes;
-    childDocument.edges = childEdges;
-    childDocument.entryNodeId = childDocument.entryNodeId && childNodes[childDocument.entryNodeId]
-      ? childDocument.entryNodeId
-      : Object.keys(childNodes)[0] || null;
-
-    const folderNode = {
-      id: folderNodeId,
-      type: 'folder',
-      title: folderTitle,
-      x: selectionBounds.minX - margin,
-      y: selectionBounds.minY - margin,
-      content: `${summaryText} · ${childEdges.length + boundaryLinks.incoming.length + boundaryLinks.outgoing.length} links`,
-      size: {
-        width: 0,
-        height: 0,
-      },
-      params: {},
-      folder: {
-        document: childDocument,
-        summary: `${summaryText} · ${childEdges.length + boundaryLinks.incoming.length + boundaryLinks.outgoing.length} links`,
-        depth: currentDepth + 1,
-        colorIndex: currentDepth + 1,
-        collapsed: false,
-        boundaryLinks,
-        sourceNodeIds: selectedIds,
-      },
-    };
-
-    const folderSize = resolveNodeSize(folderNode);
+    folderNode.summary = `${summaryText} · ${boundaryLinks.incoming.length + boundaryLinks.outgoing.length} links`;
+    folderNode.content = folderNode.summary;
+    folderNode.params = folderParams;
+    folderNode.boundaryLinks = boundaryLinks;
+    folderNode.size = resolveNodeSize(folderNode);
     const side = Math.max(
-      folderSize.width,
-      folderSize.height,
+      folderNode.size.width,
+      folderNode.size.height,
       selectionBounds.width + margin * 2,
       selectionBounds.height + margin * 2,
     );
@@ -465,18 +457,14 @@ class NodeManager {
     };
     folderNode.x = (selectionBounds.minX + (selectionBounds.width / 2)) - (side / 2);
     folderNode.y = (selectionBounds.minY + (selectionBounds.height / 2)) - (side / 2);
-    folderNode.params = folderParams;
 
-    if (selectedSet.has(currentDocument.entryNodeId)) {
-      currentDocument.entryNodeId = folderNodeId;
+    if (currentFolder && selectedSet.has(currentFolder.entryNodeId)) {
+      currentFolder.entryNodeId = folderNodeId;
     }
-
-    currentDocument.nodes[folderNodeId] = folderNode;
-    currentDocument.edges = this.buildEdgesFromNodes(currentDocument.nodes);
 
     store.setSelectionNodeIds([folderNodeId]);
     store.setLastActiveNode(folderNodeId);
-    store.emit('nodes:updated', currentDocument.nodes);
+    store.emit('nodes:updated', store.getCurrentDocument().nodes);
     store.emit('connections:updated');
     store.saveHistory();
     return true;
@@ -487,16 +475,29 @@ class NodeManager {
   }
 
   deleteNodes(ids = []) {
-    const uniqueIds = [...new Set((Array.isArray(ids) ? ids : []).filter((id) => typeof id === 'string' && store.state.nodes[id]))];
+    const currentDocument = typeof store.getCurrentDocument === 'function'
+      ? store.getCurrentDocument()
+      : null;
+    const uniqueIds = [...new Set((Array.isArray(ids) ? ids : []).filter((id) => typeof id === 'string' && currentDocument?.nodes?.[id]))];
     if (!uniqueIds.length) {
       return false;
     }
 
     uniqueIds.forEach((id) => {
-      delete store.state.nodes[id];
+      const entity = store.getEntityById?.(id) || currentDocument.nodes[id];
+      if (entity?.type === 'folder') {
+        store.removeFolderRecursive(id);
+      } else {
+        store.removeNodeFromFolder(id);
+      }
     });
 
-    Object.values(store.state.nodes).forEach((node) => {
+    const allEntities = {
+      ...(store.document.nodes || {}),
+      ...(store.document.folders || {}),
+    };
+
+    Object.values(allEntities).forEach((node) => {
       if (!node.params) {
         return;
       }
@@ -519,29 +520,37 @@ class NodeManager {
     store.setSelectionNodeIds(nextSelection);
 
     if (uniqueIds.includes(store.state.interaction?.lastActiveNodeId)) {
-      store.setLastActiveNode(nextSelection[0] || Object.keys(store.state.nodes)[0] || null);
+      const fallbackId = nextSelection[0]
+        || Object.keys(store.getCurrentDocument().nodes || {})[0]
+        || null;
+      store.setLastActiveNode(fallbackId);
     }
 
-    store.emit('nodes:updated', store.state.nodes);
+    store.emit('nodes:updated', store.getCurrentDocument().nodes);
     store.emit('connections:updated');
     store.saveHistory();
     return true;
   }
 
   updateNodePosition(id, x, y) {
-    if (store.state.nodes[id]) {
-      store.state.nodes[id].x = x;
-      store.state.nodes[id].y = y;
+    const entity = store.getEntityById?.(id);
+    if (entity) {
+      entity.x = x;
+      entity.y = y;
       store.setLastActiveNode(id);
       store.emit('node:moved', { id, x, y });
     }
   }
 
   updateNodeContent(id, content) {
-    if (store.state.nodes[id]) {
-      store.state.nodes[id].content = content;
-      const size = resolveNodeSize({ content });
-      store.state.nodes[id].size = {
+    const entity = store.getEntityById?.(id);
+    if (entity) {
+      entity.content = content;
+      if (entity.type === 'folder') {
+        entity.summary = content;
+      }
+      const size = resolveNodeSize(entity);
+      entity.size = {
         width: size.width,
         height: size.height,
       };
@@ -589,7 +598,10 @@ class NodeManager {
   }
 
   insertFragment(fragment, anchorWorldPoint = null) {
-    const existingIds = new Set(Object.keys(store.state.nodes));
+    const existingIds = new Set([
+      ...Object.keys(store.document.nodes || {}),
+      ...Object.keys(store.document.folders || {}),
+    ]);
     const materialized = materializeClipboardPayload(fragment, {
       anchorWorldPoint: anchorWorldPoint || this.getPasteAnchorWorldPoint(),
       existingNodeIds: existingIds,
@@ -599,11 +611,106 @@ class NodeManager {
       return null;
     }
 
+    const currentFolderId = typeof store.getCurrentFolderId === 'function'
+      ? store.getCurrentFolderId()
+      : (store.document.rootFolderId || 'folder_root');
+
+    const folderEntries = [];
+    const nodeEntries = [];
+
     Object.entries(materialized.nodes).forEach(([nodeId, node]) => {
-      store.state.nodes[nodeId] = node;
+      if (node?.type === 'folder') {
+        folderEntries.push([nodeId, node]);
+        return;
+      }
+
+      nodeEntries.push([nodeId, node]);
     });
 
-    store.emit('nodes:updated', store.state.nodes);
+    const pendingFolders = folderEntries.slice();
+    const insertedFolderIds = new Set();
+
+    while (pendingFolders.length) {
+      let progress = false;
+
+      for (let index = pendingFolders.length - 1; index >= 0; index -= 1) {
+        const [nodeId, node] = pendingFolders[index];
+        const parentFolderId = typeof node.parentFolderId === 'string' && node.parentFolderId
+          ? node.parentFolderId
+          : currentFolderId;
+        if (parentFolderId !== currentFolderId
+          && !insertedFolderIds.has(parentFolderId)
+          && !store.document.folders?.[parentFolderId]) {
+          continue;
+        }
+
+        const folderRecord = createDefaultFolder({
+          id: nodeId,
+          parentFolderId,
+          name: node.title || node.content || nodeId,
+          depth: (store.getFolderRecord?.(parentFolderId)?.depth ?? store.getCurrentDepth()) + 1,
+          colorIndex: (store.getFolderRecord?.(parentFolderId)?.depth ?? store.getCurrentDepth()) + 1,
+        });
+        folderRecord.title = node.title || node.content || nodeId;
+        folderRecord.content = node.content || '';
+        folderRecord.summary = node.content || '';
+        folderRecord.x = node.x;
+        folderRecord.y = node.y;
+        folderRecord.size = node.size || folderRecord.size;
+        folderRecord.params = this.cloneValue(node.params || {});
+        folderRecord.children = Array.isArray(node.children) ? this.cloneValue(node.children) : [];
+        folderRecord.entryNodeId = node.entryNodeId || folderRecord.entryNodeId;
+        folderRecord.boundaryLinks = this.cloneValue(node.boundaryLinks || []);
+        folderRecord.sourceNodeIds = this.cloneValue(node.sourceNodeIds || []);
+        store.addFolderToFolder(folderRecord, parentFolderId);
+        insertedFolderIds.add(nodeId);
+        pendingFolders.splice(index, 1);
+        progress = true;
+      }
+ 
+      if (!progress) {
+        break;
+      }
+    }
+
+    pendingFolders.forEach(([nodeId, node]) => {
+      const parentFolderId = typeof node.parentFolderId === 'string' && node.parentFolderId
+        ? node.parentFolderId
+        : currentFolderId;
+      const folderRecord = createDefaultFolder({
+        id: nodeId,
+        parentFolderId: store.document.folders?.[parentFolderId] ? parentFolderId : currentFolderId,
+        name: node.title || node.content || nodeId,
+        depth: (store.getFolderRecord?.(parentFolderId)?.depth ?? store.getCurrentDepth()) + 1,
+        colorIndex: (store.getFolderRecord?.(parentFolderId)?.depth ?? store.getCurrentDepth()) + 1,
+      });
+      folderRecord.title = node.title || node.content || nodeId;
+      folderRecord.content = node.content || '';
+      folderRecord.summary = node.content || '';
+      folderRecord.x = node.x;
+      folderRecord.y = node.y;
+      folderRecord.size = node.size || folderRecord.size;
+      folderRecord.params = this.cloneValue(node.params || {});
+      folderRecord.children = Array.isArray(node.children) ? this.cloneValue(node.children) : [];
+      folderRecord.entryNodeId = node.entryNodeId || folderRecord.entryNodeId;
+      folderRecord.boundaryLinks = this.cloneValue(node.boundaryLinks || []);
+      folderRecord.sourceNodeIds = this.cloneValue(node.sourceNodeIds || []);
+      store.addFolderToFolder(folderRecord, folderRecord.parentFolderId);
+      insertedFolderIds.add(nodeId);
+    });
+
+    nodeEntries.forEach(([nodeId, node]) => {
+      const nextNode = {
+        ...node,
+        folderId: typeof node.folderId === 'string' && node.folderId ? node.folderId : currentFolderId,
+      };
+      if (!store.document.folders?.[nextNode.folderId]) {
+        nextNode.folderId = currentFolderId;
+      }
+      store.addNodeToFolder(nextNode, nextNode.folderId);
+    });
+
+    store.emit('nodes:updated', store.getCurrentDocument().nodes);
     store.emit('connections:updated');
     store.setSelectionNodeIds(materialized.rootNodeIds.length ? materialized.rootNodeIds : materialized.nodeIds);
     store.setLastActiveNode(materialized.rootNodeIds[0] || materialized.nodeIds[0] || null);

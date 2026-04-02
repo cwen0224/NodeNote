@@ -177,6 +177,85 @@ function getOutgoingTargetIds(node) {
     .filter(Boolean);
 }
 
+function getChildIds(entity) {
+  if (!isPlainObject(entity)) {
+    return [];
+  }
+
+  if (entity.type === 'folder' && Array.isArray(entity.children)) {
+    return entity.children
+      .map((child) => (isPlainObject(child) ? child.id : null))
+      .filter(Boolean);
+  }
+
+  return [];
+}
+
+function remapIdList(values, idMap) {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  return values
+    .map((value) => {
+      if (typeof value === 'string') {
+        return idMap.get(value) || value;
+      }
+      return null;
+    })
+    .filter(Boolean);
+}
+
+function remapChildRefs(children, idMap) {
+  if (!Array.isArray(children)) {
+    return [];
+  }
+
+  return children
+    .map((child) => {
+      if (!isPlainObject(child)) {
+        return null;
+      }
+
+      const id = typeof child.id === 'string' ? (idMap.get(child.id) || child.id) : null;
+      if (!id) {
+        return null;
+      }
+
+      return {
+        kind: child.kind === 'folder' ? 'folder' : 'node',
+        id,
+      };
+    })
+    .filter(Boolean);
+}
+
+function remapBoundaryLinks(boundaryLinks, idMap) {
+  if (!isPlainObject(boundaryLinks)) {
+    return boundaryLinks;
+  }
+
+  const remapLink = (link) => {
+    if (!isPlainObject(link)) {
+      return link;
+    }
+
+    const next = clone(link);
+    if (typeof next.sourceNodeId === 'string') {
+      next.sourceNodeId = idMap.get(next.sourceNodeId) || next.sourceNodeId;
+    }
+    if (typeof next.targetId === 'string') {
+      next.targetId = idMap.get(next.targetId) || next.targetId;
+    }
+    return next;
+  };
+
+  return {
+    incoming: Array.isArray(boundaryLinks.incoming) ? boundaryLinks.incoming.map(remapLink) : [],
+    outgoing: Array.isArray(boundaryLinks.outgoing) ? boundaryLinks.outgoing.map(remapLink) : [],
+  };
+}
+
 function remapParams(params, idMap) {
   if (!isPlainObject(params)) {
     return {};
@@ -239,7 +318,12 @@ function rebuildParamsFromEdges(nodes, edges = []) {
 
 export function collectClipboardGraph(documentSnapshot, rootNodeIds = []) {
   const nodes = normalizeNodeMap(documentSnapshot?.nodes);
-  const initialRoots = [...new Set((Array.isArray(rootNodeIds) ? rootNodeIds : []).filter((id) => typeof id === 'string' && nodes[id]))];
+  const folders = normalizeNodeMap(documentSnapshot?.folders);
+  const entities = {
+    ...nodes,
+    ...folders,
+  };
+  const initialRoots = [...new Set((Array.isArray(rootNodeIds) ? rootNodeIds : []).filter((id) => typeof id === 'string' && entities[id]))];
 
   if (!initialRoots.length) {
     return null;
@@ -251,16 +335,22 @@ export function collectClipboardGraph(documentSnapshot, rootNodeIds = []) {
 
   while (queue.length) {
     const nodeId = queue.shift();
-    if (visited.has(nodeId) || !nodes[nodeId]) {
+    if (visited.has(nodeId) || !entities[nodeId]) {
       continue;
     }
 
     visited.add(nodeId);
     orderedIds.push(nodeId);
 
-    getOutgoingTargetIds(nodes[nodeId]).forEach((targetId) => {
-      if (!visited.has(targetId) && nodes[targetId]) {
+    getOutgoingTargetIds(entities[nodeId]).forEach((targetId) => {
+      if (!visited.has(targetId) && entities[targetId]) {
         queue.push(targetId);
+      }
+    });
+
+    getChildIds(entities[nodeId]).forEach((childId) => {
+      if (!visited.has(childId) && entities[childId]) {
+        queue.push(childId);
       }
     });
   }
@@ -269,11 +359,11 @@ export function collectClipboardGraph(documentSnapshot, rootNodeIds = []) {
     return null;
   }
 
-  const bounds = computeBounds(nodes, orderedIds);
+  const bounds = computeBounds(entities, orderedIds);
   const fragmentNodes = {};
 
   orderedIds.forEach((nodeId) => {
-    const node = clone(nodes[nodeId]);
+    const node = clone(entities[nodeId]);
     const position = getNodePosition(node);
 
     node.x = position.x - bounds.minX;
@@ -284,7 +374,7 @@ export function collectClipboardGraph(documentSnapshot, rootNodeIds = []) {
   });
 
   const edgeCount = orderedIds.reduce((count, nodeId) => {
-    const node = nodes[nodeId];
+    const node = entities[nodeId];
     if (!isPlainObject(node?.params)) {
       return count;
     }
@@ -417,6 +507,24 @@ export function materializeClipboardPayload(payload, {
     node.x = position.x + bounds.minX + offsetX;
     node.y = position.y + bounds.minY + offsetY;
     node.params = remapParams(node.params, idMap);
+    if (typeof node.folderId === 'string') {
+      node.folderId = idMap.get(node.folderId) || node.folderId;
+    }
+    if (typeof node.parentFolderId === 'string') {
+      node.parentFolderId = idMap.get(node.parentFolderId) || node.parentFolderId;
+    }
+    if (Array.isArray(node.children)) {
+      node.children = remapChildRefs(node.children, idMap);
+    }
+    if (Array.isArray(node.sourceNodeIds)) {
+      node.sourceNodeIds = remapIdList(node.sourceNodeIds, idMap);
+    }
+    if (isPlainObject(node.boundaryLinks)) {
+      node.boundaryLinks = remapBoundaryLinks(node.boundaryLinks, idMap);
+    }
+    if (typeof node.entryNodeId === 'string') {
+      node.entryNodeId = idMap.get(node.entryNodeId) || node.entryNodeId;
+    }
     delete node.position;
 
     nodes[node.id] = node;
