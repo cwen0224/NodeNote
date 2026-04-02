@@ -1,4 +1,4 @@
-import { normalizeDocument, createDefaultDocument } from './documentSchema.js';
+import { normalizeDocument, createDefaultDocument, applyImportedDocumentLayout } from './documentSchema.js';
 import { normalizeClipboardPayload, GRAPH_FRAGMENT_SCHEMA } from './graphClipboard.js';
 
 function clone(value) {
@@ -252,7 +252,7 @@ function isDocumentLikePayload(payload) {
 
 export function normalizeImportedDocument(payload) {
   if (isDocumentLikePayload(payload)) {
-    return normalizeDocument(normalizeImportedStrings(payload));
+    return applyImportedDocumentLayout(normalizeDocument(normalizeImportedStrings(payload)));
   }
 
   const graphPayload = normalizeClipboardPayload(payload);
@@ -262,7 +262,7 @@ export function normalizeImportedDocument(payload) {
     baseDocument.entryNodeId = graphPayload.rootNodeIds?.[0] || graphPayload.nodeIds?.[0] || null;
     baseDocument.nodes = clone(normalizeImportedStrings(graphPayload.nodes || {}));
     baseDocument.edges = buildEdgesFromNodes(baseDocument.nodes);
-    return normalizeDocument(baseDocument);
+    return applyImportedDocumentLayout(normalizeDocument(baseDocument));
   }
 
   if (graphPayload) {
@@ -271,7 +271,7 @@ export function normalizeImportedDocument(payload) {
     baseDocument.entryNodeId = graphPayload.rootNodeIds?.[0] || graphPayload.nodeIds?.[0] || null;
     baseDocument.nodes = clone(normalizeImportedStrings(graphPayload.nodes || {}));
     baseDocument.edges = buildEdgesFromNodes(baseDocument.nodes);
-    return normalizeDocument(baseDocument);
+    return applyImportedDocumentLayout(normalizeDocument(baseDocument));
   }
 
   return null;

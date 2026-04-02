@@ -628,12 +628,31 @@ class Renderer {
     const labelText = String(key ?? '').trim();
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
     path.setAttribute("class", "connection-path");
-    
-    const dx = Math.abs(tX - sX) * 0.5;
-    const cp1x = sX + dx;
-    const cp2x = tX - dx;
 
-    path.setAttribute("d", `M ${sX} ${sY} C ${cp1x} ${sY}, ${cp2x} ${tY}, ${tX} ${tY}`);
+    const getPortDirectionVector = (side) => {
+      switch (side) {
+        case 'top':
+          return { x: 0, y: -1 };
+        case 'bottom':
+          return { x: 0, y: 1 };
+        case 'left':
+          return { x: -1, y: 0 };
+        case 'right':
+        default:
+          return { x: 1, y: 0 };
+      }
+    };
+
+    const sourceVector = getPortDirectionVector(sourcePortSide);
+    const targetVector = getPortDirectionVector(targetPortSide);
+    const travelDistance = Math.max(1, Math.hypot(tX - sX, tY - sY));
+    const bend = Math.max(32, Math.min(180, travelDistance * 0.35));
+    const cp1x = sX + (sourceVector.x * bend);
+    const cp1y = sY + (sourceVector.y * bend);
+    const cp2x = tX - (targetVector.x * bend);
+    const cp2y = tY - (targetVector.y * bend);
+
+    path.setAttribute("d", `M ${sX} ${sY} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${tX} ${tY}`);
     this.svgLayer.appendChild(path);
 
     const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
