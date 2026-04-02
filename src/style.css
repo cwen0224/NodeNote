@@ -499,6 +499,14 @@ button:hover {
   gap: 6px;
 }
 
+.node-title-editable {
+  cursor: text;
+}
+
+.node-title-editable:hover {
+  color: var(--text-primary);
+}
+
 .node-content {
   flex-grow: 1;
   min-width: 0;
@@ -570,7 +578,8 @@ button:hover {
   box-shadow: 0 0 0 1px var(--accent);
 }
 
-.node-edit-btn {
+.node-edit-btn,
+.node-rename-btn {
   width: 22px;
   height: 22px;
   border: 0;
@@ -587,14 +596,16 @@ button:hover {
   transition: transform 0.14s ease, background 0.14s ease, color 0.14s ease, opacity 0.14s ease;
 }
 
-.node-edit-btn:hover {
+.node-edit-btn:hover,
+.node-rename-btn:hover {
   opacity: 1;
   color: #fff;
   background: rgba(88, 166, 255, 0.24);
   transform: scale(1.08);
 }
 
-.node-edit-btn:focus-visible {
+.node-edit-btn:focus-visible,
+.node-rename-btn:focus-visible {
   opacity: 1;
   color: #fff;
   background: rgba(88, 166, 255, 0.24);

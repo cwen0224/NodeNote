@@ -84,6 +84,16 @@ class Renderer {
       this.renderMinimap();
     });
 
+    store.on('node:titleUpdated', ({ id, title }) => {
+      const nodeEl = document.querySelector(`.node[data-id="${id}"] .node-id`);
+      if (nodeEl) {
+        const fallback = store.state.nodes?.[id]?.content || id;
+        const nextLabel = String(title || '').trim() || String(fallback || id || '');
+        nodeEl.textContent = nextLabel;
+        nodeEl.setAttribute('title', nextLabel);
+      }
+    });
+
     this.viewport?.addEventListener('pointermove', (e) => {
       const now = performance.now();
       store.setLastPointer(e.clientX, e.clientY);
@@ -416,6 +426,7 @@ class Renderer {
         <div class="node-header">
           <span class="node-id" title="${this.escapeHtml(nodeLabel)}">${this.escapeHtml(nodeLabel)}</span>
           <div class="node-header-actions">
+            <button class="node-rename-btn" type="button" aria-label="編輯名稱">Aa</button>
             <button class="node-folder-open-btn" type="button" aria-label="開啟資料夾">↗</button>
           </div>
         </div>
@@ -431,6 +442,7 @@ class Renderer {
         <div class="node-header">
           <span class="node-id" title="${this.escapeHtml(nodeLabel)}">${this.escapeHtml(nodeLabel)}</span>
           <div class="node-header-actions">
+            <button class="node-rename-btn" type="button" aria-label="編輯名稱">Aa</button>
             <button class="node-edit-btn" type="button" aria-label="編輯節點">✎</button>
           </div>
         </div>
@@ -445,10 +457,24 @@ class Renderer {
 
     // Internal Events (preventing panning/zooming while interacting with a node)
     const content = div.querySelector('.node-content');
+    const titleEl = div.querySelector('.node-id');
     if (content) {
       content.textContent = node.content ?? '';
     }
     this.applyNodeSizing(div, node);
+
+    const renameTitle = () => {
+      const currentTitle = String(node.title || '').trim() || node.id;
+      const nextTitle = window.prompt(
+        isFolderNode ? '輸入資料夾名稱' : '輸入節點名稱',
+        currentTitle
+      );
+      if (nextTitle === null) {
+        return;
+      }
+
+      nodeManager.updateNodeTitle(node.id, nextTitle);
+    };
 
     const focusContent = () => {
       if (!content || isFolderNode) {
@@ -501,6 +527,22 @@ class Renderer {
         content.contentEditable = 'false';
       });
     }
+
+    if (titleEl) {
+      titleEl.classList.add('node-title-editable');
+      titleEl.addEventListener('mousedown', (e) => e.stopPropagation());
+      titleEl.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        renameTitle();
+      });
+    }
+
+    const renameBtn = div.querySelector('.node-rename-btn');
+    renameBtn?.addEventListener('mousedown', (e) => e.stopPropagation());
+    renameBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      renameTitle();
+    });
 
     const editBtn = div.querySelector('.node-edit-btn');
     editBtn?.addEventListener('mousedown', (e) => e.stopPropagation());

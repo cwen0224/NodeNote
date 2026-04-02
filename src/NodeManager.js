@@ -190,6 +190,12 @@ class NodeManager {
         return;
       }
 
+      if (e.target.closest('.node-title-editable')) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+
       // Handle dragging
       if (e.button === 0) {
         this.isDraggingNode = true;
@@ -677,6 +683,25 @@ class NodeManager {
       store.setLastActiveNode(id);
       store.emit('node:moved', { id, x, y });
     }
+  }
+
+  updateNodeTitle(id, title) {
+    const entity = store.getEntityById?.(id);
+    if (!entity) {
+      return false;
+    }
+
+    const nextTitle = String(title ?? '').trim();
+    entity.title = nextTitle;
+    if (entity.type === 'folder') {
+      entity.name = nextTitle;
+    }
+
+    store.setLastActiveNode(id);
+    store.emit('node:titleUpdated', { id, title: nextTitle });
+    store.emit('nodes:updated', store.getCurrentDocument().nodes);
+    store.saveHistory();
+    return true;
   }
 
   updateNodeContent(id, content) {
