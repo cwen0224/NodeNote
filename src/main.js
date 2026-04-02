@@ -118,11 +118,19 @@ const initApp = () => {
     const folderGroupBtn = document.getElementById('btn-folder-group');
     const undoBtn = document.getElementById('btn-undo');
     const redoBtn = document.getElementById('btn-redo');
+    let trayHoverCloseTimer = 0;
+    const clearTrayHoverCloseTimer = () => {
+      if (trayHoverCloseTimer) {
+        window.clearTimeout(trayHoverCloseTimer);
+        trayHoverCloseTimer = 0;
+      }
+    };
     if(folderBackBtn) folderBackBtn.onclick = () => store.exitFolder();
     const setTrayDrawerOpen = (isOpen) => {
       if (!trayDrawer) {
         return;
       }
+      clearTrayHoverCloseTimer();
       trayDrawer.classList.toggle('is-collapsed', !isOpen);
       if (trayCloseBtn) {
         trayCloseBtn.setAttribute('aria-expanded', String(isOpen));
@@ -132,6 +140,44 @@ const initApp = () => {
     if (trayDrawer) {
       const savedTrayState = window.localStorage.getItem(TRAY_DRAWER_STORAGE_KEY);
       setTrayDrawerOpen(savedTrayState !== '0');
+      const hoverOpenThreshold = 24;
+      const hoverCloseThreshold = 280;
+
+      document.addEventListener('pointermove', (event) => {
+        if (!trayDrawer) {
+          return;
+        }
+
+        const isCollapsed = trayDrawer.classList.contains('is-collapsed');
+        const x = Number.isFinite(event.clientX) ? event.clientX : window.innerWidth;
+
+        if (x <= hoverOpenThreshold) {
+          setTrayDrawerOpen(true);
+          return;
+        }
+
+        if (!isCollapsed && x > hoverCloseThreshold) {
+          clearTrayHoverCloseTimer();
+          trayHoverCloseTimer = window.setTimeout(() => {
+            if (!trayDrawer.matches(':hover')) {
+              setTrayDrawerOpen(false);
+            }
+          }, 180);
+        }
+      }, { passive: true });
+
+      trayDrawer.addEventListener('pointerenter', () => {
+        clearTrayHoverCloseTimer();
+      });
+
+      trayDrawer.addEventListener('pointerleave', () => {
+        clearTrayHoverCloseTimer();
+        trayHoverCloseTimer = window.setTimeout(() => {
+          if (!trayDrawer.matches(':hover')) {
+            setTrayDrawerOpen(false);
+          }
+        }, 180);
+      });
     }
     if (trayCloseBtn) {
       trayCloseBtn.onclick = () => setTrayDrawerOpen(false);
