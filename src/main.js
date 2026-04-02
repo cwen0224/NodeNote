@@ -121,6 +121,19 @@ const initApp = () => {
     const undoBtn = document.getElementById('btn-undo');
     const redoBtn = document.getElementById('btn-redo');
     if(folderBackBtn) folderBackBtn.onclick = () => store.exitFolder();
+    let promptPickerHideTimer = 0;
+    const clearPromptPickerHideTimer = () => {
+      if (promptPickerHideTimer) {
+        window.clearTimeout(promptPickerHideTimer);
+        promptPickerHideTimer = 0;
+      }
+    };
+    const schedulePromptPickerHide = (delay = 2200) => {
+      clearPromptPickerHideTimer();
+      promptPickerHideTimer = window.setTimeout(() => {
+        hidePromptPicker();
+      }, delay);
+    };
     const positionPromptPicker = () => {
       if (!promptPicker || !aiPromptCopyBtn) {
         return;
@@ -169,6 +182,7 @@ const initApp = () => {
       if (!promptPicker || !aiPromptCopyBtn) {
         return;
       }
+      clearPromptPickerHideTimer();
       promptPicker.hidden = true;
       aiPromptCopyBtn.setAttribute('aria-expanded', 'false');
     };
@@ -184,11 +198,15 @@ const initApp = () => {
         promptPicker.hidden = !isHidden;
         if (isHidden) {
           window.requestAnimationFrame(positionPromptPicker);
+          schedulePromptPickerHide();
         }
         aiPromptCopyBtn.setAttribute('aria-expanded', String(isHidden));
       };
     }
     if (promptPicker) {
+      promptPicker.addEventListener('pointerenter', () => {
+        clearPromptPickerHideTimer();
+      });
       promptPicker.addEventListener('click', async (event) => {
         const item = event.target.closest?.('.prompt-picker-item');
         if (!item) {
@@ -221,7 +239,7 @@ const initApp = () => {
       hidePromptPicker();
     });
     promptPicker?.addEventListener('pointerleave', () => {
-      hidePromptPicker();
+      schedulePromptPickerHide(180);
     });
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') {
