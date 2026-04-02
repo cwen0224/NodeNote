@@ -127,6 +127,18 @@ class Renderer {
       .replaceAll("'", '&#39;');
   }
 
+  getNodeLabel(node) {
+    if (typeof nodeManager?.getNodeLabel === 'function') {
+      return nodeManager.getNodeLabel(node);
+    }
+
+    if (!node || typeof node !== 'object') {
+      return '';
+    }
+
+    return String(node.title || node.content || node.id || '').trim();
+  }
+
   applyCurrentDepthTheme() {
     const depth = store.getCurrentDepth?.() ?? (store.state.navigation?.path?.length ?? 0);
     const theme = getFolderTheme(depth);
