@@ -26,7 +26,6 @@ class Renderer {
     this.minimapDragState = {
       active: false,
       pointerId: null,
-      baseScale: 1,
     };
     this.pointerState = {
       current: null,
@@ -114,7 +113,7 @@ class Renderer {
     if (!this.minimap) return;
 
     const updateFromPointer = (event) => {
-      this.focusViewportFromMinimapPoint(event.clientX, event.clientY);
+      this.dragViewportFromMinimapPoint(event.clientX, event.clientY);
     };
 
     this.minimap.addEventListener('pointerdown', (event) => {
@@ -125,13 +124,27 @@ class Renderer {
 
       this.minimapDragState.active = true;
       this.minimapDragState.pointerId = event.pointerId;
-      this.minimapDragState.baseScale = store.getTransform().scale;
       this.minimap.classList.add('is-dragging');
       this.minimap.setPointerCapture?.(event.pointerId);
       event.preventDefault();
       event.stopPropagation();
       updateFromPointer(event);
     });
+
+    this.minimap.addEventListener('dblclick', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.minimapDragState.active = false;
+      this.minimapDragState.pointerId = null;
+      this.minimap.classList.remove('is-dragging');
+      this.focusViewportFromMinimapPoint(event.clientX, event.clientY);
+    });
+
+    this.minimap.addEventListener('wheel', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.zoomViewportFromMinimapWheel(event.clientX, event.clientY, event.deltaY);
+    }, { passive: false });
 
     this.minimap.addEventListener('pointermove', (event) => {
       if (!this.minimapDragState.active) return;
@@ -159,7 +172,6 @@ class Renderer {
     this.minimap.addEventListener('lostpointercapture', () => {
       this.minimapDragState.active = false;
       this.minimapDragState.pointerId = null;
-      this.minimapDragState.baseScale = store.getTransform().scale;
       this.minimap.classList.remove('is-dragging');
     });
   }
@@ -669,9 +681,9 @@ class Renderer {
     this.minimapViewport.style.height = `${height}px`;
   }
 
-  focusViewportFromMinimapPoint(clientX, clientY) {
+  getMinimapWorldPoint(clientX, clientY) {
     const layout = this.minimapLayout ?? this.computeMinimapLayout();
-    if (!layout || !this.minimap) return;
+    if (!layout || !this.minimap) return null;
 
     const minimapRect = this.minimap.getBoundingClientRect();
     const localX = clientX - minimapRect.left;
@@ -679,8 +691,23 @@ class Renderer {
     const clampedX = Math.min(minimapRect.width - this.minimapPadding, Math.max(this.minimapPadding, localX));
     const clampedY = Math.min(minimapRect.height - this.minimapPadding, Math.max(this.minimapPadding, localY));
 
-    const worldX = layout.bounds.minX + (clampedX - layout.offsetX) / layout.scale;
-    const worldY = layout.bounds.minY + (clampedY - layout.offsetY) / layout.scale;
+    return {
+      layout,
+      minimapRect,
+      localX,
+      localY,
+      clampedX,
+      clampedY,
+      worldX: layout.bounds.minX + (clampedX - layout.offsetX) / layout.scale,
+      worldY: layout.bounds.minY + (clampedY - layout.offsetY) / layout.scale,
+    };
+  }
+
+  dragViewportFromMinimapPoint(clientX, clientY) {
+    const point = this.getMinimapWorldPoint(clientX, clientY);
+    if (!point) return;
+
+    const { minimapRect, localX, localY, worldX, worldY } = point;
     const { scale } = store.getTransform();
     const viewportWidth = this.viewport?.clientWidth ?? window.innerWidth;
     const viewportHeight = this.viewport?.clientHeight ?? window.innerHeight;
@@ -702,6 +729,42 @@ class Renderer {
       }
     }
 
+    const nextX = (viewportWidth / 2) - (worldX * nextScale);
+    const nextY = (viewportHeight / 2) - (worldY * nextScale);
+
+    store.setTransform(nextX, nextY, nextScale);
+  }
+
+  focusViewportFromMinimapPoint(clientX, clientY) {
+    const point = this.getMinimapWorldPoint(clientX, clientY);
+    if (!point) return;
+
+    const { worldX, worldY } = point;
+    const { scale } = store.getTransform();
+    const viewportWidth = this.viewport?.clientWidth ?? window.innerWidth;
+    const viewportHeight = this.viewport?.clientHeight ?? window.innerHeight;
+
+    const nextX = (viewportWidth / 2) - (worldX * scale);
+    const nextY = (viewportHeight / 2) - (worldY * scale);
+
+    store.setTransform(nextX, nextY, scale);
+  }
+
+  zoomViewportFromMinimapWheel(clientX, clientY, deltaY) {
+    const point = this.getMinimapWorldPoint(clientX, clientY);
+    if (!point) return;
+
+    const { worldX, worldY } = point;
+    const { scale } = store.getTransform();
+    const zoomSpeed = 0.001;
+    const minScale = 0.1;
+    const maxScale = 5;
+    const zoomFactor = 1 - deltaY * zoomSpeed;
+    let nextScale = scale * zoomFactor;
+    nextScale = Math.max(minScale, Math.min(maxScale, nextScale));
+
+    const viewportWidth = this.viewport?.clientWidth ?? window.innerWidth;
+    const viewportHeight = this.viewport?.clientHeight ?? window.innerHeight;
     const nextX = (viewportWidth / 2) - (worldX * nextScale);
     const nextY = (viewportHeight / 2) - (worldY * nextScale);
 
