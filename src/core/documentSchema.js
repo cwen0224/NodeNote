@@ -19,6 +19,20 @@ function normalizeString(value, fallback = '') {
   return typeof value === 'string' ? value : fallback;
 }
 
+function normalizeUrlLikeString(value) {
+  const text = normalizeString(value, '').trim();
+  if (!text) {
+    return '';
+  }
+
+  const firstUrlMatch = text.match(/https?:\/\/[^\s)\]]+/i);
+  if (firstUrlMatch) {
+    return firstUrlMatch[0].trim();
+  }
+
+  return text;
+}
+
 function normalizeChildRefs(children = []) {
   if (!Array.isArray(children)) {
     return [];
@@ -42,6 +56,88 @@ function normalizeChildRefs(children = []) {
 
       return { kind, id };
     })
+    .filter(Boolean);
+}
+
+function normalizeAssetRecord(asset = {}, fallbackId = '') {
+  if (typeof asset === 'string') {
+    const url = normalizeUrlLikeString(asset);
+    return url ? { id: fallbackId, type: 'asset', url, label: '' } : null;
+  }
+
+  if (!isPlainObject(asset)) {
+    return null;
+  }
+
+  const next = clone(asset);
+  next.id = normalizeString(next.id, fallbackId);
+  next.type = normalizeString(next.type, normalizeString(next.kind, 'asset')) || 'asset';
+  const candidateUrl = normalizeUrlLikeString(
+    next.url
+    || next.src
+    || next.path
+    || next.href
+    || next.link
+    || ''
+  );
+  next.url = candidateUrl;
+  next.label = normalizeString(next.label, normalizeString(next.name, normalizeString(next.title, '')));
+  if (Object.prototype.hasOwnProperty.call(next, 'src')) {
+    next.src = normalizeUrlLikeString(next.src);
+  }
+  if (Object.prototype.hasOwnProperty.call(next, 'path')) {
+    next.path = normalizeUrlLikeString(next.path);
+  }
+  if (Object.prototype.hasOwnProperty.call(next, 'href')) {
+    next.href = normalizeUrlLikeString(next.href);
+  }
+  if (Object.prototype.hasOwnProperty.call(next, 'link')) {
+    next.link = normalizeUrlLikeString(next.link);
+  }
+
+  return next;
+}
+
+function normalizeAssetList(assets = []) {
+  const entries = Array.isArray(assets)
+    ? assets
+    : Object.values(isPlainObject(assets) ? assets : {});
+
+  return entries
+    .map((asset, index) => normalizeAssetRecord(asset, `asset_${index}`))
+    .filter((asset) => Boolean(asset && (asset.url || asset.label || asset.id)));
+}
+
+function normalizeEdgeRecord(edge = {}, fallbackId = '') {
+  if (!isPlainObject(edge)) {
+    return null;
+  }
+
+  const next = clone(edge);
+  next.id = normalizeString(next.id, fallbackId);
+  next.kind = normalizeString(next.kind, 'flow') || 'flow';
+  next.scopeFolderId = normalizeString(next.scopeFolderId, normalizeString(next.scopeFolder, ROOT_FOLDER_ID) || ROOT_FOLDER_ID);
+  next.key = normalizeString(next.key, normalizeString(next.label, ''));
+  next.label = normalizeString(next.label, next.key);
+  next.fromNodeId = normalizeString(next.fromNodeId, normalizeString(next.sourceNodeId, ''));
+  next.toNodeId = normalizeString(next.toNodeId, normalizeString(next.targetNodeId, ''));
+  next.fromPortId = normalizeString(next.fromPortId, normalizeString(next.sourcePort, 'right')) || 'right';
+  next.toPortId = normalizeString(next.toPortId, normalizeString(next.targetPort, 'left')) || 'left';
+
+  if (!next.id) {
+    next.id = `${next.fromNodeId || 'edge'}_${next.key || 'link'}_${next.toNodeId || 'target'}`;
+  }
+
+  return next;
+}
+
+function normalizeEdgeList(edges = []) {
+  const entries = Array.isArray(edges)
+    ? edges.map((edge) => [edge?.id, edge])
+    : Object.entries(isPlainObject(edges) ? edges : {});
+
+  return entries
+    .map(([key, rawEdge], index) => normalizeEdgeRecord(rawEdge, normalizeString(key, `edge_${index}`)))
     .filter(Boolean);
 }
 
@@ -123,7 +219,7 @@ function normalizeNodeRecord(node = {}, folderId = ROOT_FOLDER_ID) {
   next.y = normalizeNumber(next.y, 0);
   next.content = normalizeString(next.content, '');
   next.params = isPlainObject(next.params) ? next.params : {};
-  next.assets = Array.isArray(next.assets) ? clone(next.assets) : [];
+  next.assets = normalizeAssetList(next.assets);
   next.tags = Array.isArray(next.tags) ? clone(next.tags) : [];
   next.meta = isPlainObject(next.meta) ? clone(next.meta) : {};
   next.ui = isPlainObject(next.ui) ? clone(next.ui) : {};
@@ -158,7 +254,7 @@ function normalizeFolderRecord(folder = {}, { fallbackId = ROOT_FOLDER_ID, fallb
   next.children = normalizeChildRefs(next.children);
   next.boundaryLinks = Array.isArray(next.boundaryLinks) ? clone(next.boundaryLinks) : [];
   next.sourceNodeIds = Array.isArray(next.sourceNodeIds) ? clone(next.sourceNodeIds) : [];
-  next.assets = Array.isArray(next.assets) ? clone(next.assets) : [];
+  next.assets = normalizeAssetList(next.assets);
   next.meta = isPlainObject(next.meta) ? clone(next.meta) : {};
   next.ui = isPlainObject(next.ui) ? clone(next.ui) : {};
 
@@ -373,7 +469,7 @@ function normalizeFlatDocument(input = {}) {
     ...(isPlainObject(input.meta) ? input.meta : {}),
   };
   next.rootFolderId = normalizeString(input.rootFolderId, defaults.rootFolderId) || defaults.rootFolderId;
-  next.assets = Array.isArray(input.assets) ? clone(input.assets) : [];
+  next.assets = normalizeAssetList(input.assets);
   next.extras = isPlainObject(input.extras) ? clone(input.extras) : {};
   next.nodes = normalizeNodeMap(input.nodes, next.rootFolderId);
   next.folders = normalizeFolderMap(input.folders, next.rootFolderId);
@@ -388,7 +484,7 @@ function normalizeFlatDocument(input = {}) {
     });
   }
 
-  applyEdgesToEntities(next, Array.isArray(input.edges) ? input.edges : []);
+  applyEdgesToEntities(next, normalizeEdgeList(input.edges));
   ensureFolderHierarchy(next);
   next.edges = buildEdgesFromEntities(collectEntities(next));
   next.entryNodeId = next.folders[next.rootFolderId]?.entryNodeId || null;
@@ -406,7 +502,7 @@ function flattenLegacyDocument(input = {}) {
     ...(isPlainObject(input.meta) ? input.meta : {}),
   };
   next.rootFolderId = ROOT_FOLDER_ID;
-  next.assets = Array.isArray(input.assets) ? clone(input.assets) : [];
+  next.assets = normalizeAssetList(input.assets);
   next.extras = isPlainObject(input.extras) ? clone(input.extras) : {};
 
   const walkDocument = (sourceDoc, folderId, parentFolderId, depth) => {

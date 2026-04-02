@@ -39,6 +39,19 @@ function buildEdgesFromNodes(nodes = {}) {
   return edges;
 }
 
+function stripCommonMarkdownFencing(text = '') {
+  return String(text || '')
+    .replace(/^\uFEFF/, '')
+    .replace(/^\s*```(?:json)?\s*/i, '')
+    .replace(/\s*```\s*$/i, '');
+}
+
+function repairJsonText(text = '') {
+  return String(text || '')
+    .replace(/\\(?!["\\/bfnrtu])/g, '')
+    .replace(/,\s*([}\]])/g, '$1');
+}
+
 function isNonAsciiText(value) {
   return typeof value === 'string' && /[^\x00-\x7F]/.test(value);
 }
@@ -139,10 +152,16 @@ export function parseJsonText(text) {
     return null;
   }
 
+  const stripped = stripCommonMarkdownFencing(text.trim());
+
   try {
-    return JSON.parse(text);
-  } catch {
-    return null;
+    return JSON.parse(stripped);
+  } catch (firstError) {
+    try {
+      return JSON.parse(repairJsonText(stripped));
+    } catch {
+      return null;
+    }
   }
 }
 
