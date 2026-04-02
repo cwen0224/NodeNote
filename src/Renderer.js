@@ -618,13 +618,101 @@ class Renderer {
           const sY = sourcePoint.y;
           const tX = targetPoint.x;
           const tY = targetPoint.y;
-          this.drawBezier(sX, sY, tX, tY, key, sourceNode.id, targetNode.id, sourcePortSide, targetPortSide);
+          this.drawOrthogonalPath(sX, sY, tX, tY, key, sourceNode.id, targetNode.id, sourcePortSide, targetPortSide);
         }
       });
     });
   }
 
-  drawBezier(sX, sY, tX, tY, key, sourceId, targetId, sourcePortSide, targetPortSide) {
+  compressOrthogonalPoints(points = []) {
+    const filtered = [];
+
+    points.forEach((point) => {
+      if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+        return;
+      }
+
+      const previous = filtered[filtered.length - 1];
+      if (previous && previous.x === point.x && previous.y === point.y) {
+        return;
+      }
+
+      filtered.push({ x: point.x, y: point.y });
+    });
+
+    if (filtered.length < 3) {
+      return filtered;
+    }
+
+    const compacted = [filtered[0]];
+    for (let index = 1; index < filtered.length - 1; index += 1) {
+      const prev = compacted[compacted.length - 1];
+      const current = filtered[index];
+      const next = filtered[index + 1];
+      const sameX = prev.x === current.x && current.x === next.x;
+      const sameY = prev.y === current.y && current.y === next.y;
+      if (sameX || sameY) {
+        continue;
+      }
+      compacted.push(current);
+    }
+
+    compacted.push(filtered[filtered.length - 1]);
+    return compacted;
+  }
+
+  buildRoundedOrthogonalPath(points = [], radius = 18) {
+    const compacted = this.compressOrthogonalPoints(points);
+    if (compacted.length < 2) {
+      return '';
+    }
+
+    const parts = [`M ${compacted[0].x} ${compacted[0].y}`];
+
+    for (let index = 1; index < compacted.length - 1; index += 1) {
+      const prev = compacted[index - 1];
+      const current = compacted[index];
+      const next = compacted[index + 1];
+
+      const dirIn = {
+        x: Math.sign(current.x - prev.x),
+        y: Math.sign(current.y - prev.y),
+      };
+      const dirOut = {
+        x: Math.sign(next.x - current.x),
+        y: Math.sign(next.y - current.y),
+      };
+
+      const isCorner = dirIn.x !== dirOut.x || dirIn.y !== dirOut.y;
+      if (!isCorner) {
+        parts.push(`L ${current.x} ${current.y}`);
+        continue;
+      }
+
+      const lenIn = Math.hypot(current.x - prev.x, current.y - prev.y);
+      const lenOut = Math.hypot(next.x - current.x, next.y - current.y);
+      const cornerRadius = Math.max(6, Math.min(radius, lenIn / 2, lenOut / 2));
+      const tangentIn = {
+        x: current.x - (dirIn.x * cornerRadius),
+        y: current.y - (dirIn.y * cornerRadius),
+      };
+      const tangentOut = {
+        x: current.x + (dirOut.x * cornerRadius),
+        y: current.y + (dirOut.y * cornerRadius),
+      };
+      const cross = (dirIn.x * dirOut.y) - (dirIn.y * dirOut.x);
+      const sweepFlag = cross < 0 ? 1 : 0;
+
+      parts.push(`L ${tangentIn.x} ${tangentIn.y}`);
+      parts.push(`A ${cornerRadius} ${cornerRadius} 0 0 ${sweepFlag} ${tangentOut.x} ${tangentOut.y}`);
+    }
+
+    const last = compacted[compacted.length - 1];
+    parts.push(`L ${last.x} ${last.y}`);
+    return parts.join(' ');
+  }
+
+  drawOrthogonalPath(sX, sY, tX, tY, key, sourceId, targetId, sourcePortSide, targetPortSide) {
     const labelText = String(key ?? '').trim();
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
     path.setAttribute("class", "connection-path");
@@ -645,23 +733,45 @@ class Renderer {
 
     const sourceVector = getPortDirectionVector(sourcePortSide);
     const targetVector = getPortDirectionVector(targetPortSide);
-    const dx = Math.abs(tX - sX);
-    const dy = Math.abs(tY - sY);
-    const dominantAxis = dx >= dy ? 'horizontal' : 'vertical';
-    const travelDistance = Math.max(1, dominantAxis === 'horizontal' ? dx : dy);
-    const bend = Math.max(40, Math.min(220, travelDistance * 0.45));
+    const distance = Math.max(1, Math.hypot(tX - sX, tY - sY));
+    const exitDistance = Math.max(36, Math.min(120, distance * 0.18));
+    const elbowDistance = Math.max(40, Math.min(180, distance * 0.24));
+    const sourceIsHorizontal = sourceVector.x !== 0;
+    const targetIsHorizontal = targetVector.x !== 0;
+    const sourceExit = {
+      x: sX + (sourceVector.x * exitDistance),
+      y: sY + (sourceVector.y * exitDistance),
+    };
+    const targetEntry = {
+      x: tX - (targetVector.x * exitDistance),
+      y: tY - (targetVector.y * exitDistance),
+    };
 
-    let d;
-    if (dominantAxis === 'horizontal') {
-      const cp1x = sX + (sourceVector.x || 1) * bend;
-      const cp2x = tX - (targetVector.x || -1) * bend;
-      d = `M ${sX} ${sY} C ${cp1x} ${sY}, ${cp2x} ${tY}, ${tX} ${tY}`;
+    const routePoints = [
+      { x: sX, y: sY },
+      sourceExit,
+    ];
+
+    if (sourceIsHorizontal && targetIsHorizontal) {
+      const routeX = sourceExit.x + ((Math.sign(targetEntry.x - sourceExit.x) || sourceVector.x || 1) * elbowDistance);
+      routePoints.push(
+        { x: routeX, y: sourceExit.y },
+        { x: routeX, y: targetEntry.y },
+      );
+    } else if (!sourceIsHorizontal && !targetIsHorizontal) {
+      const routeY = sourceExit.y + ((Math.sign(targetEntry.y - sourceExit.y) || sourceVector.y || 1) * elbowDistance);
+      routePoints.push(
+        { x: sourceExit.x, y: routeY },
+        { x: targetEntry.x, y: routeY },
+      );
+    } else if (sourceIsHorizontal && !targetIsHorizontal) {
+      routePoints.push({ x: targetEntry.x, y: sourceExit.y });
     } else {
-      const cp1y = sY + (sourceVector.y || 1) * bend;
-      const cp2y = tY - (targetVector.y || -1) * bend;
-      d = `M ${sX} ${sY} C ${sX} ${cp1y}, ${tX} ${cp2y}, ${tX} ${tY}`;
+      routePoints.push({ x: sourceExit.x, y: targetEntry.y });
     }
 
+    routePoints.push(targetEntry, { x: tX, y: tY });
+    const d = this.buildRoundedOrthogonalPath(routePoints, Math.max(10, Math.min(26, Math.round(distance * 0.06))));
     path.setAttribute("d", d);
     this.svgLayer.appendChild(path);
 
