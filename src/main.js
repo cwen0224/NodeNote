@@ -8,6 +8,7 @@ import { shortcutManager } from './ShortcutManager.js';
 import { persistenceManager } from './PersistenceManager.js';
 import { cloudSyncManager } from './CloudSyncManager.js';
 import { store } from './StateStore.js';
+import { NODENOTE_AI_PROMPT } from './core/aiPrompt.js';
 
 const sysDiag = document.getElementById('sys-diag');
 const diagStatus = document.getElementById('diag-status');
@@ -48,6 +49,38 @@ const collapseDiag = () => {
   }
 };
 
+async function copyTextToClipboard(text) {
+  if (!text) {
+    return false;
+  }
+
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // Fallback below.
+  }
+
+  try {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', 'true');
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    textarea.style.top = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    const success = document.execCommand('copy');
+    textarea.remove();
+    return Boolean(success);
+  } catch (error) {
+    console.warn('Clipboard copy failed', error);
+    return false;
+  }
+}
+
 // Init when DOM is fully parsed
 const initApp = () => {
   try {
@@ -78,10 +111,22 @@ const initApp = () => {
     updateDiag("Wiring Toolbar...");
     // Wire Undo/Redo
     const folderBackBtn = document.getElementById('btn-folder-back');
+    const aiPromptCopyBtn = document.getElementById('btn-ai-prompt-copy');
     const folderGroupBtn = document.getElementById('btn-folder-group');
     const undoBtn = document.getElementById('btn-undo');
     const redoBtn = document.getElementById('btn-redo');
     if(folderBackBtn) folderBackBtn.onclick = () => store.exitFolder();
+    if(aiPromptCopyBtn) aiPromptCopyBtn.onclick = async () => {
+      const copied = await copyTextToClipboard(NODENOTE_AI_PROMPT);
+      if (copied) {
+        aiPromptCopyBtn.textContent = '已複製';
+        window.setTimeout(() => {
+          aiPromptCopyBtn.textContent = '提詞複製';
+        }, 1200);
+      } else {
+        window.alert('複製失敗，請檢查瀏覽器剪貼簿權限。');
+      }
+    };
     if(folderGroupBtn) folderGroupBtn.onclick = () => nodeManager.groupSelectionIntoFolder();
     if(undoBtn) undoBtn.onclick = () => store.undo();
     if(redoBtn) redoBtn.onclick = () => store.redo();
