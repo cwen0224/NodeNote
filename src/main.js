@@ -8,13 +8,14 @@ import { shortcutManager } from './ShortcutManager.js';
 import { persistenceManager } from './PersistenceManager.js';
 import { cloudSyncManager } from './CloudSyncManager.js';
 import { store } from './StateStore.js';
-import { NODENOTE_AI_PROMPT } from './core/aiPrompt.js';
+import { getNodeNotePrompt } from './core/aiPrompt.js';
 
 const sysDiag = document.getElementById('sys-diag');
 const diagStatus = document.getElementById('diag-status');
 const diagVersion = document.getElementById('diag-version');
 const buildBadge = document.getElementById('build-badge');
 const buildTimestamp = typeof __BUILD_TIMESTAMP__ === 'string' ? __BUILD_TIMESTAMP__ : '';
+const PROMPT_MODE_STORAGE_KEY = 'nodenote.prompt-mode';
 const updateDiag = (msg) => {
   if (sysDiag) {
     sysDiag.classList.remove('is-hidden');
@@ -112,12 +113,23 @@ const initApp = () => {
     // Wire Undo/Redo
     const folderBackBtn = document.getElementById('btn-folder-back');
     const aiPromptCopyBtn = document.getElementById('btn-ai-prompt-copy');
+    const promptTemplateSelect = document.getElementById('prompt-template-select');
     const folderGroupBtn = document.getElementById('btn-folder-group');
     const undoBtn = document.getElementById('btn-undo');
     const redoBtn = document.getElementById('btn-redo');
+    if (promptTemplateSelect) {
+      const savedMode = window.localStorage.getItem(PROMPT_MODE_STORAGE_KEY);
+      if (savedMode) {
+        promptTemplateSelect.value = savedMode;
+      }
+      promptTemplateSelect.onchange = () => {
+        window.localStorage.setItem(PROMPT_MODE_STORAGE_KEY, promptTemplateSelect.value);
+      };
+    }
     if(folderBackBtn) folderBackBtn.onclick = () => store.exitFolder();
     if(aiPromptCopyBtn) aiPromptCopyBtn.onclick = async () => {
-      const copied = await copyTextToClipboard(NODENOTE_AI_PROMPT);
+      const mode = promptTemplateSelect?.value || 'note';
+      const copied = await copyTextToClipboard(getNodeNotePrompt(mode));
       if (copied) {
         aiPromptCopyBtn.textContent = '已複製';
         window.setTimeout(() => {
