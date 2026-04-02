@@ -301,32 +301,19 @@ body, html {
   height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(148, 163, 184, 0.58) rgba(255, 255, 255, 0.05);
-  scrollbar-gutter: stable;
-  -ms-overflow-style: auto;
-  padding-right: 4px;
+  scrollbar-width: none;
+  scrollbar-color: transparent transparent;
+  scrollbar-gutter: auto;
+  -ms-overflow-style: none;
+  padding-right: 0;
   padding-bottom: 8px;
   -webkit-overflow-scrolling: touch;
 }
 
 #tray-slots::-webkit-scrollbar {
-  width: 10px;
-}
-
-#tray-slots::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 999px;
-}
-
-#tray-slots::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.55);
-  border-radius: 999px;
-  border: 2px solid rgba(13, 17, 23, 0.6);
-}
-
-#tray-slots::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.78);
+  width: 0;
+  height: 0;
+  display: none;
 }
 
 #toolbar .actions {
