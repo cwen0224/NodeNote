@@ -26,6 +26,7 @@ class Renderer {
     this.minimapDragState = {
       active: false,
       pointerId: null,
+      baseScale: 1,
     };
     this.pointerState = {
       current: null,
@@ -37,6 +38,7 @@ class Renderer {
     this.setupMinimapEvents();
 
     window.addEventListener('resize', () => {
+      this.minimapLayout = null;
       this.renderMinimap();
     });
     
@@ -99,6 +101,15 @@ class Renderer {
     this.updatePortReveal();
   }
 
+  scheduleMinimapRender() {
+    if (!this.minimap || this.minimapRaf) return;
+
+    this.minimapRaf = window.requestAnimationFrame(() => {
+      this.minimapRaf = null;
+      this.renderMinimap();
+    });
+  }
+
   setupMinimapEvents() {
     if (!this.minimap) return;
 
@@ -114,6 +125,7 @@ class Renderer {
 
       this.minimapDragState.active = true;
       this.minimapDragState.pointerId = event.pointerId;
+      this.minimapDragState.baseScale = store.getTransform().scale;
       this.minimap.classList.add('is-dragging');
       this.minimap.setPointerCapture?.(event.pointerId);
       event.preventDefault();
@@ -147,6 +159,7 @@ class Renderer {
     this.minimap.addEventListener('lostpointercapture', () => {
       this.minimapDragState.active = false;
       this.minimapDragState.pointerId = null;
+      this.minimapDragState.baseScale = store.getTransform().scale;
       this.minimap.classList.remove('is-dragging');
     });
   }
@@ -486,7 +499,9 @@ class Renderer {
     this.gridBg.style.backgroundSize = `${scaledCell}px ${scaledCell}px`;
     
     // 3. Update Minimap relative position
+    this.minimapLayout = null;
     this.updateMinimapViewport();
+    this.scheduleMinimapRender();
   }
 
   getNodeWorldSize(node, scaleOverride = null) {
@@ -669,10 +684,28 @@ class Renderer {
     const { scale } = store.getTransform();
     const viewportWidth = this.viewport?.clientWidth ?? window.innerWidth;
     const viewportHeight = this.viewport?.clientHeight ?? window.innerHeight;
-    const nextX = (viewportWidth / 2) - (worldX * scale);
-    const nextY = (viewportHeight / 2) - (worldY * scale);
 
-    store.setTransform(nextX, nextY, scale);
+    let nextScale = scale;
+    if (this.minimapDragState.active) {
+      // Dragging near the edge intentionally zooms out to widen the reachable range.
+      const edgeThreshold = Math.max(28, Math.min(72, Math.round(Math.min(minimapRect.width, minimapRect.height) * 0.18)));
+      const distanceToEdge = Math.min(
+        localX,
+        localY,
+        minimapRect.width - localX,
+        minimapRect.height - localY,
+      );
+      const edgeIntensity = Math.max(0, Math.min(1, 1 - (distanceToEdge / edgeThreshold)));
+      if (edgeIntensity > 0) {
+        const zoomFactor = 1 - (edgeIntensity * 0.015);
+        nextScale = Math.max(0.1, scale * zoomFactor);
+      }
+    }
+
+    const nextX = (viewportWidth / 2) - (worldX * nextScale);
+    const nextY = (viewportHeight / 2) - (worldY * nextScale);
+
+    store.setTransform(nextX, nextY, nextScale);
   }
 }
 
