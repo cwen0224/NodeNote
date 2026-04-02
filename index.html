@@ -4,8 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>NodeNote - Universal JSON Notebook</title>
-    <script type="module" crossorigin src="/NodeNote/assets/index-DFvK04Y9.js"></script>
-    <link rel="stylesheet" crossorigin href="/NodeNote/assets/index--o7nheHH.css">
+    <script type="module" crossorigin src="/NodeNote/assets/index-DlZXKHl7.js"></script>
+    <link rel="stylesheet" crossorigin href="/NodeNote/assets/index-Bv3LfTRm.css">
   </head>
   <body>
     <!-- DIAGNOSTIC OVERLAY -->
@@ -31,9 +31,14 @@
       <div class="tray-slots" id="tray-slots">
         <!-- 1-15 Tray slots will be injected here later -->
       </div>
+      <div class="toolbar-folder-nav">
+        <button id="btn-folder-back" type="button">Back</button>
+        <div id="folder-breadcrumb" aria-label="Folder breadcrumb"></div>
+      </div>
       <div id="build-badge" class="toolbar-badge">v--:--</div>
       <div id="cloud-status-badge" class="toolbar-badge">Cloud: off</div>
       <div class="actions">
+        <button id="btn-folder-group" type="button">Group</button>
         <button id="btn-cloud-sync" type="button">Cloud</button>
         <button id="btn-undo">Undo</button>
         <button id="btn-redo">Redo</button>
