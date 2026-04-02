@@ -27,7 +27,7 @@ class TrayManager {
 
   setupEvents() {
     this.traySlotsEl?.addEventListener('click', (event) => {
-      const deleteButton = event.target.closest?.('.tray-slot-delete-btn');
+      const deleteButton = event.target.closest?.('.tray-slot-delete-zone');
       if (deleteButton) {
         const slotIndex = Number(deleteButton.dataset.index);
         if (Number.isInteger(slotIndex)) {
@@ -49,6 +49,21 @@ class TrayManager {
       }
 
       this.activateSlot(slotIndex);
+    });
+
+    this.traySlotsEl?.addEventListener('keydown', (event) => {
+      const deleteButton = event.target.closest?.('.tray-slot-delete-zone');
+      if (!deleteButton) {
+        return;
+      }
+
+      if (event.key === 'Enter' || event.key === ' ') {
+        const slotIndex = Number(deleteButton.dataset.index);
+        if (Number.isInteger(slotIndex)) {
+          event.preventDefault();
+          this.deleteSlot(slotIndex);
+        }
+      }
     });
   }
 
@@ -140,16 +155,23 @@ class TrayManager {
       if (!slot) {
         button.classList.add('is-empty');
         button.innerHTML = `
-          <span class="tray-slot-index">Data ${index + 1}</span>
-          <span class="tray-slot-label">Empty</span>
-          <span class="tray-slot-meta">Click to copy</span>
+          <span class="tray-slot-main">
+            <span class="tray-slot-index">Data ${index + 1}</span>
+            <span class="tray-slot-label">Empty</span>
+            <span class="tray-slot-meta">Click to copy</span>
+          </span>
+          <span class="tray-slot-delete-zone is-disabled" aria-hidden="true"></span>
         `;
       } else {
         button.innerHTML = `
-          <span class="node-delete-btn tray-slot-delete-btn" data-index="${index}" aria-label="刪除托盤項目" title="刪除托盤項目">×</span>
-          <span class="tray-slot-index">Data ${index + 1}</span>
-          <span class="tray-slot-label">${this.escapeHtml(slot.label)}</span>
-          <span class="tray-slot-meta">${this.escapeHtml(slot.summary)}</span>
+          <span class="tray-slot-main">
+            <span class="tray-slot-index">Data ${index + 1}</span>
+            <span class="tray-slot-label">${this.escapeHtml(slot.label)}</span>
+            <span class="tray-slot-meta">${this.escapeHtml(slot.summary)}</span>
+          </span>
+          <span class="tray-slot-delete-zone" data-index="${index}" role="button" tabindex="0" aria-label="刪除托盤項目" title="刪除托盤項目">
+            <span class="tray-slot-delete-mark">×</span>
+          </span>
         `;
       }
 

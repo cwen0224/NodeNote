@@ -831,13 +831,12 @@ button:hover {
   flex: 0 0 auto;
   width: 100%;
   min-width: 0;
-  padding: 8px 10px;
+  padding: 0;
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  flex-direction: row;
   text-align: left;
   position: relative;
-  overflow: visible;
+  overflow: hidden;
   transition: transform 0.16s ease, background 0.16s ease, border-color 0.16s ease, opacity 0.16s ease;
 }
 
@@ -848,6 +847,51 @@ button:hover {
 .tray-slot.is-empty {
   opacity: 0.55;
   border-style: dashed;
+}
+
+.tray-slot-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+}
+
+.tray-slot-delete-zone {
+  flex: 0 0 28px;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(248, 113, 113, 0.16);
+  border-left: 1px solid rgba(248, 113, 113, 0.22);
+  color: rgba(255, 255, 255, 0.9);
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease, transform 0.14s ease;
+}
+
+.tray-slot-delete-zone:hover,
+.tray-slot-delete-zone:focus-visible {
+  background: rgba(248, 113, 113, 0.36);
+  border-left-color: rgba(248, 113, 113, 0.42);
+  color: #fff;
+  outline: none;
+}
+
+.tray-slot-delete-zone.is-disabled {
+  opacity: 0;
+  pointer-events: none;
+  border-left-color: transparent;
+  background: transparent;
+}
+
+.tray-slot-delete-mark {
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1;
+  transform: translateY(-1px);
+  pointer-events: none;
 }
 
 .tray-slot-index {
