@@ -470,6 +470,143 @@ class NodeManager {
     return true;
   }
 
+  ungroupSelectionFromFolder() {
+    const currentDocument = typeof store.getCurrentDocument === 'function'
+      ? store.getCurrentDocument()
+      : null;
+    if (!currentDocument || !currentDocument.nodes) {
+      return false;
+    }
+
+    const selectedIds = [...new Set((Array.isArray(store.state.selection?.nodeIds) ? store.state.selection.nodeIds : [])
+      .filter((id) => currentDocument.nodes[id] && currentDocument.nodes[id].type === 'folder'))];
+    const fallbackActive = store.state.interaction?.lastActiveNodeId;
+    if (!selectedIds.length && fallbackActive && currentDocument.nodes[fallbackActive]?.type === 'folder') {
+      selectedIds.push(fallbackActive);
+    }
+
+    if (!selectedIds.length) {
+      return false;
+    }
+
+    const rootFolderId = typeof store.getRootFolderId === 'function'
+      ? store.getRootFolderId()
+      : (store.document.rootFolderId || 'folder_root');
+    const allEntities = () => ({
+      ...(store.document.nodes || {}),
+      ...(store.document.folders || {}),
+    });
+
+    const restoreIncomingLinks = (folderId) => {
+      Object.values(allEntities()).forEach((entity) => {
+        if (!this.isPlainObject(entity?.params)) {
+          return;
+        }
+
+        Object.entries(entity.params).forEach(([key, linkValue]) => {
+          if (!this.isPlainObject(linkValue)) {
+            return;
+          }
+
+          if (linkValue.targetId !== folderId || !linkValue.groupedTargetId) {
+            return;
+          }
+
+          entity.params[key] = {
+            ...this.cloneValue(linkValue),
+            targetId: linkValue.groupedTargetId,
+          };
+          delete entity.params[key].groupedTargetId;
+        });
+      });
+    };
+
+    const restoreOutgoingLinks = (folder) => {
+      if (!this.isPlainObject(folder?.params)) {
+        return;
+      }
+
+      Object.entries(folder.params).forEach(([key, linkValue]) => {
+        if (!this.isPlainObject(linkValue)) {
+          return;
+        }
+
+        const sourceNodeId = linkValue.originNodeId;
+        if (!sourceNodeId) {
+          return;
+        }
+
+        const originKey = typeof linkValue.originKey === 'string' && linkValue.originKey.trim()
+          ? linkValue.originKey.trim()
+          : key;
+        const sourceNode = store.document.nodes?.[sourceNodeId] || store.document.folders?.[sourceNodeId];
+        if (!sourceNode) {
+          return;
+        }
+
+        if (!this.isPlainObject(sourceNode.params)) {
+          sourceNode.params = {};
+        }
+
+        const restoredLink = this.cloneValue(linkValue);
+        delete restoredLink.originNodeId;
+        delete restoredLink.originKey;
+        sourceNode.params[originKey] = restoredLink;
+      });
+    };
+
+    let changed = false;
+
+    selectedIds.forEach((folderId) => {
+      const folder = store.document.folders?.[folderId];
+      if (!folder || folderId === rootFolderId) {
+        return;
+      }
+
+      const parentFolderId = folder.parentFolderId || rootFolderId;
+      const parentFolder = store.document.folders?.[parentFolderId] || store.document.folders?.[rootFolderId];
+
+      restoreIncomingLinks(folderId);
+      restoreOutgoingLinks(folder);
+
+      const children = Array.isArray(folder.children) ? [...folder.children] : [];
+      children.forEach((child) => {
+        if (child.kind === 'folder') {
+          store.moveFolderToFolder(child.id, parentFolderId);
+        } else if (child.kind === 'node') {
+          store.moveNodeToFolder(child.id, parentFolderId);
+        }
+      });
+
+      if (parentFolder && Array.isArray(parentFolder.children)) {
+        parentFolder.children = parentFolder.children.filter((child) => !(child.kind === 'folder' && child.id === folderId));
+      }
+
+      if (parentFolder?.entryNodeId === folderId) {
+        const replacement = children.find((child) => child.kind === 'node')?.id
+          || children.find((child) => child.kind === 'folder')?.id
+          || null;
+        parentFolder.entryNodeId = replacement;
+      }
+
+      delete store.document.folders[folderId];
+      changed = true;
+    });
+
+    if (!changed) {
+      return false;
+    }
+
+    const remainingSelection = (store.state.selection?.nodeIds || [])
+      .filter((id) => !selectedIds.includes(id));
+    store.setSelectionNodeIds(remainingSelection);
+    store.setLastActiveNode(remainingSelection[0] || store.getCurrentDocument().entryNodeId || null);
+    store.emit('nodes:updated', store.getCurrentDocument().nodes);
+    store.emit('connections:updated');
+    store.saveHistory();
+    return true;
+  }
+
   deleteNode(id) {
     return this.deleteNodes([id]);
   }

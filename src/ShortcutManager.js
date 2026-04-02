@@ -150,6 +150,12 @@ class ShortcutManager {
       return;
     }
 
+    if (this.isMetaShortcut(event) && key === 'g' && event.shiftKey) {
+      event.preventDefault();
+      nodeManager.ungroupSelectionFromFolder();
+      return;
+    }
+
     if (this.isMetaShortcut(event) && key === 'g') {
       event.preventDefault();
       nodeManager.groupSelectionIntoFolder();
