@@ -52,6 +52,29 @@ function repairJsonText(text = '') {
     .replace(/,\s*([}\]])/g, '$1');
 }
 
+function extractLikelyJsonText(text = '') {
+  const input = String(text || '').trim();
+  if (!input) {
+    return '';
+  }
+
+  const candidates = [];
+  const objectStart = input.indexOf('{');
+  const objectEnd = input.lastIndexOf('}');
+  if (objectStart >= 0 && objectEnd > objectStart) {
+    candidates.push(input.slice(objectStart, objectEnd + 1));
+  }
+
+  const arrayStart = input.indexOf('[');
+  const arrayEnd = input.lastIndexOf(']');
+  if (arrayStart >= 0 && arrayEnd > arrayStart) {
+    candidates.push(input.slice(arrayStart, arrayEnd + 1));
+  }
+
+  candidates.push(input);
+  return candidates[0] || '';
+}
+
 function normalizeMarkdownLinkText(value) {
   if (typeof value !== 'string') {
     return value;
@@ -65,13 +88,32 @@ function normalizeMarkdownLinkText(value) {
   return value;
 }
 
+function clearMarkdownFormattingFromText(value) {
+  if (typeof value !== 'string') {
+    return value;
+  }
+
+  let next = value;
+
+  next = next.replace(/\\([\\`*_{}\[\]()#+\-.!])/g, '$1');
+  next = next.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/gi, '$1');
+  next = next.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/gi, '$1');
+  next = next.replace(/(^|\s)([*_]{1,3})([^*_]+?)\2(?=\s|$)/g, '$1$3');
+  next = next.replace(/(^|\s)(`{1,3})([^`]+?)\2(?=\s|$)/g, '$1$3');
+  next = next.replace(/^\s*>\s?/gm, '');
+  next = next.replace(/^\s*#{1,6}\s*/gm, '');
+  next = next.replace(/^\s*[-*+]\s+/gm, '');
+  next = next.replace(/\r?\n{3,}/g, '\n\n');
+  return next;
+}
+
 function normalizeImportedStrings(value) {
   if (Array.isArray(value)) {
     return value.map((item) => normalizeImportedStrings(item));
   }
 
   if (!isPlainObject(value)) {
-    return normalizeMarkdownLinkText(value);
+    return clearMarkdownFormattingFromText(normalizeMarkdownLinkText(value));
   }
 
   const next = {};
@@ -182,12 +224,13 @@ export function parseJsonText(text) {
   }
 
   const stripped = stripCommonMarkdownFencing(text.trim());
+  const likelyJson = extractLikelyJsonText(stripped);
 
   try {
-    return JSON.parse(stripped);
+    return JSON.parse(likelyJson);
   } catch (firstError) {
     try {
-      return JSON.parse(repairJsonText(stripped));
+      return JSON.parse(repairJsonText(likelyJson));
     } catch {
       return null;
     }
