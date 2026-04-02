@@ -701,7 +701,7 @@ class Renderer {
         y: current.y + (dirOut.y * cornerRadius),
       };
       const cross = (dirIn.x * dirOut.y) - (dirIn.y * dirOut.x);
-      const sweepFlag = cross < 0 ? 1 : 0;
+      const sweepFlag = cross > 0 ? 1 : 0;
 
       parts.push(`L ${tangentIn.x} ${tangentIn.y}`);
       parts.push(`A ${cornerRadius} ${cornerRadius} 0 0 ${sweepFlag} ${tangentOut.x} ${tangentOut.y}`);
