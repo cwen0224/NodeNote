@@ -208,15 +208,33 @@ body, html {
   min-width: 0;
   flex: 1 1 auto;
   overflow-x: auto;
-  overflow-y: visible;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.58) rgba(255, 255, 255, 0.05);
+  scrollbar-gutter: stable both-edges;
+  -ms-overflow-style: auto;
   padding-top: 10px;
-  padding-bottom: 10px;
+  padding-bottom: 14px;
+  -webkit-overflow-scrolling: touch;
 }
 
 #tray-slots::-webkit-scrollbar {
-  display: none;
+  height: 10px;
+}
+
+#tray-slots::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 999px;
+}
+
+#tray-slots::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.55);
+  border-radius: 999px;
+  border: 2px solid rgba(13, 17, 23, 0.6);
+}
+
+#tray-slots::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.78);
 }
 
 #toolbar .actions {
