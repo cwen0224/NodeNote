@@ -197,6 +197,22 @@ body, html {
   max-width: calc(100vw - 24px);
 }
 
+.toolbar-primary,
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  width: 100%;
+}
+
+.toolbar-primary {
+  justify-content: flex-start;
+}
+
+.toolbar-actions {
+  justify-content: flex-end;
+}
+
 #utility-dock {
   position: fixed;
   top: 16px;
@@ -327,8 +343,7 @@ body, html {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex: 0 0 auto;
-  margin-left: auto;
+  flex: 0 1 auto;
   flex-wrap: wrap;
 }
 
