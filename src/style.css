@@ -114,7 +114,13 @@ button:hover {
   height: 150px;
   z-index: 1000;
   overflow: hidden;
-  cursor: pointer;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+#minimap.is-dragging {
+  cursor: grabbing;
 }
 
 #minimap-content {
@@ -128,9 +134,26 @@ button:hover {
 
 #minimap-viewport {
   position: absolute;
+  box-sizing: border-box;
   border: 2px solid var(--accent);
   background: rgba(88, 166, 255, 0.2);
   pointer-events: none;
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px rgba(13, 17, 23, 0.7);
+}
+
+.minimap-node {
+  position: absolute;
+  border-radius: 4px;
+  background: rgba(88, 166, 255, 0.28);
+  border: 1px solid rgba(88, 166, 255, 0.45);
+  box-shadow: 0 0 0 1px rgba(13, 17, 23, 0.5);
+  pointer-events: none;
+}
+
+.minimap-node.is-entry {
+  background: rgba(52, 211, 153, 0.35);
+  border-color: rgba(52, 211, 153, 0.7);
 }
 
 /* Nodes */

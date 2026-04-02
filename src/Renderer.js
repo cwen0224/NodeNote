@@ -18,13 +18,27 @@ class Renderer {
     this.gridBg = document.getElementById('grid-bg');
     this.nodeLayer = document.getElementById('node-layer');
     this.svgLayer = document.getElementById('svg-layer');
+    this.minimap = document.getElementById('minimap');
+    this.minimapContent = document.getElementById('minimap-content');
     this.minimapViewport = document.getElementById('minimap-viewport');
-    this.minimapMap = document.getElementById('minimap');
+    this.minimapPadding = 12;
+    this.minimapLayout = null;
+    this.minimapDragState = {
+      active: false,
+      pointerId: null,
+    };
     this.pointerState = {
       current: null,
       previous: null,
     };
     this.portRevealRaf = null;
+    this.minimapRaf = null;
+
+    this.setupMinimapEvents();
+
+    window.addEventListener('resize', () => {
+      this.renderMinimap();
+    });
     
     // Listen for transform updates (pan, zoom)
     store.on('transform:updated', ({ x, y, scale }) => {
@@ -43,6 +57,7 @@ class Renderer {
         nodeEl.style.top = `${y}px`;
       }
       this.renderConnections(); // Redraw lines when node moves
+      this.renderMinimap();
     });
 
     store.on('node:contentUpdated', ({ id, content }) => {
@@ -50,6 +65,8 @@ class Renderer {
       if (nodeEl && nodeEl.innerText !== content) {
         nodeEl.innerText = content;
       }
+      this.renderConnections();
+      this.renderMinimap();
     });
 
     this.viewport?.addEventListener('pointermove', (e) => {
@@ -78,7 +95,60 @@ class Renderer {
   renderAll() {
     this.renderAllNodes();
     this.renderConnections();
+    this.renderMinimap();
     this.updatePortReveal();
+  }
+
+  setupMinimapEvents() {
+    if (!this.minimap) return;
+
+    const updateFromPointer = (event) => {
+      this.focusViewportFromMinimapPoint(event.clientX, event.clientY);
+    };
+
+    this.minimap.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      if (!this.minimapLayout) {
+        this.renderMinimap();
+      }
+
+      this.minimapDragState.active = true;
+      this.minimapDragState.pointerId = event.pointerId;
+      this.minimap.classList.add('is-dragging');
+      this.minimap.setPointerCapture?.(event.pointerId);
+      event.preventDefault();
+      event.stopPropagation();
+      updateFromPointer(event);
+    });
+
+    this.minimap.addEventListener('pointermove', (event) => {
+      if (!this.minimapDragState.active) return;
+      if (this.minimapDragState.pointerId !== event.pointerId) return;
+      event.preventDefault();
+      updateFromPointer(event);
+    });
+
+    const endDrag = (event) => {
+      if (!this.minimapDragState.active) return;
+      if (this.minimapDragState.pointerId !== null && event.pointerId !== this.minimapDragState.pointerId) {
+        return;
+      }
+
+      this.minimapDragState.active = false;
+      this.minimapDragState.pointerId = null;
+      this.minimap.classList.remove('is-dragging');
+      if (this.minimap.hasPointerCapture?.(event.pointerId)) {
+        this.minimap.releasePointerCapture(event.pointerId);
+      }
+    };
+
+    this.minimap.addEventListener('pointerup', endDrag);
+    this.minimap.addEventListener('pointercancel', endDrag);
+    this.minimap.addEventListener('lostpointercapture', () => {
+      this.minimapDragState.active = false;
+      this.minimapDragState.pointerId = null;
+      this.minimap.classList.remove('is-dragging');
+    });
   }
 
   renderAllNodes() {
@@ -416,34 +486,193 @@ class Renderer {
     this.gridBg.style.backgroundSize = `${scaledCell}px ${scaledCell}px`;
     
     // 3. Update Minimap relative position
-    this.updateMinimap(x, y, scale);
+    this.updateMinimapViewport();
   }
 
-  updateMinimap(x, y, scale) {
-    if (!this.minimapViewport || !this.minimapMap) return;
-    
-    // Get viewport dimensions
-    const vW = window.innerWidth;
-    const vH = window.innerHeight;
-    
-    // Minimap assumes arbitrary layout bounds (e.g. -5000 to +5000), 
-    // for phase 1 we map the visible window to a ratio of the minimap box.
-    // The ratio could strictly be e.g. 1/20th of the world size
-    const miniW = 200;
-    const miniH = 150;
-    
-    // Very simple minimap logic for now: 
-    // The viewport rectangle size indicates zoom level
-    const boxW = (vW / scale) * (miniW / 5000); 
-    const boxH = (vH / scale) * (miniH / 5000);
-    
-    // Position depends on -x / scale
-    const boxX = (-x / scale) * (miniW / 5000) + (miniW/2);
-    const boxY = (-y / scale) * (miniH / 5000) + (miniH/2);
-    
-    this.minimapViewport.style.width = `${boxW}px`;
-    this.minimapViewport.style.height = `${boxH}px`;
-    this.minimapViewport.style.transform = `translate(${boxX}px, ${boxY}px)`;
+  getNodeWorldSize(node, scaleOverride = null) {
+    const fallback = {
+      width: 250,
+      height: 150,
+    };
+
+    const nodeEl = document.querySelector(`.node[data-id="${node.id}"]`);
+    if (!nodeEl) {
+      return fallback;
+    }
+
+    const rect = nodeEl.getBoundingClientRect();
+    const { scale } = store.getTransform();
+    const effectiveScale = Math.max(scaleOverride ?? scale, 0.0001);
+
+    return {
+      width: Math.max(1, rect.width / effectiveScale),
+      height: Math.max(1, rect.height / effectiveScale),
+    };
+  }
+
+  getGraphBounds() {
+    const nodes = Object.values(store.state.nodes);
+    const viewportRect = this.getViewportWorldRect();
+
+    if (!nodes.length) {
+      const worldWidth = Math.max(1200, viewportRect.width * 1.5);
+      const worldHeight = Math.max(900, viewportRect.height * 1.5);
+      return {
+        minX: viewportRect.minX - worldWidth * 0.25,
+        minY: viewportRect.minY - worldHeight * 0.25,
+        width: worldWidth,
+        height: worldHeight,
+      };
+    }
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    nodes.forEach((node) => {
+      const size = this.getNodeWorldSize(node);
+      minX = Math.min(minX, node.x);
+      minY = Math.min(minY, node.y);
+      maxX = Math.max(maxX, node.x + size.width);
+      maxY = Math.max(maxY, node.y + size.height);
+    });
+
+    const padding = 160;
+    const viewportPadding = 160;
+    const combinedMinX = Math.min(minX - padding, viewportRect.minX - viewportPadding);
+    const combinedMinY = Math.min(minY - padding, viewportRect.minY - viewportPadding);
+    const combinedMaxX = Math.max(maxX + padding, viewportRect.minX + viewportRect.width + viewportPadding);
+    const combinedMaxY = Math.max(maxY + padding, viewportRect.minY + viewportRect.height + viewportPadding);
+
+    return {
+      minX: combinedMinX,
+      minY: combinedMinY,
+      width: combinedMaxX - combinedMinX,
+      height: combinedMaxY - combinedMinY,
+    };
+  }
+
+  getViewportWorldRect() {
+    const { x, y, scale } = store.getTransform();
+    const viewportWidth = this.viewport?.clientWidth ?? window.innerWidth;
+    const viewportHeight = this.viewport?.clientHeight ?? window.innerHeight;
+    const effectiveScale = Math.max(scale, 0.0001);
+
+    return {
+      minX: -x / effectiveScale,
+      minY: -y / effectiveScale,
+      width: viewportWidth / effectiveScale,
+      height: viewportHeight / effectiveScale,
+    };
+  }
+
+  computeMinimapLayout() {
+    if (!this.minimap) return null;
+
+    const minimapRect = this.minimap.getBoundingClientRect();
+    const bounds = this.getGraphBounds();
+    const containerWidth = Math.max(1, minimapRect.width);
+    const containerHeight = Math.max(1, minimapRect.height);
+    const innerWidth = Math.max(1, containerWidth - this.minimapPadding * 2);
+    const innerHeight = Math.max(1, containerHeight - this.minimapPadding * 2);
+    const graphWidth = Math.max(1, bounds.width);
+    const graphHeight = Math.max(1, bounds.height);
+    const scale = Math.min(innerWidth / graphWidth, innerHeight / graphHeight);
+    const scaledWidth = graphWidth * scale;
+    const scaledHeight = graphHeight * scale;
+    const offsetX = (containerWidth - scaledWidth) / 2;
+    const offsetY = (containerHeight - scaledHeight) / 2;
+
+    this.minimapLayout = {
+      bounds,
+      scale,
+      offsetX,
+      offsetY,
+      containerWidth,
+      containerHeight,
+      graphWidth,
+      graphHeight,
+    };
+
+    return this.minimapLayout;
+  }
+
+  renderMinimap() {
+    if (!this.minimap || !this.minimapContent || !this.minimapViewport) return;
+
+    const layout = this.computeMinimapLayout();
+    if (!layout) return;
+
+    const nodes = Object.values(store.state.nodes);
+    this.minimapContent.innerHTML = '';
+
+    nodes.forEach((node) => {
+      const size = this.getNodeWorldSize(node);
+      const nodeEl = document.createElement('div');
+      nodeEl.className = 'minimap-node';
+      if (node.id === store.state.entryNodeId) {
+        nodeEl.classList.add('is-entry');
+      }
+
+      const left = layout.offsetX + (node.x - layout.bounds.minX) * layout.scale;
+      const top = layout.offsetY + (node.y - layout.bounds.minY) * layout.scale;
+      const width = Math.max(4, size.width * layout.scale);
+      const height = Math.max(4, size.height * layout.scale);
+
+      nodeEl.style.left = `${left}px`;
+      nodeEl.style.top = `${top}px`;
+      nodeEl.style.width = `${width}px`;
+      nodeEl.style.height = `${height}px`;
+
+      this.minimapContent.appendChild(nodeEl);
+    });
+
+    this.updateMinimapViewport(layout);
+  }
+
+  updateMinimapViewport(layout = null) {
+    if (!this.minimapViewport) return;
+
+    const currentLayout = layout ?? this.minimapLayout ?? this.computeMinimapLayout();
+    if (!currentLayout) return;
+
+    const { x, y, scale } = store.getTransform();
+    const viewportWidth = this.viewport?.clientWidth ?? window.innerWidth;
+    const viewportHeight = this.viewport?.clientHeight ?? window.innerHeight;
+    const worldLeft = -x / scale;
+    const worldTop = -y / scale;
+
+    const left = currentLayout.offsetX + (worldLeft - currentLayout.bounds.minX) * currentLayout.scale;
+    const top = currentLayout.offsetY + (worldTop - currentLayout.bounds.minY) * currentLayout.scale;
+    const width = Math.max(18, (viewportWidth / scale) * currentLayout.scale);
+    const height = Math.max(18, (viewportHeight / scale) * currentLayout.scale);
+
+    this.minimapViewport.style.left = `${left}px`;
+    this.minimapViewport.style.top = `${top}px`;
+    this.minimapViewport.style.width = `${width}px`;
+    this.minimapViewport.style.height = `${height}px`;
+  }
+
+  focusViewportFromMinimapPoint(clientX, clientY) {
+    const layout = this.minimapLayout ?? this.computeMinimapLayout();
+    if (!layout || !this.minimap) return;
+
+    const minimapRect = this.minimap.getBoundingClientRect();
+    const localX = clientX - minimapRect.left;
+    const localY = clientY - minimapRect.top;
+    const clampedX = Math.min(minimapRect.width - this.minimapPadding, Math.max(this.minimapPadding, localX));
+    const clampedY = Math.min(minimapRect.height - this.minimapPadding, Math.max(this.minimapPadding, localY));
+
+    const worldX = layout.bounds.minX + (clampedX - layout.offsetX) / layout.scale;
+    const worldY = layout.bounds.minY + (clampedY - layout.offsetY) / layout.scale;
+    const { scale } = store.getTransform();
+    const viewportWidth = this.viewport?.clientWidth ?? window.innerWidth;
+    const viewportHeight = this.viewport?.clientHeight ?? window.innerHeight;
+    const nextX = (viewportWidth / 2) - (worldX * scale);
+    const nextY = (viewportHeight / 2) - (worldY * scale);
+
+    store.setTransform(nextX, nextY, scale);
   }
 }
 
