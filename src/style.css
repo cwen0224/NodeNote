@@ -101,6 +101,88 @@ body, html {
   box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
 }
 
+#tray-drawer {
+  position: fixed;
+  top: 88px;
+  left: 0;
+  width: 320px;
+  height: calc(100vh - 112px);
+  z-index: 980;
+  transform: translateX(calc(-100% + 24px));
+  transition: transform 0.24s ease;
+  overflow: visible;
+  pointer-events: auto;
+}
+
+#tray-drawer.is-collapsed {
+  transform: translateX(calc(-100% + 24px));
+}
+
+#tray-drawer:not(.is-collapsed) {
+  transform: translateX(0);
+}
+
+.tray-drawer-handle {
+  position: absolute;
+  top: 18px;
+  right: -24px;
+  width: 24px;
+  height: 72px;
+  padding: 0;
+  border-radius: 0 12px 12px 0;
+  border: 1px solid rgba(88, 166, 255, 0.22);
+  border-left: 0;
+  background: rgba(14, 20, 30, 0.96);
+  color: var(--text-primary);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  cursor: pointer;
+  box-shadow: 4px 0 18px rgba(0, 0, 0, 0.3);
+}
+
+.tray-drawer-panel {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 14px 12px 12px;
+  border-radius: 8px;
+}
+
+.tray-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.tray-drawer-title {
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+#btn-tray-close {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 999px;
+  line-height: 1;
+}
+
+.tray-drawer-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
 #toolbar {
   position: absolute;
   top: 16px;
@@ -212,23 +294,25 @@ body, html {
 
 #tray-slots {
   display: flex;
+  flex-direction: column;
   align-items: stretch;
-  gap: 8px;
+  gap: 10px;
   min-width: 0;
   flex: 1 1 auto;
-  overflow-x: auto;
-  overflow-y: hidden;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
   scrollbar-width: thin;
   scrollbar-color: rgba(148, 163, 184, 0.58) rgba(255, 255, 255, 0.05);
-  scrollbar-gutter: stable both-edges;
+  scrollbar-gutter: stable;
   -ms-overflow-style: auto;
-  padding-top: 10px;
-  padding-bottom: 14px;
+  padding-right: 4px;
+  padding-bottom: 8px;
   -webkit-overflow-scrolling: touch;
 }
 
 #tray-slots::-webkit-scrollbar {
-  height: 10px;
+  width: 10px;
 }
 
 #tray-slots::-webkit-scrollbar-track {
@@ -745,8 +829,8 @@ button:hover {
 
 .tray-slot {
   flex: 0 0 auto;
-  width: 116px;
-  min-width: 116px;
+  width: 100%;
+  min-width: 0;
   padding: 8px 10px;
   display: flex;
   flex-direction: column;
