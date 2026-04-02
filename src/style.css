@@ -178,6 +178,15 @@ button:hover {
   overflow: hidden;
 }
 
+#viewport.is-selecting {
+  cursor: crosshair;
+}
+
+#viewport.is-selecting .node,
+#viewport.is-selecting .node-content[contenteditable="false"] {
+  cursor: crosshair;
+}
+
 #grid-bg {
   position: absolute;
   top: 0;
@@ -212,6 +221,17 @@ button:hover {
 
 #node-layer {
   z-index: 2;
+}
+
+.selection-marquee {
+  position: absolute;
+  z-index: 4;
+  pointer-events: none;
+  border: 1px solid rgba(88, 166, 255, 0.95);
+  background: rgba(88, 166, 255, 0.08);
+  box-shadow: 0 0 0 1px rgba(13, 17, 23, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  mix-blend-mode: screen;
 }
 
 #minimap {

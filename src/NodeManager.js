@@ -12,6 +12,9 @@ class NodeManager {
     this.nodeLayer = null;
     this.isDraggingNode = false;
     this.draggedNodeId = null;
+    this.dragSelectionIds = [];
+    this.dragStartPointer = null;
+    this.dragStartPositions = new Map();
     this.dragOffset = { x: 0, y: 0 };
     this.contentTimeout = null;
   }
@@ -56,46 +59,93 @@ class NodeManager {
       const contentIsScrollable = Boolean(contentEl)
         && (contentEl.scrollHeight > contentEl.clientHeight + 1 || contentEl.scrollWidth > contentEl.clientWidth + 1);
       if (contentEl && contentIsScrollable) {
-        this.selectNodeForInteraction(nodeEl.dataset.id, e.shiftKey);
+        this.selectNodeForInteraction(nodeEl.dataset.id, e.ctrlKey || e.metaKey);
         store.setLastActiveNode(nodeEl.dataset.id);
         e.stopPropagation();
         return;
       }
 
+      const nodeId = nodeEl.dataset.id;
+      const currentSelectionIds = [...new Set(store.state.selection?.nodeIds || [])].filter((id) => store.state.nodes[id]);
+      const isNodeSelected = currentSelectionIds.includes(nodeId);
+
+      if (e.ctrlKey || e.metaKey) {
+        this.selectNodeForInteraction(nodeId, true);
+        store.setLastActiveNode(nodeId);
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+
       // Handle dragging
-      if (e.button === 0 && !e.shiftKey) {
+      if (e.button === 0) {
         this.isDraggingNode = true;
-        this.draggedNodeId = nodeEl.dataset.id;
-        this.selectNodeForInteraction(nodeEl.dataset.id, e.shiftKey);
-        store.setLastActiveNode(this.draggedNodeId);
-        
-        const node = store.state.nodes[this.draggedNodeId];
         const { scale } = store.getTransform();
-        
-        this.dragOffset.x = e.clientX / scale - node.x;
-        this.dragOffset.y = e.clientY / scale - node.y;
-        
-        nodeEl.classList.add('dragging');
+        this.draggedNodeId = nodeId;
+        this.dragSelectionIds = (isNodeSelected && currentSelectionIds.length > 1)
+          ? currentSelectionIds
+          : [nodeId];
+        if (!isNodeSelected || currentSelectionIds.length <= 1) {
+          this.selectNodeForInteraction(nodeId, false);
+        }
+        store.setLastActiveNode(this.draggedNodeId);
+
+        this.dragStartPointer = {
+          x: e.clientX / scale,
+          y: e.clientY / scale,
+        };
+        this.dragStartPositions = new Map(this.dragSelectionIds.map((id) => {
+          const node = store.state.nodes[id];
+          return [id, { x: node.x, y: node.y }];
+        }));
+
+        this.dragSelectionIds.forEach((id) => {
+          const dragNode = document.querySelector(`.node[data-id="${id}"]`);
+          if (dragNode) {
+            dragNode.classList.add('dragging');
+          }
+        });
+
         e.stopPropagation();
       }
     });
 
     window.addEventListener('mousemove', (e) => {
-      if (this.isDraggingNode && this.draggedNodeId) {
+      if (this.isDraggingNode && this.draggedNodeId && this.dragStartPointer && this.dragStartPositions.size) {
         const { scale } = store.getTransform();
-        const newX = e.clientX / scale - this.dragOffset.x;
-        const newY = e.clientY / scale - this.dragOffset.y;
-        
-        this.updateNodePosition(this.draggedNodeId, newX, newY);
+        const currentPointer = {
+          x: e.clientX / scale,
+          y: e.clientY / scale,
+        };
+        const dx = currentPointer.x - this.dragStartPointer.x;
+        const dy = currentPointer.y - this.dragStartPointer.y;
+        const moveOrder = [
+          ...this.dragSelectionIds.filter((id) => id !== this.draggedNodeId),
+          this.draggedNodeId,
+        ];
+
+        moveOrder.forEach((id) => {
+          const startPosition = this.dragStartPositions.get(id);
+          if (!startPosition) {
+            return;
+          }
+
+          this.updateNodePosition(id, startPosition.x + dx, startPosition.y + dy);
+        });
       }
     });
 
     window.addEventListener('mouseup', () => {
       if (this.isDraggingNode) {
         this.isDraggingNode = false;
-        const nodeEl = document.querySelector(`.node[data-id="${this.draggedNodeId}"]`);
-        if (nodeEl) nodeEl.classList.remove('dragging');
+        this.dragSelectionIds.forEach((id) => {
+          const nodeEl = document.querySelector(`.node[data-id="${id}"]`);
+          if (nodeEl) nodeEl.classList.remove('dragging');
+        });
         this.draggedNodeId = null;
+        this.dragSelectionIds = [];
+        this.dragStartPointer = null;
+        this.dragStartPositions.clear();
         store.saveHistory(); // Save state after move
       }
     });

@@ -7,8 +7,15 @@ import { store } from './StateStore.js';
 class InputController {
   constructor() {
     this.isPanning = false;
+    this.isSelecting = false;
     this.startX = 0;
     this.startY = 0;
+    this.selectionStartX = 0;
+    this.selectionStartY = 0;
+    this.selectionCurrentX = 0;
+    this.selectionCurrentY = 0;
+    this.selectionAdditive = false;
+    this.selectionBaselineIds = [];
     
     // Zoom configurations
     this.minScale = 0.1;
@@ -20,6 +27,7 @@ class InputController {
 
   init() {
     this.viewport = document.getElementById('viewport');
+    this.selectionMarquee = document.getElementById('selection-marquee');
     this.setupEvents();
   }
 
@@ -41,8 +49,14 @@ class InputController {
       // Allow left click panning if clicking on background (viewport layer)
       const isBackgroundClick = e.target.id === 'viewport' || e.target.id === 'grid-bg' || e.target.id === 'svg-layer';
       const isLeftClickPan = e.button === 0 && (this.spacePressed || isBackgroundClick);
+      const isSelectionMarquee = e.button === 0 && e.shiftKey && isBackgroundClick && !this.spacePressed;
 
-      if (isBackgroundClick) {
+      if (isSelectionMarquee) {
+        this.beginSelectionMarquee(e);
+        return;
+      }
+
+      if (isBackgroundClick && e.button === 0 && !this.spacePressed) {
         store.clearSelection();
       }
       
@@ -55,6 +69,10 @@ class InputController {
     });
 
     window.addEventListener('mousemove', e => {
+      if (this.isSelecting) {
+        this.updateSelectionMarquee(e.clientX, e.clientY);
+      }
+
       if (this.isPanning) {
         const dx = e.clientX - this.startX;
         const dy = e.clientY - this.startY;
@@ -68,6 +86,10 @@ class InputController {
     });
 
     window.addEventListener('mouseup', e => {
+      if (this.isSelecting) {
+        this.endSelectionMarquee();
+      }
+
       if (this.isPanning) {
         this.isPanning = false;
         this.viewport.style.cursor = 'default';
@@ -95,6 +117,96 @@ class InputController {
 
       store.setTransform(newX, newY, newScale);
     }, { passive: false });
+  }
+
+  beginSelectionMarquee(event) {
+    this.isSelecting = true;
+    this.selectionAdditive = true;
+    this.selectionStartX = event.clientX;
+    this.selectionStartY = event.clientY;
+    this.selectionCurrentX = event.clientX;
+    this.selectionCurrentY = event.clientY;
+    this.selectionBaselineIds = [...new Set(store.state.selection?.nodeIds || [])].filter((id) => store.state.nodes[id]);
+
+    if (this.selectionMarquee) {
+      this.selectionMarquee.hidden = false;
+      this.selectionMarquee.classList.add('is-active');
+      this.selectionMarquee.style.left = `${event.clientX}px`;
+      this.selectionMarquee.style.top = `${event.clientY}px`;
+      this.selectionMarquee.style.width = '0px';
+      this.selectionMarquee.style.height = '0px';
+    }
+
+    this.viewport.classList.add('is-selecting');
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  updateSelectionMarquee(clientX, clientY) {
+    this.selectionCurrentX = clientX;
+    this.selectionCurrentY = clientY;
+
+    const left = Math.min(this.selectionStartX, clientX);
+    const top = Math.min(this.selectionStartY, clientY);
+    const width = Math.abs(clientX - this.selectionStartX);
+    const height = Math.abs(clientY - this.selectionStartY);
+
+    if (this.selectionMarquee) {
+      this.selectionMarquee.style.left = `${left}px`;
+      this.selectionMarquee.style.top = `${top}px`;
+      this.selectionMarquee.style.width = `${width}px`;
+      this.selectionMarquee.style.height = `${height}px`;
+    }
+
+    this.updateSelectionFromMarquee(left, top, width, height);
+  }
+
+  updateSelectionFromMarquee(left, top, width, height) {
+    if (!width && !height) {
+      return;
+    }
+
+    const { x, y, scale } = store.getTransform();
+    const worldLeft = (left - x) / scale;
+    const worldTop = (top - y) / scale;
+    const worldRight = ((left + width) - x) / scale;
+    const worldBottom = ((top + height) - y) / scale;
+    const minX = Math.min(worldLeft, worldRight);
+    const maxX = Math.max(worldLeft, worldRight);
+    const minY = Math.min(worldTop, worldBottom);
+    const maxY = Math.max(worldTop, worldBottom);
+
+    const hitNodeIds = Object.values(store.state.nodes || {})
+      .filter((node) => {
+        const nodeSize = node.size || { width: 260, height: 260 };
+        const nodeLeft = Number(node.x) || 0;
+        const nodeTop = Number(node.y) || 0;
+        const nodeRight = nodeLeft + (Number(nodeSize.width) || 0);
+        const nodeBottom = nodeTop + (Number(nodeSize.height) || 0);
+        return !(nodeRight < minX || nodeLeft > maxX || nodeBottom < minY || nodeTop > maxY);
+      })
+      .map((node) => node.id);
+
+    const nextSelectionIds = [...new Set([
+      ...(this.selectionAdditive ? this.selectionBaselineIds : []),
+      ...hitNodeIds,
+    ])];
+
+    store.setSelectionNodeIds(nextSelectionIds);
+  }
+
+  endSelectionMarquee() {
+    this.isSelecting = false;
+    this.selectionAdditive = false;
+    this.selectionBaselineIds = [];
+
+    if (this.selectionMarquee) {
+      this.selectionMarquee.classList.remove('is-active');
+      this.selectionMarquee.hidden = true;
+    }
+
+    this.viewport.classList.remove('is-selecting');
+    this.viewport.style.cursor = 'default';
   }
 }
 
