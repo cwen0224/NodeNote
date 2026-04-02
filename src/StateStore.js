@@ -150,6 +150,41 @@ export class StateStore {
     return cloneDocument(this.getCurrentDocument());
   }
 
+  findDefaultOpenPath() {
+    const rootFolderId = this.getRootFolderId();
+    const path = [];
+    const visited = new Set();
+    let currentFolderId = rootFolderId;
+
+    for (let step = 0; step < MAX_FOLDER_DEPTH; step += 1) {
+      const folder = this.document.folders?.[currentFolderId];
+      if (!folder || visited.has(currentFolderId)) {
+        break;
+      }
+
+      visited.add(currentFolderId);
+
+      const hasVisibleNode = Array.isArray(folder.children) && folder.children.some((child) => (
+        child?.kind === 'node' && Boolean(this.document.nodes?.[child.id])
+      ));
+      if (hasVisibleNode) {
+        break;
+      }
+
+      const nextFolderRef = Array.isArray(folder.children)
+        ? folder.children.find((child) => child?.kind === 'folder' && Boolean(this.document.folders?.[child.id]))
+        : null;
+      if (!nextFolderRef || visited.has(nextFolderRef.id)) {
+        break;
+      }
+
+      path.push(nextFolderRef.id);
+      currentFolderId = nextFolderRef.id;
+    }
+
+    return path;
+  }
+
   getNavigationSnapshot() {
     return cloneDocument(this.session.navigation);
   }
@@ -560,7 +595,7 @@ export class StateStore {
 
   replaceDocument(nextDocument, { saveToHistory = true, resetHistory = false } = {}) {
     this.document = normalizeDocument(nextDocument);
-    this.session.navigation.path = [];
+    this.session.navigation.path = this.findDefaultOpenPath();
     this.session.navigation.viewportStack = [];
     this.clearTransientFocus();
     this.session.selection.nodeIds = [];
