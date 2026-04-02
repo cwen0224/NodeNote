@@ -133,6 +133,9 @@ const initApp = () => {
       }
       window.localStorage.setItem(TRAY_DRAWER_STORAGE_KEY, isOpen ? '1' : '0');
     };
+    if (promptPicker) {
+      promptPicker.hidden = true;
+    }
     if (trayDrawer && trayToggleBtn) {
       const savedTrayState = window.localStorage.getItem(TRAY_DRAWER_STORAGE_KEY);
       setTrayDrawerOpen(savedTrayState !== '0');
@@ -160,9 +163,9 @@ const initApp = () => {
         if (!promptPicker) {
           return;
         }
-        const nextHidden = !promptPicker.hidden;
-        promptPicker.hidden = !nextHidden ? true : false;
-        aiPromptCopyBtn.setAttribute('aria-expanded', String(nextHidden));
+        const isHidden = Boolean(promptPicker.hidden);
+        promptPicker.hidden = !isHidden;
+        aiPromptCopyBtn.setAttribute('aria-expanded', String(isHidden));
       };
     }
     if (promptPicker) {
@@ -195,6 +198,9 @@ const initApp = () => {
       if (promptPicker.contains(event.target) || aiPromptCopyBtn?.contains(event.target)) {
         return;
       }
+      hidePromptPicker();
+    });
+    promptPicker?.addEventListener('pointerleave', () => {
       hidePromptPicker();
     });
     document.addEventListener('keydown', (event) => {
