@@ -50,6 +50,7 @@ class ConnectionManager {
     const nodeEl = portEl.closest('.node');
     this.sourceNodeId = nodeEl.dataset.id;
     this.sourcePortEl = portEl;
+    store.setLastActiveNode(this.sourceNodeId);
 
     this.tempPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
     this.tempPath.setAttribute("class", "connection-path temp-path");
@@ -87,6 +88,7 @@ class ConnectionManager {
     const targetNodeEl = e.target.closest('.node');
     const targetPortEl = e.target.closest('.port');
     if (targetNodeEl && targetNodeEl.dataset.id !== this.sourceNodeId) {
+      store.setLastActiveNode(targetNodeEl.dataset.id);
       const targetPortSide = this.resolveTargetPortSide(targetNodeEl, targetPortEl, e.clientX, e.clientY);
       const sourcePortSide = this.getPortSide(this.sourcePortEl);
       this.showNamingPopup(

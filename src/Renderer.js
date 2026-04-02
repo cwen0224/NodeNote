@@ -137,7 +137,10 @@ class Renderer {
       this.minimapDragState.active = false;
       this.minimapDragState.pointerId = null;
       this.minimap.classList.remove('is-dragging');
-      this.focusViewportFromMinimapPoint(event.clientX, event.clientY);
+      const focused = this.focusViewportOnLastActiveNode();
+      if (!focused) {
+        this.focusViewportFromMinimapPoint(event.clientX, event.clientY);
+      }
     });
 
     this.minimap.addEventListener('wheel', (event) => {
@@ -304,6 +307,7 @@ class Renderer {
     });
     content.addEventListener('focus', () => {
       div.classList.add('is-editing');
+      store.setLastActiveNode(node.id);
     });
     content.addEventListener('blur', () => {
       div.classList.remove('is-editing');
@@ -312,6 +316,7 @@ class Renderer {
 
     const focusContent = () => {
       div.classList.add('is-editing');
+      store.setLastActiveNode(node.id);
       content.contentEditable = 'true';
       content.focus({ preventScroll: true });
 
@@ -748,6 +753,28 @@ class Renderer {
     const nextY = (viewportHeight / 2) - (worldY * scale);
 
     store.setTransform(nextX, nextY, scale);
+  }
+
+  focusViewportOnLastActiveNode() {
+    const activeNodeId = store.state.interaction?.lastActiveNodeId;
+    if (!activeNodeId) {
+      return false;
+    }
+
+    const node = store.state.nodes[activeNodeId];
+    if (!node) {
+      return false;
+    }
+
+    const center = this.getNodeCenterWorldPoint(node);
+    const { scale } = store.getTransform();
+    const viewportWidth = this.viewport?.clientWidth ?? window.innerWidth;
+    const viewportHeight = this.viewport?.clientHeight ?? window.innerHeight;
+    const nextX = (viewportWidth / 2) - (center.x * scale);
+    const nextY = (viewportHeight / 2) - (center.y * scale);
+
+    store.setTransform(nextX, nextY, scale);
+    return true;
   }
 
   zoomViewportFromMinimapWheel(clientX, clientY, deltaY) {

@@ -54,6 +54,7 @@ class NodeManager {
       if (e.button === 0 && !e.shiftKey) {
         this.isDraggingNode = true;
         this.draggedNodeId = nodeEl.dataset.id;
+        store.setLastActiveNode(this.draggedNodeId);
         
         const node = store.state.nodes[this.draggedNodeId];
         const { scale } = store.getTransform();
@@ -98,6 +99,7 @@ class NodeManager {
     };
     
     store.state.nodes[id] = node;
+    store.setLastActiveNode(id);
     store.emit('nodes:updated', store.state.nodes);
     store.saveHistory();
   }
@@ -108,6 +110,10 @@ class NodeManager {
     }
 
     delete store.state.nodes[id];
+
+    if (store.state.interaction?.lastActiveNodeId === id) {
+      store.setLastActiveNode(null);
+    }
 
     Object.values(store.state.nodes).forEach((node) => {
       if (!node.params) {
@@ -135,6 +141,7 @@ class NodeManager {
     if (store.state.nodes[id]) {
       store.state.nodes[id].x = x;
       store.state.nodes[id].y = y;
+      store.setLastActiveNode(id);
       store.emit('node:moved', { id, x, y });
     }
   }
@@ -142,6 +149,7 @@ class NodeManager {
   updateNodeContent(id, content) {
     if (store.state.nodes[id]) {
       store.state.nodes[id].content = content;
+      store.setLastActiveNode(id);
       store.emit('node:contentUpdated', { id, content });
       
       // Debounce history saving for content

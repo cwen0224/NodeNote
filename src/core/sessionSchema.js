@@ -21,6 +21,8 @@ export function createDefaultSession() {
     interaction: {
       draggingNodeId: null,
       drawingEdgeFrom: null,
+      lastActiveNodeId: null,
+      lastActiveNodeAt: null,
     },
     ui: {
       trayOpen: false,
@@ -29,4 +31,3 @@ export function createDefaultSession() {
     },
   };
 }
-

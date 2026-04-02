@@ -139,6 +139,11 @@ export class StateStore {
     this.emit('transform:updated', { x, y, scale });
   }
 
+  setLastActiveNode(nodeId) {
+    this.session.interaction.lastActiveNodeId = nodeId ?? null;
+    this.session.interaction.lastActiveNodeAt = nodeId ? Date.now() : null;
+  }
+
   getTransform() {
     return { ...this.session.viewport };
   }
@@ -158,4 +163,3 @@ export class StateStore {
 }
 
 export const store = new StateStore();
-
