@@ -129,7 +129,7 @@ body, html {
   align-items: center;
   gap: 6px;
   min-width: 0;
-  max-width: min(38vw, 320px);
+  max-width: min(24vw, 220px);
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
@@ -212,11 +212,11 @@ body, html {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 30px;
-  padding: 0 10px;
+  min-height: 28px;
+  padding: 0 8px;
   border-radius: 999px;
   font-family: monospace;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   letter-spacing: 0.04em;
   color: var(--text-muted);
   background: rgba(20, 25, 35, 0.55);
