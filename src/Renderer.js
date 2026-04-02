@@ -590,8 +590,8 @@ class Renderer {
 
     const midX = (sX + tX) / 2;
     const midY = (sY + tY) / 2;
-    const labelWidth = Math.max(48, Math.min(160, labelText.length * 10 + 28));
-    const labelHeight = 24;
+    const labelWidth = Math.max(96, Math.min(320, labelText.length * 20 + 56));
+    const labelHeight = 48;
     const labelLeft = midX - labelWidth / 2;
     const labelTop = midY - labelHeight / 2;
 
@@ -600,8 +600,8 @@ class Renderer {
     rect.setAttribute("y", String(labelTop));
     rect.setAttribute("width", String(labelWidth));
     rect.setAttribute("height", String(labelHeight));
-    rect.setAttribute("rx", "8");
-    rect.setAttribute("ry", "8");
+    rect.setAttribute("rx", "16");
+    rect.setAttribute("ry", "16");
     rect.setAttribute("class", "connection-label-box");
 
     const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
@@ -617,29 +617,29 @@ class Renderer {
     deleteBtn.setAttribute("role", "button");
     deleteBtn.setAttribute("tabindex", "0");
     deleteBtn.setAttribute("aria-label", `刪除連線 ${labelText}`);
-    deleteBtn.setAttribute("transform", `translate(${labelLeft + labelWidth}, ${labelTop})`);
+      deleteBtn.setAttribute("transform", `translate(${labelLeft + labelWidth}, ${labelTop})`);
 
       const setDeleteHover = (isHovered) => {
         deleteBtn.classList.toggle("is-hovered", isHovered);
-        deleteCircle.setAttribute("r", isHovered ? "9" : "7");
-        deleteText.setAttribute("font-size", isHovered ? "11" : "10");
+        deleteCircle.setAttribute("r", isHovered ? "18" : "14");
+        deleteText.setAttribute("font-size", isHovered ? "22" : "18");
       };
 
       const hitCircle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
       hitCircle.setAttribute("cx", "0");
       hitCircle.setAttribute("cy", "0");
-      hitCircle.setAttribute("r", "14");
+      hitCircle.setAttribute("r", "28");
       hitCircle.setAttribute("class", "connection-delete-btn-hit");
 
       const deleteCircle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
       deleteCircle.setAttribute("cx", "0");
       deleteCircle.setAttribute("cy", "0");
-      deleteCircle.setAttribute("r", "7");
+      deleteCircle.setAttribute("r", "14");
       deleteCircle.setAttribute("class", "connection-delete-btn-box");
 
     const deleteText = document.createElementNS("http://www.w3.org/2000/svg", "text");
     deleteText.setAttribute("x", "0");
-    deleteText.setAttribute("y", "0.5");
+    deleteText.setAttribute("y", "1");
     deleteText.setAttribute("text-anchor", "middle");
       deleteText.setAttribute("dominant-baseline", "middle");
       deleteText.setAttribute("class", "connection-delete-btn-text");

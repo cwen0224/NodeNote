@@ -768,7 +768,7 @@ button:hover {
 .connection-label-box {
   fill: rgba(15, 23, 42, 0.72);
   stroke: rgba(88, 166, 255, 0.26);
-  stroke-width: 1;
+  stroke-width: 1.25;
   pointer-events: all;
 }
 
@@ -779,12 +779,12 @@ button:hover {
 
 .connection-label {
   fill: var(--text-primary);
-  font-size: 11px;
+  font-size: 22px;
   font-family: monospace;
   font-weight: 600;
   paint-order: stroke fill;
   stroke: rgba(15, 23, 42, 0.95);
-  stroke-width: 2px;
+  stroke-width: 3px;
   pointer-events: none;
 }
 
@@ -802,13 +802,13 @@ button:hover {
 .connection-delete-btn-box {
   fill: rgba(248, 113, 113, 0.88);
   stroke: rgba(15, 23, 42, 0.22);
-  stroke-width: 1;
+  stroke-width: 1.25;
   transition: fill 0.14s ease, stroke 0.14s ease;
 }
 
 .connection-delete-btn-text {
   fill: #fff;
-  font-size: 10px;
+  font-size: 18px;
   font-family: monospace;
   font-weight: 700;
   pointer-events: none;
