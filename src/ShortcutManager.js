@@ -149,6 +149,18 @@ class ShortcutManager {
       return;
     }
 
+    if (this.isMetaShortcut(event) && key === 'g') {
+      event.preventDefault();
+      nodeManager.groupSelectionIntoFolder();
+      return;
+    }
+
+    if ((this.isMetaShortcut(event) && event.code === 'BracketLeft') || (event.altKey && key === 'arrowleft')) {
+      event.preventDefault();
+      store.exitFolder();
+      return;
+    }
+
     if (this.isMetaShortcut(event) && key === 'z' && !event.shiftKey) {
       event.preventDefault();
       store.undo();
@@ -225,7 +237,7 @@ class ShortcutManager {
       return false;
     }
 
-    const fragment = collectClipboardGraph(store.getDocumentSnapshot(), rootNodeIds);
+    const fragment = collectClipboardGraph(store.getCurrentDocumentSnapshot(), rootNodeIds);
     if (!fragment) {
       return false;
     }
@@ -337,4 +349,3 @@ class ShortcutManager {
 }
 
 export const shortcutManager = new ShortcutManager();
-

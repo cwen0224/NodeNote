@@ -77,8 +77,12 @@ const initApp = () => {
     
     updateDiag("Wiring Toolbar...");
     // Wire Undo/Redo
+    const folderBackBtn = document.getElementById('btn-folder-back');
+    const folderGroupBtn = document.getElementById('btn-folder-group');
     const undoBtn = document.getElementById('btn-undo');
     const redoBtn = document.getElementById('btn-redo');
+    if(folderBackBtn) folderBackBtn.onclick = () => store.exitFolder();
+    if(folderGroupBtn) folderGroupBtn.onclick = () => nodeManager.groupSelectionIntoFolder();
     if(undoBtn) undoBtn.onclick = () => store.undo();
     if(redoBtn) redoBtn.onclick = () => store.redo();
 

@@ -248,7 +248,7 @@ class TrayManager {
       return false;
     }
 
-    const fragment = collectClipboardGraph(store.getDocumentSnapshot(), rootNodeIds);
+    const fragment = collectClipboardGraph(store.getCurrentDocumentSnapshot(), rootNodeIds);
     if (!fragment) {
       return false;
     }
@@ -283,7 +283,7 @@ class TrayManager {
       return false;
     }
 
-    const fragment = collectClipboardGraph(store.getDocumentSnapshot(), rootNodeIds);
+    const fragment = collectClipboardGraph(store.getCurrentDocumentSnapshot(), rootNodeIds);
     if (!fragment) {
       return false;
     }

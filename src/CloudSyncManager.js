@@ -63,6 +63,7 @@ function formatClockStamp(isoString) {
 function buildFingerprint(snapshot) {
   return JSON.stringify({
     document: snapshot?.document ?? null,
+    navigation: snapshot?.navigation ?? null,
     viewport: snapshot?.viewport ?? null,
   });
 }
@@ -79,6 +80,7 @@ function normalizeCloudSnapshot(payload) {
       revision: Number.isFinite(payload.revision) ? payload.revision : 0,
       savedAt: typeof payload.savedAt === 'string' ? payload.savedAt : null,
       document: normalizeDocument(payload.document),
+      navigation: isPlainObject(payload.navigation) ? payload.navigation : null,
       viewport: normalizeViewport(payload.viewport),
     };
   }
@@ -95,6 +97,7 @@ function normalizeCloudSnapshot(payload) {
       revision: 0,
       savedAt: null,
       document: normalizeDocument(payload),
+      navigation: null,
       viewport: null,
     };
   }
@@ -665,6 +668,10 @@ class CloudSyncManager {
 
       this.skipNextAutosave = true;
       store.replaceDocument(snapshot.document, { resetHistory: true, saveToHistory: false });
+
+      if (snapshot.navigation) {
+        store.restoreNavigation(snapshot.navigation);
+      }
 
       if (snapshot.viewport) {
         store.setTransform(snapshot.viewport.x, snapshot.viewport.y, snapshot.viewport.scale);

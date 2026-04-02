@@ -7,6 +7,7 @@ import { store } from './StateStore.js';
 import { nodeManager } from './NodeManager.js';
 import { connectionManager } from './ConnectionManager.js';
 import { resolveNodeSize } from './core/nodeSizing.js';
+import { MAX_FOLDER_DEPTH, getFolderTheme, folderThemeToCssVars } from './core/folderTheme.js';
 
 class Renderer {
   constructor() {
@@ -49,6 +50,13 @@ class Renderer {
 
     // Listen for state and node updates
     store.on('state:updated', () => this.renderAll());
+    store.on('navigation:updated', (payload) => {
+      if (payload?.action === 'enter') {
+        window.requestAnimationFrame(() => {
+          this.fitGraphToViewport();
+        });
+      }
+    });
     store.on('nodes:updated', () => this.renderAll());
     store.on('connections:updated', () => this.renderConnections());
     store.on('selection:updated', () => this.syncSelectionState());
@@ -101,11 +109,94 @@ class Renderer {
   }
 
   renderAll() {
+    this.applyCurrentDepthTheme();
+    this.updateFolderNavigationUI();
     this.renderAllNodes();
     this.renderConnections();
     this.renderMinimap();
     this.updatePortReveal();
     this.syncSelectionState();
+  }
+
+  escapeHtml(value) {
+    return String(value ?? '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
+  }
+
+  applyCurrentDepthTheme() {
+    const depth = store.getCurrentDepth?.() ?? (store.state.navigation?.path?.length ?? 0);
+    const theme = getFolderTheme(depth);
+    const cssVars = folderThemeToCssVars(theme);
+    const root = document.documentElement;
+    Object.entries(cssVars).forEach(([key, value]) => {
+      root.style.setProperty(key, value);
+    });
+    root.dataset.folderDepth = String(depth);
+  }
+
+  updateFolderNavigationUI() {
+    const backButton = document.getElementById('btn-folder-back');
+    const groupButton = document.getElementById('btn-folder-group');
+    const breadcrumb = document.getElementById('folder-breadcrumb');
+    const path = store.getCurrentDocumentPath?.() || [];
+    const currentDepth = path.length;
+
+    if (backButton) {
+      backButton.disabled = currentDepth === 0;
+      backButton.title = currentDepth === 0 ? '已在最外層' : '返回上一層資料夾';
+    }
+
+    if (groupButton) {
+      groupButton.disabled = currentDepth >= MAX_FOLDER_DEPTH;
+      groupButton.title = currentDepth >= MAX_FOLDER_DEPTH ? '已達最深層，無法再建立資料夾' : '將目前選取節點群組成資料夾';
+    }
+
+    if (!breadcrumb) {
+      return;
+    }
+
+    const crumbItems = ['Root'];
+    let activeDocument = store.document;
+
+    path.forEach((folderId) => {
+      const folderNode = activeDocument?.nodes?.[folderId];
+      const label = folderNode?.title || folderNode?.content || folderId || 'Folder';
+      crumbItems.push(label);
+      activeDocument = folderNode?.folder?.document || activeDocument;
+    });
+
+    breadcrumb.innerHTML = crumbItems
+      .map((label, index) => {
+        const isRoot = index === 0;
+        const isCurrent = index === crumbItems.length - 1;
+        const className = [
+          'folder-crumb',
+          isRoot ? 'folder-crumb-root' : '',
+          isCurrent ? 'is-current' : '',
+        ].filter(Boolean).join(' ');
+        return `<button type="button" class="${className}" data-depth="${index}" title="${this.escapeHtml(label)}">${this.escapeHtml(label)}</button>`;
+      })
+      .join('<span class="folder-crumb-sep">/</span>');
+
+    breadcrumb.querySelectorAll('.folder-crumb').forEach((button) => {
+      button.addEventListener('click', () => {
+        const depth = Number(button.dataset.depth);
+        if (!Number.isInteger(depth)) {
+          return;
+        }
+
+        if (depth <= 0) {
+          store.goToRoot();
+          return;
+        }
+
+        store.goToDepth(depth);
+      });
+    });
   }
 
   scheduleMinimapRender() {
@@ -293,62 +384,67 @@ class Renderer {
 
   createNodeElement(node) {
     const div = document.createElement('div');
-    div.className = 'node glass-panel';
+    const isFolderNode = node.type === 'folder';
+    const nodeLabel = this.getNodeLabel(node) || node.id;
+    const folderTheme = isFolderNode ? getFolderTheme(node.folder?.depth ?? (store.getCurrentDepth?.() ?? 0)) : null;
+
+    div.className = `node glass-panel${isFolderNode ? ' is-folder' : ''}`;
     div.dataset.id = node.id;
+    div.dataset.type = node.type || 'note';
+    if (isFolderNode && folderTheme) {
+      div.dataset.folderDepth = String(node.folder?.depth ?? 0);
+      const cssVars = folderThemeToCssVars(folderTheme);
+      Object.entries(cssVars).forEach(([key, value]) => {
+        div.style.setProperty(key, value);
+      });
+      div.style.setProperty('--folder-accent', folderTheme.accent);
+    }
     div.style.left = `${node.x}px`;
     div.style.top = `${node.y}px`;
-    div.innerHTML = `
-      <div class="node-header">
-        <span class="node-id" title="${node.id}">${node.id}</span>
-        <div class="node-header-actions">
-          <button class="node-edit-btn" type="button" aria-label="編輯節點">✎</button>
+    if (isFolderNode) {
+      div.innerHTML = `
+        <div class="node-header">
+          <span class="node-id" title="${this.escapeHtml(nodeLabel)}">${this.escapeHtml(nodeLabel)}</span>
+          <div class="node-header-actions">
+            <button class="node-folder-open-btn" type="button" aria-label="開啟資料夾">↗</button>
+          </div>
         </div>
-      </div>
-      <div class="node-content" contenteditable="false" spellcheck="false"></div>
-      <button class="node-delete-btn" type="button" aria-label="刪除節點">×</button>
-      <div class="port top"></div>
-      <div class="port bottom"></div>
-      <div class="port left"></div>
-      <div class="port right"></div>
-    `;
+        <div class="node-content node-folder-content" contenteditable="false" spellcheck="false"></div>
+        <button class="node-delete-btn" type="button" aria-label="刪除節點">×</button>
+        <div class="port top"></div>
+        <div class="port bottom"></div>
+        <div class="port left"></div>
+        <div class="port right"></div>
+      `;
+    } else {
+      div.innerHTML = `
+        <div class="node-header">
+          <span class="node-id" title="${this.escapeHtml(nodeLabel)}">${this.escapeHtml(nodeLabel)}</span>
+          <div class="node-header-actions">
+            <button class="node-edit-btn" type="button" aria-label="編輯節點">✎</button>
+          </div>
+        </div>
+        <div class="node-content" contenteditable="false" spellcheck="false"></div>
+        <button class="node-delete-btn" type="button" aria-label="刪除節點">×</button>
+        <div class="port top"></div>
+        <div class="port bottom"></div>
+        <div class="port left"></div>
+        <div class="port right"></div>
+      `;
+    }
 
     // Internal Events (preventing panning/zooming while interacting with a node)
     const content = div.querySelector('.node-content');
-    content.textContent = node.content ?? '';
+    if (content) {
+      content.textContent = node.content ?? '';
+    }
     this.applyNodeSizing(div, node);
-    content.addEventListener('wheel', (e) => {
-      const canScrollY = content.scrollHeight > content.clientHeight + 1;
-      if (!canScrollY) {
+
+    const focusContent = () => {
+      if (!content || isFolderNode) {
         return;
       }
 
-      const scrollingDown = e.deltaY > 0;
-      const scrollingUp = e.deltaY < 0;
-      const atTop = content.scrollTop <= 0;
-      const atBottom = content.scrollTop + content.clientHeight >= content.scrollHeight - 1;
-
-      if ((scrollingDown && !atBottom) || (scrollingUp && !atTop)) {
-        e.stopPropagation();
-      }
-    });
-    content.addEventListener('input', (e) => {
-      nodeManager.updateNodeContent(node.id, e.target.innerText);
-    });
-
-    content.addEventListener('dblclick', (e) => {
-      e.stopPropagation();
-      focusContent();
-    });
-    content.addEventListener('focus', () => {
-      div.classList.add('is-editing');
-      store.setLastActiveNode(node.id);
-    });
-    content.addEventListener('blur', () => {
-      div.classList.remove('is-editing');
-      content.contentEditable = 'false';
-    });
-
-    const focusContent = () => {
       div.classList.add('is-editing');
       store.setLastActiveNode(node.id);
       content.contentEditable = 'true';
@@ -362,12 +458,63 @@ class Renderer {
       selection?.addRange(range);
     };
 
+    if (content && !isFolderNode) {
+      content.addEventListener('wheel', (e) => {
+        const canScrollY = content.scrollHeight > content.clientHeight + 1;
+        if (!canScrollY) {
+          return;
+        }
+
+        const scrollingDown = e.deltaY > 0;
+        const scrollingUp = e.deltaY < 0;
+        const atTop = content.scrollTop <= 0;
+        const atBottom = content.scrollTop + content.clientHeight >= content.scrollHeight - 1;
+
+        if ((scrollingDown && !atBottom) || (scrollingUp && !atTop)) {
+          e.stopPropagation();
+        }
+      });
+      content.addEventListener('input', (e) => {
+        nodeManager.updateNodeContent(node.id, e.target.innerText);
+      });
+
+      content.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        focusContent();
+      });
+      content.addEventListener('focus', () => {
+        div.classList.add('is-editing');
+        store.setLastActiveNode(node.id);
+      });
+      content.addEventListener('blur', () => {
+        div.classList.remove('is-editing');
+        content.contentEditable = 'false';
+      });
+    }
+
     const editBtn = div.querySelector('.node-edit-btn');
     editBtn?.addEventListener('mousedown', (e) => e.stopPropagation());
     editBtn?.addEventListener('click', (e) => {
       e.stopPropagation();
       focusContent();
     });
+
+    const openBtn = div.querySelector('.node-folder-open-btn');
+    openBtn?.addEventListener('mousedown', (e) => e.stopPropagation());
+    openBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      store.enterFolder(node.id);
+    });
+
+    if (isFolderNode) {
+      div.addEventListener('dblclick', (e) => {
+        if (e.target.closest('.node-delete-btn') || e.target.closest('.node-folder-open-btn') || e.target.closest('.port')) {
+          return;
+        }
+        e.stopPropagation();
+        store.enterFolder(node.id);
+      });
+    }
 
     const deleteBtn = div.querySelector('.node-delete-btn');
     deleteBtn?.addEventListener('mousedown', (e) => e.stopPropagation());
@@ -716,7 +863,7 @@ class Renderer {
     nodes.forEach((node) => {
       const size = this.getNodeWorldSize(node);
       const nodeEl = document.createElement('div');
-      nodeEl.className = 'minimap-node';
+      nodeEl.className = `minimap-node${node.type === 'folder' ? ' is-folder' : ''}`;
       if (node.id === store.state.entryNodeId) {
         nodeEl.classList.add('is-entry');
       }

@@ -5,7 +5,8 @@
 The canonical JSON document is the source of truth.
 
 - `document` is persistent data: nodes, edges, assets, metadata, exportable graph content.
-- `session` is ephemeral editor state: viewport, selection, hover, drag, edit focus, popups, tray UI.
+- `folder` nodes may contain a nested document, so the graph can become a stack of subpages.
+- `session` is ephemeral editor state: viewport, selection, hover, drag, edit focus, popups, tray UI, folder path.
 - `commands` are the only way to mutate document data.
 - `renderers` are projections of document + session, not owners of state.
 
@@ -35,6 +36,43 @@ Recommended structure:
 }
 ```
 
+Folder node shape:
+
+```jsonc
+{
+  "id": "folder_1",
+  "type": "folder",
+  "title": "Folder · Example",
+  "content": "3 nodes · 4 links",
+  "folder": {
+    "depth": 1,
+    "colorIndex": 1,
+    "summary": "3 nodes · 4 links",
+    "collapsed": false,
+    "sourceNodeIds": ["node_a", "node_b"],
+    "boundaryLinks": {
+      "incoming": [],
+      "outgoing": []
+    },
+    "document": {
+      "schemaVersion": "1.0.0",
+      "meta": {
+        "title": "Folder · Example",
+        "description": "",
+        "tags": [],
+        "createdAt": null,
+        "updatedAt": null
+      },
+      "entryNodeId": "node_a",
+      "nodes": {},
+      "edges": [],
+      "assets": [],
+      "extras": {}
+    }
+  }
+}
+```
+
 ### 2. Session state
 
 Ephemeral UI state that should not be saved into the canonical document.
@@ -43,6 +81,7 @@ Examples:
 
 - viewport pan / zoom
 - current selection
+- current folder path
 - active editing node
 - hovered node / edge / port
 - temporary connection preview

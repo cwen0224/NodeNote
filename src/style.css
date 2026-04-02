@@ -7,6 +7,9 @@
   --text-muted: #7d8590;
   --accent: #58a6ff;
   --node-bg: rgba(30, 35, 45, 0.9);
+  --folder-node-bg: rgba(25, 35, 50, 0.96);
+  --folder-node-border: rgba(88, 166, 255, 0.38);
+  --folder-node-header: rgba(88, 166, 255, 0.12);
 }
 
 * {
@@ -104,12 +107,79 @@ body, html {
   left: 50%;
   transform: translateX(-50%);
   display: flex;
+  flex-wrap: wrap;
   padding: 8px 14px;
   gap: 10px;
   z-index: 1000;
   align-items: center;
   width: min(96vw, 1320px);
   max-width: calc(100vw - 24px);
+}
+
+.toolbar-folder-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+#folder-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: min(38vw, 320px);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+#folder-breadcrumb::-webkit-scrollbar {
+  display: none;
+}
+
+.folder-crumb {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(15, 23, 42, 0.44);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform 0.16s ease, background 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+}
+
+.folder-crumb:hover {
+  transform: translateY(-1px);
+  color: var(--text-primary);
+  border-color: rgba(88, 166, 255, 0.45);
+  background: rgba(88, 166, 255, 0.12);
+}
+
+.folder-crumb-root {
+  color: #dbeafe;
+  border-color: rgba(88, 166, 255, 0.24);
+}
+
+.folder-crumb.is-current {
+  color: #ffffff;
+  border-color: rgba(88, 166, 255, 0.52);
+  background: rgba(88, 166, 255, 0.18);
+}
+
+.folder-crumb-sep {
+  flex: 0 0 auto;
+  color: rgba(125, 133, 144, 0.65);
+  font-size: 0.7rem;
 }
 
 #tray-slots {
@@ -305,6 +375,11 @@ button:hover {
   border-color: rgba(52, 211, 153, 0.7);
 }
 
+.minimap-node.is-folder {
+  background: rgba(124, 156, 255, 0.34);
+  border-color: rgba(124, 156, 255, 0.72);
+}
+
 /* Nodes */
 .node {
   position: absolute;
@@ -326,6 +401,58 @@ button:hover {
 
 .node.is-selected .node-header {
   background: rgba(88, 166, 255, 0.12);
+}
+
+.node.is-folder {
+  background: linear-gradient(180deg, var(--folder-node-bg), rgba(0, 0, 0, 0.16));
+  border: 1px solid var(--folder-node-border);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 14px 34px rgba(0, 0, 0, 0.48);
+}
+
+.node.is-folder .node-header {
+  background: var(--folder-node-header);
+  color: #cbd5e1;
+}
+
+.node.is-folder .node-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  font-weight: 600;
+  color: #dbeafe;
+  background: rgba(12, 17, 26, 0.18);
+}
+
+.node.is-folder .node-content[contenteditable="false"] {
+  cursor: pointer;
+}
+
+.node-folder-open-btn {
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(88, 166, 255, 0.16);
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  line-height: 1;
+  opacity: 0.88;
+  transition: transform 0.14s ease, background 0.14s ease, color 0.14s ease, opacity 0.14s ease;
+}
+
+.node-folder-open-btn:hover,
+.node-folder-open-btn:focus-visible {
+  opacity: 1;
+  background: rgba(88, 166, 255, 0.28);
+  transform: scale(1.08);
+  outline: none;
 }
 
 .node.dragging {

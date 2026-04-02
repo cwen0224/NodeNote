@@ -35,6 +35,7 @@ class PersistenceManager {
   bindEvents() {
     [
       'document:updated',
+      'navigation:updated',
       'nodes:updated',
       'connections:updated',
       'node:moved',
@@ -89,6 +90,10 @@ class PersistenceManager {
     const restoredDocument = normalizeDocument(snapshot.document);
     store.replaceDocument(restoredDocument, { resetHistory: true, saveToHistory: false });
 
+    if (snapshot.navigation) {
+      store.restoreNavigation(snapshot.navigation);
+    }
+
     if (isPlainObject(snapshot.viewport)) {
       const x = Number.isFinite(snapshot.viewport.x) ? snapshot.viewport.x : 0;
       const y = Number.isFinite(snapshot.viewport.y) ? snapshot.viewport.y : 0;
@@ -107,6 +112,7 @@ class PersistenceManager {
       revision: this.revision + 1,
       savedAt: new Date().toISOString(),
       document: store.getDocumentSnapshot(),
+      navigation: store.getNavigationSnapshot(),
       viewport: store.getTransform(),
     };
   }

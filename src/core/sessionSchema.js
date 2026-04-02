@@ -5,6 +5,10 @@ export function createDefaultSession() {
       y: 0,
       scale: 1,
     },
+    navigation: {
+      path: [],
+      viewportStack: [],
+    },
     selection: {
       nodeIds: [],
       edgeIds: [],

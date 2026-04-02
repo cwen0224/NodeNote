@@ -3,8 +3,10 @@
  * Handles node lifecycle: creation, removal, dragging, and content updates.
  */
 import { store } from './StateStore.js';
+import { createDefaultDocument } from './core/documentSchema.js';
 import { createNodeId, materializeClipboardPayload } from './core/graphClipboard.js';
 import { resolveNodeSize } from './core/nodeSizing.js';
+import { MAX_FOLDER_DEPTH } from './core/folderTheme.js';
 
 class NodeManager {
   constructor() {
@@ -17,6 +19,116 @@ class NodeManager {
     this.dragStartPositions = new Map();
     this.dragOffset = { x: 0, y: 0 };
     this.contentTimeout = null;
+  }
+
+  cloneValue(value) {
+    return JSON.parse(JSON.stringify(value));
+  }
+
+  isPlainObject(value) {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+  }
+
+  buildEdgesFromNodes(nodes = {}) {
+    const edges = [];
+
+    Object.entries(this.isPlainObject(nodes) ? nodes : {}).forEach(([sourceId, node]) => {
+      if (!this.isPlainObject(node?.params)) {
+        return;
+      }
+
+      Object.entries(node.params).forEach(([key, linkValue]) => {
+        const targetId = typeof linkValue === 'string' ? linkValue : linkValue?.targetId;
+        if (!targetId || !nodes[targetId]) {
+          return;
+        }
+
+        edges.push({
+          id: `${sourceId}_${key}_${targetId}`,
+          kind: 'flow',
+          key,
+          label: key,
+          fromNodeId: sourceId,
+          fromPortId: typeof linkValue === 'object' && linkValue ? (linkValue.sourcePort || 'right') : 'right',
+          toNodeId: targetId,
+          toPortId: typeof linkValue === 'object' && linkValue ? (linkValue.targetPort || 'left') : 'left',
+        });
+      });
+    });
+
+    return edges;
+  }
+
+  getNodeLabel(node) {
+    if (!node || typeof node !== 'object') {
+      return '';
+    }
+
+    return String(node.title || node.content || node.id || '').trim();
+  }
+
+  createUniqueParamKey(params = {}, baseKey = 'link') {
+    const normalizedBase = String(baseKey || 'link').trim() || 'link';
+    if (!Object.prototype.hasOwnProperty.call(params, normalizedBase)) {
+      return normalizedBase;
+    }
+
+    let suffix = 2;
+    let candidate = `${normalizedBase}_${suffix}`;
+    while (Object.prototype.hasOwnProperty.call(params, candidate)) {
+      suffix += 1;
+      candidate = `${normalizedBase}_${suffix}`;
+    }
+    return candidate;
+  }
+
+  getNodeBounds(nodes = {}, nodeIds = []) {
+    const ids = (Array.isArray(nodeIds) && nodeIds.length > 0)
+      ? nodeIds.filter((id) => nodes[id])
+      : Object.keys(nodes || {});
+
+    if (!ids.length) {
+      return {
+        minX: 0,
+        minY: 0,
+        width: 320,
+        height: 320,
+      };
+    }
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    ids.forEach((id) => {
+      const node = nodes[id];
+      if (!node) {
+        return;
+      }
+
+      const size = resolveNodeSize(node);
+      minX = Math.min(minX, Number(node.x) || 0);
+      minY = Math.min(minY, Number(node.y) || 0);
+      maxX = Math.max(maxX, (Number(node.x) || 0) + size.width);
+      maxY = Math.max(maxY, (Number(node.y) || 0) + size.height);
+    });
+
+    if (!Number.isFinite(minX) || !Number.isFinite(minY)) {
+      return {
+        minX: 0,
+        minY: 0,
+        width: 320,
+        height: 320,
+      };
+    }
+
+    return {
+      minX,
+      minY,
+      width: Math.max(1, maxX - minX),
+      height: Math.max(1, maxY - minY),
+    };
   }
 
   init() {
@@ -52,6 +164,7 @@ class NodeManager {
       if (!nodeEl) return;
       if (e.target.closest('.port')) return;
       if (e.target.closest('.node-edit-btn')) return;
+      if (e.target.closest('.node-folder-open-btn')) return;
       if (e.target.closest('.node-delete-btn')) return;
       if (e.target.closest('.node-content') && nodeEl.classList.contains('is-editing')) return;
 
@@ -156,6 +269,8 @@ class NodeManager {
     const size = resolveNodeSize({ content: '' });
     const node = {
       id,
+      type: 'note',
+      title: '',
       x,
       y,
       content: '',
@@ -171,6 +286,200 @@ class NodeManager {
     store.setLastActiveNode(id);
     store.emit('nodes:updated', store.state.nodes);
     store.saveHistory();
+  }
+
+  groupSelectionIntoFolder() {
+    const currentDocument = typeof store.getCurrentDocument === 'function'
+      ? store.getCurrentDocument()
+      : store.document;
+    if (!currentDocument || !currentDocument.nodes) {
+      return false;
+    }
+
+    const selectedIds = [...new Set((Array.isArray(store.state.selection?.nodeIds) ? store.state.selection.nodeIds : []).filter((id) => currentDocument.nodes[id]))];
+    const fallbackActive = store.state.interaction?.lastActiveNodeId;
+    if (!selectedIds.length && fallbackActive && currentDocument.nodes[fallbackActive]) {
+      selectedIds.push(fallbackActive);
+    }
+
+    if (!selectedIds.length) {
+      return false;
+    }
+
+    const currentDepth = typeof store.getCurrentDepth === 'function' ? store.getCurrentDepth() : 0;
+    if (currentDepth >= MAX_FOLDER_DEPTH) {
+      window.alert(`最多只能建立 ${MAX_FOLDER_DEPTH} 層資料夾。`);
+      return false;
+    }
+
+    const selectedSet = new Set(selectedIds);
+    const selectionBounds = this.getNodeBounds(currentDocument.nodes, selectedIds);
+    const margin = 56;
+    const folderTitleSource = this.getNodeLabel(currentDocument.nodes[selectedIds[0]]);
+    const folderTitle = folderTitleSource ? `Folder · ${folderTitleSource.slice(0, 24)}` : 'Folder';
+    const summaryText = `${selectedIds.length} nodes`;
+    const folderNodeId = createNodeId(new Set(Object.keys(currentDocument.nodes)), 'folder');
+
+    const childDocument = createDefaultDocument();
+    childDocument.meta.title = folderTitle;
+    childDocument.assets = this.cloneValue(currentDocument.assets || []);
+    childDocument.extras = this.cloneValue(currentDocument.extras || {});
+    childDocument.entryNodeId = selectedSet.has(currentDocument.entryNodeId)
+      ? currentDocument.entryNodeId
+      : selectedIds[0];
+
+    const childNodes = {};
+    const folderParams = {};
+    const boundaryLinks = {
+      incoming: [],
+      outgoing: [],
+    };
+
+    selectedIds.forEach((nodeId) => {
+      const sourceNode = currentDocument.nodes[nodeId];
+      if (!sourceNode) {
+        return;
+      }
+
+      const cloned = this.cloneValue(sourceNode);
+      cloned.x = (Number(sourceNode.x) || 0) - selectionBounds.minX + margin;
+      cloned.y = (Number(sourceNode.y) || 0) - selectionBounds.minY + margin;
+      cloned.params = {};
+
+      if (this.isPlainObject(sourceNode.params)) {
+        Object.entries(sourceNode.params).forEach(([key, linkValue]) => {
+          const targetId = typeof linkValue === 'string' ? linkValue : linkValue?.targetId;
+          if (!targetId) {
+            return;
+          }
+
+          const sourcePort = typeof linkValue === 'object' && linkValue ? (linkValue.sourcePort || 'right') : 'right';
+          const targetPort = typeof linkValue === 'object' && linkValue ? (linkValue.targetPort || 'left') : 'left';
+
+          if (selectedSet.has(targetId)) {
+            cloned.params[key] = typeof linkValue === 'string'
+              ? {
+                targetId,
+                sourcePort,
+                targetPort,
+              }
+              : this.cloneValue(linkValue);
+            return;
+          }
+
+          const folderKey = this.createUniqueParamKey(folderParams, key);
+          folderParams[folderKey] = {
+            targetId,
+            sourcePort,
+            targetPort,
+            originNodeId: nodeId,
+            originKey: key,
+          };
+          boundaryLinks.outgoing.push({
+            sourceNodeId: nodeId,
+            key,
+            targetId,
+            sourcePort,
+            targetPort,
+          });
+        });
+      }
+
+      childNodes[nodeId] = cloned;
+    });
+
+    Object.values(currentDocument.nodes).forEach((node) => {
+      if (!node || selectedSet.has(node.id) || !this.isPlainObject(node.params)) {
+        return;
+      }
+
+      Object.entries(node.params).forEach(([key, linkValue]) => {
+        const targetId = typeof linkValue === 'string' ? linkValue : linkValue?.targetId;
+        if (!selectedSet.has(targetId)) {
+          return;
+        }
+
+        const sourcePort = typeof linkValue === 'object' && linkValue ? (linkValue.sourcePort || 'right') : 'right';
+        const targetPort = typeof linkValue === 'object' && linkValue ? (linkValue.targetPort || 'left') : 'left';
+        node.params[key] = {
+          ...(typeof linkValue === 'object' && linkValue ? this.cloneValue(linkValue) : {}),
+          targetId: folderNodeId,
+          sourcePort,
+          targetPort,
+          groupedTargetId: targetId,
+        };
+        boundaryLinks.incoming.push({
+          sourceNodeId: node.id,
+          key,
+          targetId,
+          sourcePort,
+          targetPort,
+        });
+      });
+    });
+
+    selectedIds.forEach((nodeId) => {
+      delete currentDocument.nodes[nodeId];
+    });
+
+    const childEdges = this.buildEdgesFromNodes(childNodes);
+    childDocument.nodes = childNodes;
+    childDocument.edges = childEdges;
+    childDocument.entryNodeId = childDocument.entryNodeId && childNodes[childDocument.entryNodeId]
+      ? childDocument.entryNodeId
+      : Object.keys(childNodes)[0] || null;
+
+    const folderNode = {
+      id: folderNodeId,
+      type: 'folder',
+      title: folderTitle,
+      x: selectionBounds.minX - margin,
+      y: selectionBounds.minY - margin,
+      content: `${summaryText} · ${childEdges.length + boundaryLinks.incoming.length + boundaryLinks.outgoing.length} links`,
+      size: {
+        width: 0,
+        height: 0,
+      },
+      params: {},
+      folder: {
+        document: childDocument,
+        summary: `${summaryText} · ${childEdges.length + boundaryLinks.incoming.length + boundaryLinks.outgoing.length} links`,
+        depth: currentDepth + 1,
+        colorIndex: currentDepth + 1,
+        collapsed: false,
+        boundaryLinks,
+        sourceNodeIds: selectedIds,
+      },
+    };
+
+    const folderSize = resolveNodeSize(folderNode);
+    const side = Math.max(
+      folderSize.width,
+      folderSize.height,
+      selectionBounds.width + margin * 2,
+      selectionBounds.height + margin * 2,
+    );
+    folderNode.size = {
+      width: side,
+      height: side,
+    };
+    folderNode.x = (selectionBounds.minX + (selectionBounds.width / 2)) - (side / 2);
+    folderNode.y = (selectionBounds.minY + (selectionBounds.height / 2)) - (side / 2);
+    folderNode.params = folderParams;
+
+    if (selectedSet.has(currentDocument.entryNodeId)) {
+      currentDocument.entryNodeId = folderNodeId;
+    }
+
+    currentDocument.nodes[folderNodeId] = folderNode;
+    currentDocument.edges = this.buildEdgesFromNodes(currentDocument.nodes);
+
+    store.setSelectionNodeIds([folderNodeId]);
+    store.setLastActiveNode(folderNodeId);
+    store.emit('nodes:updated', currentDocument.nodes);
+    store.emit('connections:updated');
+    store.saveHistory();
+    return true;
   }
 
   deleteNode(id) {

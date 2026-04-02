@@ -1,5 +1,7 @@
 export const NODE_MIN_SIDE = 260;
 export const NODE_MAX_SIDE = 640;
+export const NODE_FOLDER_MIN_SIDE = 320;
+export const NODE_FOLDER_MAX_SIDE = 760;
 export const NODE_HEADER_HEIGHT = 42;
 export const NODE_CONTENT_HORIZONTAL_PADDING = 56;
 export const NODE_CONTENT_VERTICAL_PADDING = 24;
@@ -24,6 +26,24 @@ function getNodeContent(node = {}) {
   }
 
   return typeof node.content === 'string' ? node.content : '';
+}
+
+function getFolderNodeText(node = {}) {
+  if (!isPlainObject(node)) {
+    return '';
+  }
+
+  const title = typeof node.title === 'string' ? node.title : '';
+  const content = typeof node.content === 'string' ? node.content : '';
+  const summary = typeof node.folder?.summary === 'string' ? node.folder.summary : '';
+  const parts = [title];
+  if (content) {
+    parts.push(content);
+  }
+  if (summary && summary !== content) {
+    parts.push(summary);
+  }
+  return parts.filter(Boolean).join('\n');
 }
 
 function getExplicitSize(node = {}) {
@@ -80,14 +100,21 @@ export function estimateNodeSquareSize(content = '', {
 }
 
 export function resolveNodeSize(node = {}, options = {}) {
-  const content = getNodeContent(node);
+  const isFolder = isPlainObject(node) && node.type === 'folder';
+  const content = isFolder ? getFolderNodeText(node) : getNodeContent(node);
+  const minSide = options.minSide ?? (isFolder ? NODE_FOLDER_MIN_SIDE : NODE_MIN_SIDE);
+  const maxSide = options.maxSide ?? (isFolder ? NODE_FOLDER_MAX_SIDE : NODE_MAX_SIDE);
   if (content.length > 0) {
-    return estimateNodeSquareSize(content, options);
+    return estimateNodeSquareSize(content, {
+      ...options,
+      minSide,
+      maxSide,
+    });
   }
 
   const explicitSize = getExplicitSize(node);
   if (explicitSize) {
-    const side = clampSide(Math.max(explicitSize.width, explicitSize.height), options.minSide ?? NODE_MIN_SIDE, options.maxSide ?? NODE_MAX_SIDE);
+    const side = clampSide(Math.max(explicitSize.width, explicitSize.height), minSide, maxSide);
     return {
       width: side,
       height: side,
@@ -97,5 +124,9 @@ export function resolveNodeSize(node = {}, options = {}) {
     };
   }
 
-  return estimateNodeSquareSize('', options);
+  return estimateNodeSquareSize('', {
+    ...options,
+    minSide,
+    maxSide,
+  });
 }
