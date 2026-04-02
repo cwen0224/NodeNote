@@ -144,6 +144,27 @@ export class StateStore {
     this.session.interaction.lastActiveNodeAt = nodeId ? Date.now() : null;
   }
 
+  setLastPointer(clientX, clientY) {
+    this.session.interaction.lastPointer.x = Number.isFinite(clientX) ? clientX : null;
+    this.session.interaction.lastPointer.y = Number.isFinite(clientY) ? clientY : null;
+  }
+
+  setSelectionNodeIds(nodeIds = []) {
+    const uniqueIds = [...new Set((Array.isArray(nodeIds) ? nodeIds : []).filter(Boolean))];
+    this.session.selection.nodeIds = uniqueIds;
+    this.session.selection.edgeIds = [];
+    if (uniqueIds.length > 0) {
+      this.setLastActiveNode(uniqueIds[0]);
+    }
+    this.emit('selection:updated', this.session.selection);
+  }
+
+  clearSelection() {
+    this.session.selection.nodeIds = [];
+    this.session.selection.edgeIds = [];
+    this.emit('selection:updated', this.session.selection);
+  }
+
   getTransform() {
     return { ...this.session.viewport };
   }

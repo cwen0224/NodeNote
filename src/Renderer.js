@@ -50,6 +50,7 @@ class Renderer {
     store.on('state:updated', () => this.renderAll());
     store.on('nodes:updated', () => this.renderAll());
     store.on('connections:updated', () => this.renderConnections());
+    store.on('selection:updated', () => this.syncSelectionState());
     
     store.on('node:moved', ({ id, x, y }) => {
       const nodeEl = document.querySelector(`.node[data-id="${id}"]`);
@@ -72,6 +73,7 @@ class Renderer {
 
     this.viewport?.addEventListener('pointermove', (e) => {
       const now = performance.now();
+      store.setLastPointer(e.clientX, e.clientY);
       this.pointerState = {
         previous: this.pointerState.current,
         current: { x: e.clientX, y: e.clientY, at: now },
@@ -98,6 +100,7 @@ class Renderer {
     this.renderConnections();
     this.renderMinimap();
     this.updatePortReveal();
+    this.syncSelectionState();
   }
 
   scheduleMinimapRender() {
@@ -186,6 +189,17 @@ class Renderer {
     Object.values(store.state.nodes).forEach(node => {
       const nodeEl = this.createNodeElement(node);
       this.nodeLayer.appendChild(nodeEl);
+    });
+
+    this.syncSelectionState();
+  }
+
+  syncSelectionState() {
+    if (!this.nodeLayer) return;
+
+    const selectedIds = new Set(store.state.selection?.nodeIds || []);
+    document.querySelectorAll('.node').forEach((nodeEl) => {
+      nodeEl.classList.toggle('is-selected', selectedIds.has(nodeEl.dataset.id));
     });
   }
 

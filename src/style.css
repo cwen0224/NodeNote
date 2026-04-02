@@ -41,9 +41,36 @@ body, html {
   transform: translateX(-50%);
   display: flex;
   padding: 8px 16px;
-  gap: 16px;
+  gap: 12px;
   z-index: 1000;
   align-items: center;
+  width: min(96vw, 1320px);
+  max-width: calc(100vw - 24px);
+}
+
+#tray-slots {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding-bottom: 2px;
+}
+
+#tray-slots::-webkit-scrollbar {
+  display: none;
+}
+
+#toolbar .actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  margin-left: auto;
 }
 
 button {
@@ -168,6 +195,15 @@ button:hover {
   border-radius: 8px;
   overflow: visible;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+}
+
+.node.is-selected {
+  border: 1px solid rgba(88, 166, 255, 0.95);
+  box-shadow: 0 0 0 1px rgba(88, 166, 255, 0.7), 0 10px 26px rgba(0, 0, 0, 0.48);
+}
+
+.node.is-selected .node-header {
+  background: rgba(88, 166, 255, 0.12);
 }
 
 .node.dragging {
@@ -307,6 +343,52 @@ button:hover {
   transform: scale(1.12);
   filter: drop-shadow(0 2px 8px rgba(248, 113, 113, 0.24));
   outline: none;
+}
+
+.tray-slot {
+  flex: 0 0 auto;
+  width: 116px;
+  min-width: 116px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  transition: transform 0.16s ease, background 0.16s ease, border-color 0.16s ease, opacity 0.16s ease;
+}
+
+.tray-slot:hover {
+  transform: translateY(-1px);
+}
+
+.tray-slot.is-empty {
+  opacity: 0.55;
+  border-style: dashed;
+}
+
+.tray-slot-index {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.tray-slot-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tray-slot-meta {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Ports (Connection Dots) */

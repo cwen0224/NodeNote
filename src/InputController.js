@@ -41,6 +41,10 @@ class InputController {
       // Allow left click panning if clicking on background (viewport layer)
       const isBackgroundClick = e.target.id === 'viewport' || e.target.id === 'grid-bg' || e.target.id === 'svg-layer';
       const isLeftClickPan = e.button === 0 && (this.spacePressed || isBackgroundClick);
+
+      if (isBackgroundClick) {
+        store.clearSelection();
+      }
       
       if (e.button === 2 || e.button === 1 || isLeftClickPan) {
         this.isPanning = true;

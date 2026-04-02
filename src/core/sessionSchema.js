@@ -23,6 +23,10 @@ export function createDefaultSession() {
       drawingEdgeFrom: null,
       lastActiveNodeId: null,
       lastActiveNodeAt: null,
+      lastPointer: {
+        x: null,
+        y: null,
+      },
     },
     ui: {
       trayOpen: false,

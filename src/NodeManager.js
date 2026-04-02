@@ -3,6 +3,7 @@
  * Handles node lifecycle: creation, removal, dragging, and content updates.
  */
 import { store } from './StateStore.js';
+import { createNodeId, materializeClipboardPayload } from './core/graphClipboard.js';
 
 class NodeManager {
   constructor() {
@@ -54,6 +55,7 @@ class NodeManager {
       if (e.button === 0 && !e.shiftKey) {
         this.isDraggingNode = true;
         this.draggedNodeId = nodeEl.dataset.id;
+        this.selectNodeForInteraction(nodeEl.dataset.id, e.shiftKey);
         store.setLastActiveNode(this.draggedNodeId);
         
         const node = store.state.nodes[this.draggedNodeId];
@@ -89,7 +91,7 @@ class NodeManager {
   }
 
   createNode(x, y) {
-    const id = 'node_' + Date.now();
+    const id = createNodeId(new Set(Object.keys(store.state.nodes)));
     const node = {
       id,
       x,
@@ -99,42 +101,56 @@ class NodeManager {
     };
     
     store.state.nodes[id] = node;
+    store.setSelectionNodeIds([id]);
     store.setLastActiveNode(id);
     store.emit('nodes:updated', store.state.nodes);
     store.saveHistory();
   }
 
   deleteNode(id) {
-    if (!store.state.nodes[id]) {
-      return;
+    return this.deleteNodes([id]);
+  }
+
+  deleteNodes(ids = []) {
+    const uniqueIds = [...new Set((Array.isArray(ids) ? ids : []).filter((id) => typeof id === 'string' && store.state.nodes[id]))];
+    if (!uniqueIds.length) {
+      return false;
     }
 
-    delete store.state.nodes[id];
-
-    if (store.state.interaction?.lastActiveNodeId === id) {
-      store.setLastActiveNode(null);
-    }
+    uniqueIds.forEach((id) => {
+      delete store.state.nodes[id];
+    });
 
     Object.values(store.state.nodes).forEach((node) => {
       if (!node.params) {
         return;
       }
+
       let changed = false;
       Object.entries(node.params).forEach(([key, linkValue]) => {
         const targetId = typeof linkValue === 'string' ? linkValue : linkValue?.targetId;
-        if (targetId === id) {
+        if (uniqueIds.includes(targetId)) {
           delete node.params[key];
           changed = true;
         }
       });
+
       if (changed && Object.keys(node.params).length === 0) {
         delete node.params;
       }
     });
 
+    const nextSelection = (store.state.selection?.nodeIds || []).filter((id) => !uniqueIds.includes(id));
+    store.setSelectionNodeIds(nextSelection);
+
+    if (uniqueIds.includes(store.state.interaction?.lastActiveNodeId)) {
+      store.setLastActiveNode(nextSelection[0] || Object.keys(store.state.nodes)[0] || null);
+    }
+
     store.emit('nodes:updated', store.state.nodes);
     store.emit('connections:updated');
     store.saveHistory();
+    return true;
   }
 
   updateNodePosition(id, x, y) {
@@ -158,6 +174,61 @@ class NodeManager {
         store.saveHistory();
       }, 1000);
     }
+  }
+
+  selectNodeForInteraction(nodeId, additive = false) {
+    if (!nodeId) {
+      return;
+    }
+
+    if (additive) {
+      const current = new Set(store.state.selection?.nodeIds || []);
+      if (current.has(nodeId)) {
+        current.delete(nodeId);
+      } else {
+        current.add(nodeId);
+      }
+      store.setSelectionNodeIds([...current]);
+      return;
+    }
+
+    store.setSelectionNodeIds([nodeId]);
+  }
+
+  getPasteAnchorWorldPoint() {
+    const pointer = store.state.interaction?.lastPointer;
+    const { x, y, scale } = store.getTransform();
+    const viewportRect = this.viewport?.getBoundingClientRect?.();
+    const clientX = Number.isFinite(pointer?.x) ? pointer.x : (viewportRect ? viewportRect.left + viewportRect.width / 2 : window.innerWidth / 2);
+    const clientY = Number.isFinite(pointer?.y) ? pointer.y : (viewportRect ? viewportRect.top + viewportRect.height / 2 : window.innerHeight / 2);
+
+    return {
+      x: (clientX - x) / scale,
+      y: (clientY - y) / scale,
+    };
+  }
+
+  insertFragment(fragment, anchorWorldPoint = null) {
+    const existingIds = new Set(Object.keys(store.state.nodes));
+    const materialized = materializeClipboardPayload(fragment, {
+      anchorWorldPoint: anchorWorldPoint || this.getPasteAnchorWorldPoint(),
+      existingNodeIds: existingIds,
+    });
+
+    if (!materialized || !Object.keys(materialized.nodes).length) {
+      return null;
+    }
+
+    Object.entries(materialized.nodes).forEach(([nodeId, node]) => {
+      store.state.nodes[nodeId] = node;
+    });
+
+    store.emit('nodes:updated', store.state.nodes);
+    store.emit('connections:updated');
+    store.setSelectionNodeIds(materialized.rootNodeIds.length ? materialized.rootNodeIds : materialized.nodeIds);
+    store.setLastActiveNode(materialized.rootNodeIds[0] || materialized.nodeIds[0] || null);
+    store.saveHistory();
+    return materialized;
   }
 }
 
