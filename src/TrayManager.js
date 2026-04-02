@@ -27,6 +27,17 @@ class TrayManager {
 
   setupEvents() {
     this.traySlotsEl?.addEventListener('click', (event) => {
+      const deleteButton = event.target.closest?.('.tray-slot-delete-btn');
+      if (deleteButton) {
+        const slotIndex = Number(deleteButton.dataset.index);
+        if (Number.isInteger(slotIndex)) {
+          event.preventDefault();
+          event.stopPropagation();
+          this.deleteSlot(slotIndex);
+        }
+        return;
+      }
+
       const slotButton = event.target.closest?.('.tray-slot');
       if (!slotButton) {
         return;
@@ -135,6 +146,7 @@ class TrayManager {
         `;
       } else {
         button.innerHTML = `
+          <span class="node-delete-btn tray-slot-delete-btn" data-index="${index}" aria-label="刪除托盤項目" title="刪除托盤項目">×</span>
           <span class="tray-slot-index">Data ${index + 1}</span>
           <span class="tray-slot-label">${this.escapeHtml(slot.label)}</span>
           <span class="tray-slot-meta">${this.escapeHtml(slot.summary)}</span>
@@ -175,6 +187,17 @@ class TrayManager {
     this.slots = this.slots.slice(0, MAX_SLOTS);
     this.saveSlots();
     this.render();
+  }
+
+  deleteSlot(index) {
+    if (!Number.isInteger(index) || index < 0 || index >= this.slots.length) {
+      return false;
+    }
+
+    this.slots.splice(index, 1);
+    this.saveSlots();
+    this.render();
+    return true;
   }
 
   async writeTextToClipboard(text) {
