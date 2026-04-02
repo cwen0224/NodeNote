@@ -33,9 +33,11 @@
         <button id="btn-folder-back" type="button">Back</button>
         <div id="folder-breadcrumb" aria-label="Folder breadcrumb"></div>
       </div>
-      <div id="build-badge" class="toolbar-badge">v--:--</div>
-      <div id="cloud-status-badge" class="toolbar-badge">Cloud: off</div>
-      <div class="actions">
+      <div class="toolbar-meta">
+        <div class="toolbar-badges">
+          <div id="build-badge" class="toolbar-badge">v--:--</div>
+          <div id="cloud-status-badge" class="toolbar-badge">Cloud: off</div>
+        </div>
         <div class="toolbar-prompt-switch">
           <label for="prompt-template-select">Prompt</label>
           <select id="prompt-template-select" aria-label="選擇提詞版本">
@@ -44,6 +46,8 @@
             <option value="media">媒體版</option>
           </select>
         </div>
+      </div>
+      <div class="actions">
         <button id="btn-ai-prompt-copy" type="button">提詞複製</button>
         <button id="btn-folder-group" type="button">Group</button>
         <button id="btn-cloud-sync" type="button">Cloud</button>
