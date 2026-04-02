@@ -134,23 +134,6 @@ const initApp = () => {
         hidePromptPicker();
       }, delay);
     };
-    const positionPromptPicker = () => {
-      if (!promptPicker || !aiPromptCopyBtn) {
-        return;
-      }
-
-      const buttonRect = aiPromptCopyBtn.getBoundingClientRect();
-      const pickerRect = promptPicker.getBoundingClientRect();
-      const viewportWidth = window.innerWidth;
-      const top = Math.min(window.innerHeight - pickerRect.height - 16, buttonRect.bottom + 8);
-      const left = Math.max(16, Math.min(viewportWidth - pickerRect.width - 16, buttonRect.right - pickerRect.width));
-
-      promptPicker.style.position = 'fixed';
-      promptPicker.style.top = `${Math.max(16, top)}px`;
-      promptPicker.style.left = `${Math.max(16, left)}px`;
-      promptPicker.style.right = 'auto';
-      promptPicker.style.zIndex = '2000';
-    };
     const setTrayDrawerOpen = (isOpen) => {
       if (!trayDrawer || !trayToggleBtn) {
         return;
@@ -197,7 +180,6 @@ const initApp = () => {
         const isHidden = Boolean(promptPicker.hidden);
         promptPicker.hidden = !isHidden;
         if (isHidden) {
-          window.requestAnimationFrame(positionPromptPicker);
           schedulePromptPickerHide();
         }
         aiPromptCopyBtn.setAttribute('aria-expanded', String(isHidden));
@@ -244,11 +226,6 @@ const initApp = () => {
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') {
         hidePromptPicker();
-      }
-    });
-    window.addEventListener('resize', () => {
-      if (promptPicker && !promptPicker.hidden) {
-        positionPromptPicker();
       }
     });
     if(folderGroupBtn) folderGroupBtn.onclick = () => nodeManager.groupSelectionIntoFolder();

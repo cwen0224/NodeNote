@@ -41,13 +41,21 @@
 
     <!-- Top toolbar for tray and actions -->
     <div id="toolbar" class="glass-panel">
-      <div class="toolbar-folder-nav">
-        <button id="btn-folder-back" type="button">Back</button>
-        <div id="build-badge" class="toolbar-badge">v--:--</div>
-        <div id="folder-breadcrumb" aria-label="Folder breadcrumb"></div>
+      <div class="toolbar-primary">
+        <div class="toolbar-folder-nav">
+          <button id="btn-folder-back" type="button">Back</button>
+          <div id="folder-breadcrumb" aria-label="Folder breadcrumb"></div>
+        </div>
+        <div class="actions">
+          <button id="btn-folder-group" type="button">Group</button>
+          <button id="btn-cloud-sync" type="button">Cloud</button>
+          <button id="btn-undo">Undo</button>
+          <button id="btn-redo">Redo</button>
+        </div>
       </div>
-      <div class="toolbar-meta">
-        <div class="toolbar-badges">
+      <div class="toolbar-secondary">
+        <div class="toolbar-status">
+          <div id="build-badge" class="toolbar-badge">v--:--</div>
           <div id="cloud-status-badge" class="toolbar-badge">Cloud: off</div>
         </div>
         <div class="prompt-copy-wrap">
@@ -58,12 +66,6 @@
             <button type="button" class="prompt-picker-item" data-prompt-mode="media">媒體版</button>
           </div>
         </div>
-      </div>
-      <div class="actions">
-        <button id="btn-folder-group" type="button">Group</button>
-        <button id="btn-cloud-sync" type="button">Cloud</button>
-        <button id="btn-undo">Undo</button>
-        <button id="btn-redo">Redo</button>
       </div>
     </div>
 
