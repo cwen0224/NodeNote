@@ -7,28 +7,31 @@ const SHARED_RULES = [
   '2. JSON 必須可被機器直接解析，不能有尾逗號、註解、重複鍵、或不合法字元。',
   '3. 不要輸出 Markdown escape，也不要把 URL 寫成 Markdown 連結。',
   '4. 不要把中文直接當作結構 key；key 一律使用英文或 ASCII slug。',
-  '5. 如果有資料夾層級，請使用 flat manifest：rootFolderId、folders、nodes、edges、assets、extras。',
-  '6. folders.children 必須是 ref objects，格式為 {"kind":"node"|"folder","id":"..."}。',
-  '7. edges 必須是陣列，每個 edge 都要有 fromNodeId、toNodeId、fromPortId、toPortId、key、label。',
-  '8. 每個 folder 至少要有 id、parentFolderId、name、title、depth、colorIndex、children、entryNodeId。',
-  '9. 每個 node 至少要有 id、folderId、type、title、content、x、y、size、params。',
-  '10. 每個 asset 必須是純 JSON 物件，url 欄位必須是純網址字串，不可使用 Markdown 連結或包覆文字。',
-  '11. 資料夾不是標籤，而是編輯上下文與內容容器；只要內容有章節、場景、主題、子題、模組、段落，就必須建立 folder。',
-  '12. 只要同一主題下還能再切分子主題，就應該再建立下一層 folder，不要把整包內容全塞進 root。',
-  '13. 每個 folder 都應該有清楚的入口節點 entryNodeId，並且 children 要列出它實際包含的 node/folder。',
-  '14. 只要內容存在順序、因果、分支、流程、進入、返回、觸發，就必須建立 edge。',
-  '15. 至少要有一個 folder 作為分組容器，至少要有一條 edge 連接兩個存在的節點。',
-  '16. 如果有多個 folder，請確保至少有一個子 folder，並且預設結構要讓使用者一眼看出層級關係。',
-  '17. 跨資料夾的連線也必須保留，不要因為節點在不同 folder 就省略 edge。',
-  '18. 每個節點都應優先使用正確的接點方向，不要全部都用 right -> left。',
-  '19. 垂直流程、層級進出、下一層 / 上一層，優先使用 top / bottom。',
-  '20. 水平分支、並列比較、左右選擇，優先使用 left / right。',
-  '21. 若一個節點只有單一路徑，可以用 bottom 當輸出、top 當回流；若是分支節點，請左右兩側都要出現 edge。',
-  '22. 若要表達可選分支，請用多條 edge，不要把一切塞在單一文字裡。',
-  '23. 若要表達資料夾內頁，最多 7 層。',
-  '24. 若使用中文 key，請先正規化成英文 canonical key，再把中文保留在 label 或內容。',
-  '25. 如果資訊不足，請補齊常見最佳實務，不要留下空白 placeholder。',
-  '26. 內容要有清楚層次，避免所有節點擠在同一區，座標請合理分散避免重疊。',
+  '5. 如果要表達關係，請以 edges 為主，不要只寫 params；params 只能作為語意提示，不可取代 edge。',
+  '6. 如果有資料夾層級，請使用 flat manifest：rootFolderId、folders、nodes、edges、assets、extras。',
+  '7. folders.children 必須是 ref objects，格式為 {"kind":"node"|"folder","id":"..."}。',
+  '8. edges 必須是陣列，每個 edge 都要有 fromNodeId、toNodeId、fromPortId、toPortId、key、label。',
+  '9. 每個 edge 建議再補 scopeFolderId、kind、id，讓匯入和匯出都能穩定重建圖。',
+  '10. 每個 folder 至少要有 id、parentFolderId、name、title、depth、colorIndex、children、entryNodeId。',
+  '11. 每個 node 至少要有 id、folderId、type、title、content、x、y、size、params。',
+  '12. 每個 asset 必須是純 JSON 物件，url 欄位必須是純網址字串，不可使用 Markdown 連結或包覆文字。',
+  '13. 資料夾不是標籤，而是編輯上下文與內容容器；只要內容有章節、場景、主題、子題、模組、段落，就必須建立 folder。',
+  '14. 只要同一主題下還能再切分子主題，就應該再建立下一層 folder，不要把整包內容全塞進 root。',
+  '15. 每個 folder 都應該有清楚的入口節點 entryNodeId，並且 children 要列出它實際包含的 node/folder。',
+  '16. 只要內容存在順序、因果、分支、流程、進入、返回、觸發，就必須建立 edge。',
+  '17. 至少要有一個 folder 作為分組容器，至少要有一條 edge 連接兩個存在的節點。',
+  '18. 如果有多個 folder，請確保至少有一個子 folder，並且預設結構要讓使用者一眼看出層級關係。',
+  '19. 跨資料夾的連線也必須保留，不要因為節點在不同 folder 就省略 edge。',
+  '20. 每個節點都應優先使用正確的接點方向，不要全部都用 right -> left。',
+  '21. 垂直流程、層級進出、下一層 / 上一層，優先使用 top / bottom。',
+  '22. 水平分支、並列比較、左右選擇，優先使用 left / right。',
+  '23. 若一個節點只有單一路徑，可以用 bottom 當輸出、top 當回流；若是分支節點，請左右兩側都要出現 edge。',
+  '24. 若要表達可選分支，請用多條 edge，不要把一切塞在單一文字裡。',
+  '25. 若要表達資料夾內頁，最多 7 層。',
+  '26. 如果資訊不足，請補齊常見最佳實務，不要留下空白 placeholder。',
+  '27. 內容要有清楚層次，避免所有節點擠在同一區，座標請合理分散避免重疊。',
+  '28. 如果使用中文 key，請先正規化成英文 canonical key，再把中文保留在 label 或內容。',
+  '29. 不要把 binary、base64、blob 或檔案內容直接塞進 JSON，只放可讀的資產引用。',
 ];
 
 function buildPromptSections(extraRules, sampleLines) {
@@ -37,6 +40,14 @@ function buildPromptSections(extraRules, sampleLines) {
     '',
     ...extraRules,
     '',
+    '輸出前檢查：',
+    '- 是否為合法 JSON',
+    '- 是否每個 id 都唯一',
+    '- 是否每個 edge 的 from/to 都存在',
+    '- 是否 canonical key 都是 ASCII',
+    '- 是否沒有把 Markdown、escape、或 URL 包裝文字混進資料',
+    '- 是否至少有一個 folder 與一條 edge',
+    '',
     '最小範例結構：',
     ...sampleLines,
   ].join('\n');
@@ -44,8 +55,10 @@ function buildPromptSections(extraRules, sampleLines) {
 
 function buildNotePrompt() {
   return buildPromptSections([
-    '27. 如果是筆記內容，請讓節點具備主題、子題、參考、延伸、結論。',
-    '28. 筆記版請優先使用 folder 來分章，使用 node 來放可閱讀內容，並用 edge 表達概念關聯。',
+    '30. 如果是筆記內容，請讓節點具備主題、子題、參考、延伸、結論。',
+    '31. 筆記版請優先使用 folder 來分章，使用 node 來放可閱讀內容，並用 edge 表達概念關聯。',
+    '32. 筆記圖至少應包含一個總覽 folder、一個子 folder、一個索引節點、一個細節節點，以及一條從索引到細節的 edge。',
+    '33. 筆記的 root 不要塞入全部內容，root 只放導覽與主要入口。',
   ], [
     '{',
     '  "schemaVersion": "1.0.0",',
@@ -64,7 +77,7 @@ function buildNotePrompt() {
     '        { "kind": "node", "id": "node_index" }',
     '      ],',
     '      "entryNodeId": "node_index",',
-    '      "summary": ""',
+    '      "summary": "總覽與入口。"',
     '    },',
     '    "folder_topic": {',
     '      "id": "folder_topic",',
@@ -77,7 +90,7 @@ function buildNotePrompt() {
     '        { "kind": "node", "id": "node_detail" }',
     '      ],',
     '      "entryNodeId": "node_detail",',
-    '      "summary": ""',
+    '      "summary": "子主題與細節。"',
     '    }',
     '  },',
     '  "nodes": {',
@@ -90,7 +103,7 @@ function buildNotePrompt() {
     '      "x": 100,',
     '      "y": 100,',
     '      "size": { "width": 320, "height": 320 },',
-    '      "params": { "next": "node_detail" },',
+    '      "params": {},',
     '      "assets": [],',
     '      "meta": {},',
     '      "ui": {}',
@@ -131,9 +144,11 @@ function buildNotePrompt() {
 
 function buildStoryPrompt() {
   return buildPromptSections([
-    '27. 如果是故事內容，請讓節點具備開場、展開、轉折、收束、結尾。',
-    '28. 劇情版請優先使用 folder 分章節 / 場景，使用 node 放對話與事件，使用 edge 放分支與流程。',
-    '29. 劇情節點可以使用 speaker、line、emotion 等語意，但 canonical key 仍然要維持英文或 ASCII slug。',
+    '30. 如果是故事內容，請讓節點具備開場、展開、轉折、收束、結尾。',
+    '31. 劇情版請優先使用 folder 分章節 / 場景，使用 node 放對話與事件，使用 edge 放分支與流程。',
+    '32. 劇情節點可以使用 speaker、line、emotion 等語意，但 canonical key 仍然要維持英文或 ASCII slug。',
+    '33. 劇情圖至少應包含一個開場 folder、一個場景 folder、一個選擇節點、兩條分支 edge、以及一個結尾節點。',
+    '34. 若有選擇分歧，請用左右接點；若是流程前進，請用上下接點。',
   ], [
     '{',
     '  "schemaVersion": "1.0.0",',
@@ -152,7 +167,7 @@ function buildStoryPrompt() {
     '        { "kind": "node", "id": "node_open" }',
     '      ],',
     '      "entryNodeId": "node_open",',
-    '      "summary": ""',
+    '      "summary": "開場與主線。"',
     '    },',
     '    "folder_scene": {',
     '      "id": "folder_scene",',
@@ -165,7 +180,7 @@ function buildStoryPrompt() {
     '        { "kind": "node", "id": "node_choice" }',
     '      ],',
     '      "entryNodeId": "node_choice",',
-    '      "summary": ""',
+    '      "summary": "分歧與選擇。"',
     '    }',
     '  },',
     '  "nodes": {',
@@ -305,9 +320,11 @@ function buildStoryPrompt() {
 
 function buildMediaPrompt() {
   return buildPromptSections([
-    '27. 如果是媒體內容，請讓節點具備圖片、音效、影片、Live2D、字幕、轉場等語意。',
-    '28. 媒體版請優先使用 folder 分專案資源、場景與媒體類型，並在 node.assets 或 node.meta.media 中放純網址或路徑字串。',
-    '29. 不要把二進位資料放進 JSON；只放可讀的資產參照、顯示名稱與播放控制參數。',
+    '30. 如果是媒體內容，請讓節點具備圖片、音效、影片、Live2D、字幕、轉場等語意。',
+    '31. 媒體版請優先使用 folder 分專案資源、場景與媒體類型，並在 node.assets 或 node.meta.media 中放純網址或路徑字串。',
+    '32. 不要把二進位資料放進 JSON；只放可讀的資產參照、顯示名稱與播放控制參數。',
+    '33. 媒體圖至少應包含一個啟動節點、一個影片節點、一個轉場節點、一個 Live2D 節點、一個音訊節點，以及多條 edge 串成流程。',
+    '34. 若是播放流程，請用 bottom -> top 或 right -> left 的順序接點，並在必要時保留分層資料夾。',
   ], [
     '{',
     '  "schemaVersion": "1.0.0",',
@@ -326,7 +343,7 @@ function buildMediaPrompt() {
     '        { "kind": "node", "id": "node_scene" }',
     '      ],',
     '      "entryNodeId": "node_scene",',
-    '      "summary": ""',
+    '      "summary": "場景與資產。"',
     '    },',
     '    "folder_assets": {',
     '      "id": "folder_assets",',
@@ -340,7 +357,7 @@ function buildMediaPrompt() {
     '        { "kind": "node", "id": "node_live2d" }',
     '      ],',
     '      "entryNodeId": "node_video",',
-    '      "summary": ""',
+    '      "summary": "影片與模型。"',
     '    }',
     '  },',
     '  "nodes": {',
@@ -430,7 +447,7 @@ function buildMediaPrompt() {
     '    {',
     '      "id": "edge_video_caption",',
     '      "kind": "flow",',
-    '      "scopeFolderId": "folder_root",',
+    '      "scopeFolderId": "folder_assets",',
     '      "key": "on_end",',
     '      "label": "影片結束",',
     '      "fromNodeId": "node_video",',
@@ -456,7 +473,7 @@ function buildMediaPrompt() {
   ]);
 }
 
-const promptModes = {
+const PROMPTS = {
   note: {
     label: '筆記版',
     prompt: buildNotePrompt(),
@@ -471,13 +488,14 @@ const promptModes = {
   },
 };
 
-export const NODENOTE_PROMPT_MODES = promptModes;
-export const NODENOTE_PROMPT_OPTIONS = Object.entries(promptModes).map(([value, { label }]) => ({
-  value,
-  label,
-}));
-export const NODENOTE_AI_PROMPT = promptModes.note.prompt;
-
 export function getNodeNotePrompt(mode = 'note') {
-  return promptModes[mode]?.prompt || promptModes.note.prompt;
+  const entry = PROMPTS[mode];
+  return entry?.prompt || PROMPTS.note.prompt;
+}
+
+export function getNodeNotePromptOptions() {
+  return Object.entries(PROMPTS).map(([value, entry]) => ({
+    value,
+    label: entry.label,
+  }));
 }
