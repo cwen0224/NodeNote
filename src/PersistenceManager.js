@@ -14,6 +14,7 @@ class PersistenceManager {
   constructor() {
     this.saveTimer = null;
     this.revision = 0;
+    this.restored = false;
     this.boundScheduleSave = this.scheduleSave.bind(this);
     this.boundFlushNow = this.flushNow.bind(this);
     this.boundBeforeUnload = this.flushNow.bind(this);
@@ -71,6 +72,14 @@ class PersistenceManager {
     }
   }
 
+  hasStoredSnapshot() {
+    return Boolean(this.getStoredSnapshot());
+  }
+
+  wasRestored() {
+    return this.restored;
+  }
+
   restoreAutosave() {
     const snapshot = this.getStoredSnapshot();
     if (!snapshot || !isPlainObject(snapshot.document)) {
@@ -87,7 +96,19 @@ class PersistenceManager {
       store.setTransform(x, y, scale);
     }
 
+    this.restored = true;
     return true;
+  }
+
+  createSnapshot() {
+    return {
+      schema: AUTOSAVE_SCHEMA,
+      version: AUTOSAVE_VERSION,
+      revision: this.revision + 1,
+      savedAt: new Date().toISOString(),
+      document: store.getDocumentSnapshot(),
+      viewport: store.getTransform(),
+    };
   }
 
   scheduleSave() {
@@ -107,20 +128,21 @@ class PersistenceManager {
       this.saveTimer = null;
     }
 
-    const snapshot = {
-      schema: AUTOSAVE_SCHEMA,
-      version: AUTOSAVE_VERSION,
-      revision: ++this.revision,
-      savedAt: new Date().toISOString(),
-      document: store.getDocumentSnapshot(),
-      viewport: store.getTransform(),
-    };
+    const snapshot = this.createSnapshot();
+    this.revision = snapshot.revision;
 
+    let saved = false;
     try {
       localStorage.setItem(AUTOSAVE_STORAGE_KEY, JSON.stringify(snapshot));
+      saved = true;
     } catch (error) {
       console.warn('Autosave failed', error);
     }
+
+    store.emit('autosave:updated', {
+      ...snapshot,
+      saved,
+    });
   }
 }
 

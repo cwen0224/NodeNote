@@ -78,6 +78,7 @@ External integrations should stay outside the core document model.
 
 - clipboard
 - Git sync
+- cloud sync / remote snapshot backup
 - file import/export
 - AI JSON generation / validation
 - storage persistence
@@ -101,4 +102,3 @@ External integrations should stay outside the core document model.
 ## Migration rule
 
 Any future schema change must be versioned and migrated, not patched ad hoc.
-

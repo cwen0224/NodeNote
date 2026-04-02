@@ -6,6 +6,7 @@ import { connectionManager } from './ConnectionManager.js';
 import { trayManager } from './TrayManager.js';
 import { shortcutManager } from './ShortcutManager.js';
 import { persistenceManager } from './PersistenceManager.js';
+import { cloudSyncManager } from './CloudSyncManager.js';
 import { store } from './StateStore.js';
 
 const sysDiag = document.getElementById('sys-diag');
@@ -52,6 +53,9 @@ const initApp = () => {
   try {
     updateDiag("Restoring autosave...");
     persistenceManager.init();
+
+    updateDiag("Initializing CloudSyncManager...");
+    cloudSyncManager.init();
 
     updateDiag("Initializing Renderer...");
     renderer.init();
