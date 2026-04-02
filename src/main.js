@@ -10,12 +10,20 @@ const diagVersion = document.getElementById('diag-version');
 const buildTimestamp = typeof __BUILD_TIMESTAMP__ === 'string' ? __BUILD_TIMESTAMP__ : '';
 const updateDiag = (msg) => { if(diagStatus) diagStatus.innerText = "NodeNote: " + msg; };
 
+const formatBuildStamp = (isoString) => {
+  const builtAt = isoString ? new Date(isoString) : null;
+  if (!builtAt || Number.isNaN(builtAt.getTime())) {
+    return 'v--:--';
+  }
+
+  const hours = String(builtAt.getHours()).padStart(2, '0');
+  const minutes = String(builtAt.getMinutes()).padStart(2, '0');
+  return `v${hours}:${minutes}`;
+};
+
 // Set build timestamp
 if(diagVersion) {
-  const builtAt = buildTimestamp ? new Date(buildTimestamp) : null;
-  diagVersion.innerText = builtAt && !Number.isNaN(builtAt.getTime())
-    ? `Updated at ${builtAt.toLocaleString('zh-TW', { hour12: false })}`
-    : 'Updated at build time';
+  diagVersion.innerText = formatBuildStamp(buildTimestamp);
 }
 
 // Init when DOM is fully parsed
