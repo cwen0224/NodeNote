@@ -759,7 +759,18 @@ class Renderer {
         { x: routeX, y: targetEntry.y },
       );
     } else if (!sourceIsHorizontal && !targetIsHorizontal) {
-      const routeY = sourceExit.y + ((Math.sign(targetEntry.y - sourceExit.y) || sourceVector.y || 1) * elbowDistance);
+      const sourcePointsDown = sourceVector.y > 0;
+      const sourcePointsUp = sourceVector.y < 0;
+      const targetPointsUp = targetVector.y < 0;
+      const targetPointsDown = targetVector.y > 0;
+      let routeY = sourceExit.y + ((Math.sign(targetEntry.y - sourceExit.y) || sourceVector.y || 1) * elbowDistance);
+
+      if (sourcePointsDown && targetPointsUp) {
+        routeY = Math.max(sourceExit.y, targetEntry.y) + elbowDistance;
+      } else if (sourcePointsUp && targetPointsDown) {
+        routeY = Math.min(sourceExit.y, targetEntry.y) - elbowDistance;
+      }
+
       routePoints.push(
         { x: sourceExit.x, y: routeY },
         { x: targetEntry.x, y: routeY },
