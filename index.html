@@ -4,8 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>NodeNote - Universal JSON Notebook</title>
-    <script type="module" crossorigin src="/NodeNote/assets/index-CtHkJF4R.js"></script>
-    <link rel="stylesheet" crossorigin href="/NodeNote/assets/index--KsK5Ejq.css">
+    <script type="module" crossorigin src="/NodeNote/assets/index-D0df5PFv.js"></script>
+    <link rel="stylesheet" crossorigin href="/NodeNote/assets/index-CNePjPrm.css">
   </head>
   <body>
     <!-- DIAGNOSTIC OVERLAY -->
@@ -38,6 +38,14 @@
       <div id="build-badge" class="toolbar-badge">v--:--</div>
       <div id="cloud-status-badge" class="toolbar-badge">Cloud: off</div>
       <div class="actions">
+        <div class="toolbar-prompt-switch">
+          <label for="prompt-template-select">Prompt</label>
+          <select id="prompt-template-select" aria-label="選擇提詞版本">
+            <option value="note">筆記版</option>
+            <option value="story">劇情版</option>
+            <option value="media">媒體版</option>
+          </select>
+        </div>
         <button id="btn-ai-prompt-copy" type="button">提詞複製</button>
         <button id="btn-folder-group" type="button">Group</button>
         <button id="btn-cloud-sync" type="button">Cloud</button>
