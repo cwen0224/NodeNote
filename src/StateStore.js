@@ -173,10 +173,21 @@ export class StateStore {
     return this._cloneDocument();
   }
 
-  replaceDocument(nextDocument, { saveToHistory = true } = {}) {
+  replaceDocument(nextDocument, { saveToHistory = true, resetHistory = false } = {}) {
     this.document = normalizeDocument(nextDocument);
+    this.session.selection.nodeIds = [];
+    this.session.selection.edgeIds = [];
+    this.session.interaction.lastActiveNodeId = null;
+    this.session.interaction.lastActiveNodeAt = null;
+    this.emit('selection:updated', this.session.selection);
     this.emit('document:updated', this.document);
     this.emit('state:updated', this.state);
+    if (resetHistory) {
+      this.history = [this._cloneDocument()];
+      this.historyIndex = 0;
+      return;
+    }
+
     if (saveToHistory) {
       this.saveHistory();
     }

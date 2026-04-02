@@ -617,6 +617,48 @@ class Renderer {
     };
   }
 
+  getContentBounds(padding = 160) {
+    const nodes = Object.values(store.state.nodes);
+
+    if (!nodes.length) {
+      return {
+        minX: -600,
+        minY: -450,
+        width: 1200,
+        height: 900,
+      };
+    }
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    nodes.forEach((node) => {
+      const size = this.getNodeWorldSize(node);
+      minX = Math.min(minX, node.x);
+      minY = Math.min(minY, node.y);
+      maxX = Math.max(maxX, node.x + size.width);
+      maxY = Math.max(maxY, node.y + size.height);
+    });
+
+    if (!Number.isFinite(minX) || !Number.isFinite(minY)) {
+      return {
+        minX: -600,
+        minY: -450,
+        width: 1200,
+        height: 900,
+      };
+    }
+
+    return {
+      minX: minX - padding,
+      minY: minY - padding,
+      width: Math.max(1, (maxX - minX) + (padding * 2)),
+      height: Math.max(1, (maxY - minY) + (padding * 2)),
+    };
+  }
+
   getViewportWorldRect() {
     const { x, y, scale } = store.getTransform();
     const viewportWidth = this.viewport?.clientWidth ?? window.innerWidth;
@@ -807,6 +849,72 @@ class Renderer {
 
     store.setTransform(nextX, nextY, scale);
     return true;
+  }
+
+  getViewportZoomAnchorPoint(clientX = null, clientY = null) {
+    const pointer = store.state.interaction?.lastPointer;
+    const fallbackX = this.viewport?.clientWidth ? this.viewport.clientWidth / 2 : window.innerWidth / 2;
+    const fallbackY = this.viewport?.clientHeight ? this.viewport.clientHeight / 2 : window.innerHeight / 2;
+
+    return {
+      clientX: Number.isFinite(clientX) ? clientX : (Number.isFinite(pointer?.x) ? pointer.x : fallbackX),
+      clientY: Number.isFinite(clientY) ? clientY : (Number.isFinite(pointer?.y) ? pointer.y : fallbackY),
+    };
+  }
+
+  zoomViewportToScale(nextScale, clientX = null, clientY = null) {
+    const { x, y, scale } = store.getTransform();
+    const { clientX: anchorX, clientY: anchorY } = this.getViewportZoomAnchorPoint(clientX, clientY);
+    const clampedScale = Math.max(0.1, Math.min(5, nextScale));
+    const worldX = (anchorX - x) / scale;
+    const worldY = (anchorY - y) / scale;
+    const nextX = anchorX - (worldX * clampedScale);
+    const nextY = anchorY - (worldY * clampedScale);
+
+    store.setTransform(nextX, nextY, clampedScale);
+  }
+
+  zoomViewportByFactor(factor, clientX = null, clientY = null) {
+    const { scale } = store.getTransform();
+    this.zoomViewportToScale(scale * factor, clientX, clientY);
+  }
+
+  zoomViewportIn(clientX = null, clientY = null) {
+    this.zoomViewportByFactor(1.15, clientX, clientY);
+  }
+
+  zoomViewportOut(clientX = null, clientY = null) {
+    this.zoomViewportByFactor(1 / 1.15, clientX, clientY);
+  }
+
+  resetViewportToActualSize() {
+    this.zoomViewportToScale(1);
+  }
+
+  fitGraphToViewport() {
+    const bounds = this.getContentBounds(160);
+    const viewportWidth = this.viewport?.clientWidth ?? window.innerWidth;
+    const viewportHeight = this.viewport?.clientHeight ?? window.innerHeight;
+    const minScale = 0.1;
+    const maxScale = 5;
+    const scale = Math.max(
+      minScale,
+      Math.min(
+        maxScale,
+        Math.min(
+          viewportWidth / Math.max(1, bounds.width),
+          viewportHeight / Math.max(1, bounds.height),
+        ) * 0.92,
+      ),
+    );
+
+    const centerX = bounds.minX + (bounds.width / 2);
+    const centerY = bounds.minY + (bounds.height / 2);
+    const nextX = (viewportWidth / 2) - (centerX * scale);
+    const nextY = (viewportHeight / 2) - (centerY * scale);
+
+    store.setTransform(nextX, nextY, scale);
+    return { x: nextX, y: nextY, scale };
   }
 
   zoomViewportFromMinimapWheel(clientX, clientY, deltaY) {

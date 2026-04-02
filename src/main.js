@@ -4,6 +4,7 @@ import { inputController } from './InputController.js';
 import { nodeManager } from './NodeManager.js';
 import { connectionManager } from './ConnectionManager.js';
 import { trayManager } from './TrayManager.js';
+import { shortcutManager } from './ShortcutManager.js';
 import { store } from './StateStore.js';
 
 const sysDiag = document.getElementById('sys-diag');
@@ -62,6 +63,9 @@ const initApp = () => {
 
     updateDiag("Initializing TrayManager...");
     trayManager.init();
+
+    updateDiag("Initializing ShortcutManager...");
+    shortcutManager.init();
     
     updateDiag("Wiring Toolbar...");
     // Wire Undo/Redo
@@ -69,63 +73,6 @@ const initApp = () => {
     const redoBtn = document.getElementById('btn-redo');
     if(undoBtn) undoBtn.onclick = () => store.undo();
     if(redoBtn) redoBtn.onclick = () => store.redo();
-
-    const isTextEditingTarget = (target) => {
-      if (!(target instanceof Element)) {
-        return false;
-      }
-
-      return Boolean(target.closest('input, textarea, [contenteditable="true"]'));
-    };
-    
-    window.addEventListener('keydown', (e) => {
-      if (isTextEditingTarget(e.target)) {
-        return;
-      }
-
-      const key = e.key.toLowerCase();
-      const isMetaShortcut = e.ctrlKey || e.metaKey;
-
-      if (isMetaShortcut && key === 'z') {
-        e.preventDefault();
-        store.undo();
-        return;
-      }
-
-      if (isMetaShortcut && key === 'y') {
-        e.preventDefault();
-        store.redo();
-        return;
-      }
-
-      if (isMetaShortcut && key === 'c') {
-        if (trayManager.getSelectionRootNodeIds().length > 0) {
-          e.preventDefault();
-          trayManager.copySelectionToTray();
-        }
-        return;
-      }
-
-      if (isMetaShortcut && key === 'x') {
-        if (trayManager.getSelectionRootNodeIds().length > 0) {
-          e.preventDefault();
-          trayManager.copySelectionToTray({ cut: true });
-        }
-        return;
-      }
-
-      if (isMetaShortcut && key === 'v') {
-        e.preventDefault();
-        trayManager.pasteFromClipboard();
-        return;
-      }
-
-      if (e.key === 'Delete') {
-        if (trayManager.deleteSelection()) {
-          e.preventDefault();
-        }
-      }
-    });
 
     updateDiag("READY");
     collapseDiag();
