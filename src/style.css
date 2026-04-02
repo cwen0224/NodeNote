@@ -186,8 +186,8 @@ button:hover {
 /* Nodes */
 .node {
   position: absolute;
-  min-width: 250px;
-  min-height: 150px;
+  min-width: 260px;
+  min-height: 260px;
   display: flex;
   flex-direction: column;
   background: var(--node-bg);
@@ -225,6 +225,14 @@ button:hover {
   font-family: monospace;
 }
 
+.node-id {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .node-header-actions {
   display: inline-flex;
   align-items: center;
@@ -233,6 +241,8 @@ button:hover {
 
 .node-content {
   flex-grow: 1;
+  min-width: 0;
+  min-height: 0;
   padding: 12px;
   font-size: 1rem;
   line-height: 1.5;
@@ -241,6 +251,10 @@ button:hover {
   white-space: pre-wrap;
   color: var(--text-primary);
   caret-color: var(--accent);
+  overflow: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.42) rgba(255, 255, 255, 0.04);
 }
 
 .node-content[contenteditable="false"] {
@@ -248,9 +262,33 @@ button:hover {
   cursor: grab;
 }
 
+.node.is-scrollable .node-content[contenteditable="false"] {
+  cursor: default;
+}
+
 .node-content[contenteditable="true"] {
   user-select: text;
   cursor: text;
+}
+
+.node-content::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.node-content::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 999px;
+}
+
+.node-content::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.42);
+  border: 2px solid rgba(15, 23, 42, 0.44);
+  border-radius: 999px;
+}
+
+.node-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.62);
 }
 
 .node.is-editing {
@@ -258,7 +296,6 @@ button:hover {
 }
 
 .node.is-editing .node-content {
-  min-height: 120px;
   background: rgba(15, 23, 42, 0.42);
 }
 

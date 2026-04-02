@@ -1,3 +1,5 @@
+import { resolveNodeSize } from './nodeSizing.js';
+
 export const DOCUMENT_SCHEMA_VERSION = '1.0.0';
 
 export function createDefaultDocument() {
@@ -37,10 +39,18 @@ export function normalizeDocument(input = {}) {
   };
   next.entryNodeId = input.entryNodeId ?? null;
   next.nodes = typeof input.nodes === 'object' && input.nodes ? cloneDocument(input.nodes) : {};
+  Object.values(next.nodes).forEach((node) => {
+    if (node && typeof node === 'object') {
+      const size = resolveNodeSize(node);
+      node.size = {
+        width: size.width,
+        height: size.height,
+      };
+    }
+  });
   next.edges = Array.isArray(input.edges) ? cloneDocument(input.edges) : [];
   next.assets = Array.isArray(input.assets) ? cloneDocument(input.assets) : [];
   next.extras = typeof input.extras === 'object' && input.extras ? cloneDocument(input.extras) : {};
 
   return next;
 }
-

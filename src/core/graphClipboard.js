@@ -1,9 +1,10 @@
+import { NODE_MAX_SIDE, NODE_MIN_SIDE, resolveNodeSize } from './nodeSizing.js';
+
 export const GRAPH_FRAGMENT_SCHEMA = 'nodenote.graph.fragment';
 export const GRAPH_DOCUMENT_SCHEMA = 'nodenote.graph.document';
 export const GRAPH_CLIPBOARD_VERSION = '1.0.0';
 
-const DEFAULT_NODE_WIDTH = 250;
-const DEFAULT_NODE_HEIGHT = 150;
+const DEFAULT_NODE_SIDE = NODE_MIN_SIDE;
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -40,21 +41,10 @@ function getNodePosition(node) {
 }
 
 function getNodeSize(node) {
-  if (!isPlainObject(node)) {
-    return { width: DEFAULT_NODE_WIDTH, height: DEFAULT_NODE_HEIGHT };
-  }
-
-  if (isPlainObject(node.size)) {
-    return {
-      width: Math.max(1, normalizeNumber(node.size.width, DEFAULT_NODE_WIDTH)),
-      height: Math.max(1, normalizeNumber(node.size.height, DEFAULT_NODE_HEIGHT)),
-    };
-  }
-
-  return {
-    width: Math.max(1, normalizeNumber(node.width, DEFAULT_NODE_WIDTH)),
-    height: Math.max(1, normalizeNumber(node.height, DEFAULT_NODE_HEIGHT)),
-  };
+  return resolveNodeSize(node, {
+    minSide: DEFAULT_NODE_SIDE,
+    maxSide: NODE_MAX_SIDE,
+  });
 }
 
 export function createNodeId(existingIds = new Set(), prefix = 'node') {
@@ -92,6 +82,14 @@ export function normalizeNodeMap(inputNodes = {}) {
     if (!isPlainObject(node.params)) {
       node.params = {};
     }
+    const size = resolveNodeSize(node, {
+      minSide: DEFAULT_NODE_SIDE,
+      maxSide: NODE_MAX_SIDE,
+    });
+    node.size = {
+      width: size.width,
+      height: size.height,
+    };
 
     normalized[nodeId] = node;
   });
@@ -103,8 +101,8 @@ export function normalizeBounds(bounds, nodes = {}, nodeIds = []) {
   if (isPlainObject(bounds)) {
     const minX = normalizeNumber(bounds.minX ?? bounds.x, 0);
     const minY = normalizeNumber(bounds.minY ?? bounds.y, 0);
-    const width = Math.max(1, normalizeNumber(bounds.width, DEFAULT_NODE_WIDTH));
-    const height = Math.max(1, normalizeNumber(bounds.height, DEFAULT_NODE_HEIGHT));
+    const width = Math.max(1, normalizeNumber(bounds.width, DEFAULT_NODE_SIDE));
+    const height = Math.max(1, normalizeNumber(bounds.height, DEFAULT_NODE_SIDE));
     return { minX, minY, width, height };
   }
 
@@ -120,8 +118,8 @@ export function computeBounds(nodes = {}, nodeIds = []) {
     return {
       minX: 0,
       minY: 0,
-      width: DEFAULT_NODE_WIDTH,
-      height: DEFAULT_NODE_HEIGHT,
+      width: DEFAULT_NODE_SIDE,
+      height: DEFAULT_NODE_SIDE,
     };
   }
 
@@ -148,8 +146,8 @@ export function computeBounds(nodes = {}, nodeIds = []) {
     return {
       minX: 0,
       minY: 0,
-      width: DEFAULT_NODE_WIDTH,
-      height: DEFAULT_NODE_HEIGHT,
+      width: DEFAULT_NODE_SIDE,
+      height: DEFAULT_NODE_SIDE,
     };
   }
 

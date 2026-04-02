@@ -4,6 +4,7 @@
  */
 import { store } from './StateStore.js';
 import { createNodeId, materializeClipboardPayload } from './core/graphClipboard.js';
+import { resolveNodeSize } from './core/nodeSizing.js';
 
 class NodeManager {
   constructor() {
@@ -51,6 +52,16 @@ class NodeManager {
       if (e.target.closest('.node-delete-btn')) return;
       if (e.target.closest('.node-content') && nodeEl.classList.contains('is-editing')) return;
 
+      const contentEl = e.target.closest('.node-content');
+      const contentIsScrollable = Boolean(contentEl)
+        && (contentEl.scrollHeight > contentEl.clientHeight + 1 || contentEl.scrollWidth > contentEl.clientWidth + 1);
+      if (contentEl && contentIsScrollable) {
+        this.selectNodeForInteraction(nodeEl.dataset.id, e.shiftKey);
+        store.setLastActiveNode(nodeEl.dataset.id);
+        e.stopPropagation();
+        return;
+      }
+
       // Handle dragging
       if (e.button === 0 && !e.shiftKey) {
         this.isDraggingNode = true;
@@ -92,11 +103,16 @@ class NodeManager {
 
   createNode(x, y) {
     const id = createNodeId(new Set(Object.keys(store.state.nodes)));
+    const size = resolveNodeSize({ content: '' });
     const node = {
       id,
       x,
       y,
       content: '',
+      size: {
+        width: size.width,
+        height: size.height,
+      },
       params: {}
     };
     
@@ -165,6 +181,11 @@ class NodeManager {
   updateNodeContent(id, content) {
     if (store.state.nodes[id]) {
       store.state.nodes[id].content = content;
+      const size = resolveNodeSize({ content });
+      store.state.nodes[id].size = {
+        width: size.width,
+        height: size.height,
+      };
       store.setLastActiveNode(id);
       store.emit('node:contentUpdated', { id, content });
       

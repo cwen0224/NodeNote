@@ -6,6 +6,7 @@
 import { store } from './StateStore.js';
 import { nodeManager } from './NodeManager.js';
 import { connectionManager } from './ConnectionManager.js';
+import { resolveNodeSize } from './core/nodeSizing.js';
 
 class Renderer {
   constructor() {
@@ -66,6 +67,10 @@ class Renderer {
       const nodeEl = document.querySelector(`.node[data-id="${id}"] .node-content`);
       if (nodeEl && nodeEl.innerText !== content) {
         nodeEl.innerText = content;
+      }
+      const nodeWrapper = document.querySelector(`.node[data-id="${id}"]`);
+      if (nodeWrapper) {
+        this.applyNodeSizing(nodeWrapper, store.state.nodes[id]);
       }
       this.renderConnections();
       this.renderMinimap();
@@ -292,25 +297,40 @@ class Renderer {
     div.dataset.id = node.id;
     div.style.left = `${node.x}px`;
     div.style.top = `${node.y}px`;
-    
-      div.innerHTML = `
-        <div class="node-header">
-          <span class="node-id">${node.id}</span>
-          <div class="node-header-actions">
-            <button class="node-edit-btn" type="button" aria-label="編輯節點">✎</button>
-          </div>
+    div.innerHTML = `
+      <div class="node-header">
+        <span class="node-id" title="${node.id}">${node.id}</span>
+        <div class="node-header-actions">
+          <button class="node-edit-btn" type="button" aria-label="編輯節點">✎</button>
         </div>
-        <div class="node-content" contenteditable="false" spellcheck="false"></div>
-        <button class="node-delete-btn" type="button" aria-label="刪除節點">×</button>
-        <div class="port top"></div>
-        <div class="port bottom"></div>
-        <div class="port left"></div>
-        <div class="port right"></div>
-      `;
+      </div>
+      <div class="node-content" contenteditable="false" spellcheck="false"></div>
+      <button class="node-delete-btn" type="button" aria-label="刪除節點">×</button>
+      <div class="port top"></div>
+      <div class="port bottom"></div>
+      <div class="port left"></div>
+      <div class="port right"></div>
+    `;
 
     // Internal Events (preventing panning/zooming while interacting with a node)
     const content = div.querySelector('.node-content');
     content.textContent = node.content ?? '';
+    this.applyNodeSizing(div, node);
+    content.addEventListener('wheel', (e) => {
+      const canScrollY = content.scrollHeight > content.clientHeight + 1;
+      if (!canScrollY) {
+        return;
+      }
+
+      const scrollingDown = e.deltaY > 0;
+      const scrollingUp = e.deltaY < 0;
+      const atTop = content.scrollTop <= 0;
+      const atBottom = content.scrollTop + content.clientHeight >= content.scrollHeight - 1;
+
+      if ((scrollingDown && !atBottom) || (scrollingUp && !atTop)) {
+        e.stopPropagation();
+      }
+    });
     content.addEventListener('input', (e) => {
       nodeManager.updateNodeContent(node.id, e.target.innerText);
     });
@@ -357,6 +377,17 @@ class Renderer {
     });
 
     return div;
+  }
+
+  applyNodeSizing(nodeEl, node) {
+    if (!nodeEl || !node) {
+      return;
+    }
+
+    const size = resolveNodeSize(node);
+    nodeEl.style.width = `${size.width}px`;
+    nodeEl.style.height = `${size.height}px`;
+    nodeEl.classList.toggle('is-scrollable', Boolean(size.scrollable));
   }
 
   renderConnections() {
@@ -535,24 +566,11 @@ class Renderer {
     this.scheduleMinimapRender();
   }
 
-  getNodeWorldSize(node, scaleOverride = null) {
-    const fallback = {
-      width: 250,
-      height: 150,
-    };
-
-    const nodeEl = document.querySelector(`.node[data-id="${node.id}"]`);
-    if (!nodeEl) {
-      return fallback;
-    }
-
-    const rect = nodeEl.getBoundingClientRect();
-    const { scale } = store.getTransform();
-    const effectiveScale = Math.max(scaleOverride ?? scale, 0.0001);
-
+  getNodeWorldSize(node) {
+    const size = resolveNodeSize(node);
     return {
-      width: Math.max(1, rect.width / effectiveScale),
-      height: Math.max(1, rect.height / effectiveScale),
+      width: Math.max(1, size.width),
+      height: Math.max(1, size.height),
     };
   }
 
