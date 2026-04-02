@@ -190,10 +190,11 @@ body, html {
   min-width: 0;
   flex: 1 1 auto;
   overflow-x: auto;
-  overflow-y: hidden;
+  overflow-y: visible;
   scrollbar-width: none;
   -ms-overflow-style: none;
-  padding-bottom: 2px;
+  padding-top: 10px;
+  padding-bottom: 10px;
 }
 
 #tray-slots::-webkit-scrollbar {
@@ -706,8 +707,9 @@ button:hover {
 }
 
 .tray-slot-delete-btn {
-  top: -9px;
-  right: -9px;
+  top: -7px;
+  right: -7px;
+  z-index: 20;
 }
 
 /* Ports (Connection Dots) */
