@@ -114,32 +114,24 @@ const initApp = () => {
     const folderBackBtn = document.getElementById('btn-folder-back');
     const aiPromptCopyBtn = document.getElementById('btn-ai-prompt-copy');
     const trayDrawer = document.getElementById('tray-drawer');
-    const trayToggleBtn = document.getElementById('btn-tray-toggle');
     const trayCloseBtn = document.getElementById('btn-tray-close');
     const folderGroupBtn = document.getElementById('btn-folder-group');
     const undoBtn = document.getElementById('btn-undo');
     const redoBtn = document.getElementById('btn-redo');
     if(folderBackBtn) folderBackBtn.onclick = () => store.exitFolder();
     const setTrayDrawerOpen = (isOpen) => {
-      if (!trayDrawer || !trayToggleBtn) {
+      if (!trayDrawer) {
         return;
       }
       trayDrawer.classList.toggle('is-collapsed', !isOpen);
-      trayToggleBtn.setAttribute('aria-expanded', String(isOpen));
-      trayToggleBtn.setAttribute('aria-label', isOpen ? '收起托盤' : '開啟托盤');
       if (trayCloseBtn) {
         trayCloseBtn.setAttribute('aria-expanded', String(isOpen));
       }
       window.localStorage.setItem(TRAY_DRAWER_STORAGE_KEY, isOpen ? '1' : '0');
     };
-    if (trayDrawer && trayToggleBtn) {
+    if (trayDrawer) {
       const savedTrayState = window.localStorage.getItem(TRAY_DRAWER_STORAGE_KEY);
       setTrayDrawerOpen(savedTrayState !== '0');
-      trayToggleBtn.onclick = (event) => {
-        event.stopPropagation();
-        const isOpen = trayDrawer.classList.contains('is-collapsed');
-        setTrayDrawerOpen(isOpen);
-      };
     }
     if (trayCloseBtn) {
       trayCloseBtn.onclick = () => setTrayDrawerOpen(false);
