@@ -6,6 +6,7 @@ import { createDefaultDocument } from './core/documentSchema.js';
 import {
   createDocumentFileName,
   downloadText,
+  buildExportMappingWarning,
   normalizeImportedDocument,
   parseJsonText,
   serializeDocument,
@@ -254,12 +255,22 @@ class ShortcutManager {
 
   saveDocument() {
     const documentSnapshot = store.getDocumentSnapshot();
+    const mappingWarning = buildExportMappingWarning(documentSnapshot);
+    if (mappingWarning && !window.confirm(`${mappingWarning.message}\n\n要先檢查 / 映射這些 key 再匯出嗎？`)) {
+      return;
+    }
+
     const filename = createDocumentFileName(documentSnapshot);
     downloadText(serializeDocument(documentSnapshot), filename);
   }
 
   saveDocumentAs() {
     const documentSnapshot = store.getDocumentSnapshot();
+    const mappingWarning = buildExportMappingWarning(documentSnapshot);
+    if (mappingWarning && !window.confirm(`${mappingWarning.message}\n\n要先檢查 / 映射這些 key 再另存嗎？`)) {
+      return;
+    }
+
     const defaultName = createDocumentFileName(documentSnapshot).replace(/\.json$/i, '');
     const requested = window.prompt('輸入檔名', defaultName);
     if (requested === null) {

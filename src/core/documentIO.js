@@ -39,6 +39,59 @@ function buildEdgesFromNodes(nodes = {}) {
   return edges;
 }
 
+function isNonAsciiText(value) {
+  return typeof value === 'string' && /[^\x00-\x7F]/.test(value);
+}
+
+function collectMappingWarnings(document = {}) {
+  const warnings = [];
+  const nodes = isPlainObject(document?.nodes) ? document.nodes : {};
+  const folders = isPlainObject(document?.folders) ? document.folders : {};
+
+  const scanParams = (entity, entityType, entityId) => {
+    if (!isPlainObject(entity?.params)) {
+      return;
+    }
+
+    const keys = Object.keys(entity.params).filter((key) => isNonAsciiText(key));
+    if (keys.length > 0) {
+      warnings.push({
+        entityType,
+        entityId,
+        keys,
+      });
+    }
+  };
+
+  Object.values(nodes).forEach((node) => scanParams(node, 'node', node?.id));
+  Object.values(folders).forEach((folder) => scanParams(folder, 'folder', folder?.id));
+
+  return warnings;
+}
+
+export function buildExportMappingWarning(document = {}) {
+  const warnings = collectMappingWarnings(document);
+  if (!warnings.length) {
+    return null;
+  }
+
+  const totalKeys = warnings.reduce((sum, item) => sum + item.keys.length, 0);
+  const sample = warnings
+    .slice(0, 3)
+    .map((item) => `${item.entityType}:${item.entityId || '(unknown)'} -> ${item.keys.join(', ')}`)
+    .join('\n');
+
+  return {
+    totalKeys,
+    warnings,
+    message: [
+      `偵測到 ${totalKeys} 個含中文或非 ASCII 的連線 key。`,
+      '這些 key 建議在匯出前先映射成固定英文 key，避免外部引擎或 AI 生成時不一致。',
+      sample ? `\n範例：\n${sample}` : '',
+    ].join('\n'),
+  };
+}
+
 function sanitizeFilenamePart(value) {
   return String(value || '')
     .trim()
