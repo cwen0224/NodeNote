@@ -52,6 +52,35 @@ function repairJsonText(text = '') {
     .replace(/,\s*([}\]])/g, '$1');
 }
 
+function normalizeMarkdownLinkText(value) {
+  if (typeof value !== 'string') {
+    return value;
+  }
+
+  const match = value.trim().match(/^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)$/i);
+  if (match) {
+    return match[2];
+  }
+
+  return value;
+}
+
+function normalizeImportedStrings(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeImportedStrings(item));
+  }
+
+  if (!isPlainObject(value)) {
+    return normalizeMarkdownLinkText(value);
+  }
+
+  const next = {};
+  Object.entries(value).forEach(([key, item]) => {
+    next[key] = normalizeImportedStrings(item);
+  });
+  return next;
+}
+
 function isNonAsciiText(value) {
   return typeof value === 'string' && /[^\x00-\x7F]/.test(value);
 }
@@ -180,7 +209,7 @@ function isDocumentLikePayload(payload) {
 
 export function normalizeImportedDocument(payload) {
   if (isDocumentLikePayload(payload)) {
-    return normalizeDocument(payload);
+    return normalizeDocument(normalizeImportedStrings(payload));
   }
 
   const graphPayload = normalizeClipboardPayload(payload);
@@ -188,7 +217,7 @@ export function normalizeImportedDocument(payload) {
     const baseDocument = createDefaultDocument();
     baseDocument.meta.title = typeof payload?.meta?.title === 'string' ? payload.meta.title : 'Imported Graph';
     baseDocument.entryNodeId = graphPayload.rootNodeIds?.[0] || graphPayload.nodeIds?.[0] || null;
-    baseDocument.nodes = clone(graphPayload.nodes || {});
+    baseDocument.nodes = clone(normalizeImportedStrings(graphPayload.nodes || {}));
     baseDocument.edges = buildEdgesFromNodes(baseDocument.nodes);
     return normalizeDocument(baseDocument);
   }
@@ -197,7 +226,7 @@ export function normalizeImportedDocument(payload) {
     const baseDocument = createDefaultDocument();
     baseDocument.meta.title = 'Imported Graph';
     baseDocument.entryNodeId = graphPayload.rootNodeIds?.[0] || graphPayload.nodeIds?.[0] || null;
-    baseDocument.nodes = clone(graphPayload.nodes || {});
+    baseDocument.nodes = clone(normalizeImportedStrings(graphPayload.nodes || {}));
     baseDocument.edges = buildEdgesFromNodes(baseDocument.nodes);
     return normalizeDocument(baseDocument);
   }
