@@ -665,11 +665,30 @@ class Renderer {
     path.setAttribute("d", d);
     this.svgLayer.appendChild(path);
 
+    let labelPoint = {
+      x: (sX + tX) / 2,
+      y: (sY + tY) / 2,
+    };
+    try {
+      const totalLength = path.getTotalLength?.();
+      if (Number.isFinite(totalLength) && totalLength > 0 && typeof path.getPointAtLength === 'function') {
+        const midPoint = path.getPointAtLength(totalLength / 2);
+        if (midPoint && Number.isFinite(midPoint.x) && Number.isFinite(midPoint.y)) {
+          labelPoint = {
+            x: midPoint.x,
+            y: midPoint.y,
+          };
+        }
+      }
+    } catch {
+      // If SVG measurement fails, fall back to the geometric midpoint.
+    }
+
     const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
     group.setAttribute("class", "connection-label-group");
 
-    const midX = (sX + tX) / 2;
-    const midY = (sY + tY) / 2;
+    const midX = labelPoint.x;
+    const midY = labelPoint.y;
     const labelWidth = Math.max(58, Math.min(192, labelText.length * 12 + 34));
     const labelHeight = 29;
     const labelLeft = midX - labelWidth / 2;
