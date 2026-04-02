@@ -7,10 +7,10 @@
   </head>
   <body>
     <!-- DIAGNOSTIC OVERLAY -->
-    <div id="sys-diag" style="position:fixed; top:0; left:0; right:0; z-index:99999; background:#444; color:#fff; padding:8px; font-family:monospace; border-bottom:2px solid #58a6ff; pointer-events:none; display:flex; justify-content:space-between;">
+    <div id="sys-diag">
       <div id="diag-status">NodeNote: Loading modules...</div>
       <div id="diag-version" style="font-size:0.7rem; opacity:0.8;">v--:--</div>
-      <div id="diag-errors" style="color:#ff7b72; font-size:0.8rem; white-space:pre-wrap; position:absolute; top:35px; left:8px;"></div>
+      <div id="diag-errors"></div>
     </div>
     <script>
       window.addEventListener('error', (e) => {
@@ -29,6 +29,7 @@
       <div class="tray-slots" id="tray-slots">
         <!-- 1-15 Tray slots will be injected here later -->
       </div>
+      <div id="build-badge" class="toolbar-badge">v--:--</div>
       <div class="actions">
         <button id="btn-undo">Undo</button>
         <button id="btn-redo">Redo</button>

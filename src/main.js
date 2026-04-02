@@ -6,10 +6,19 @@ import { connectionManager } from './ConnectionManager.js';
 import { trayManager } from './TrayManager.js';
 import { store } from './StateStore.js';
 
+const sysDiag = document.getElementById('sys-diag');
 const diagStatus = document.getElementById('diag-status');
 const diagVersion = document.getElementById('diag-version');
+const buildBadge = document.getElementById('build-badge');
 const buildTimestamp = typeof __BUILD_TIMESTAMP__ === 'string' ? __BUILD_TIMESTAMP__ : '';
-const updateDiag = (msg) => { if(diagStatus) diagStatus.innerText = "NodeNote: " + msg; };
+const updateDiag = (msg) => {
+  if (sysDiag) {
+    sysDiag.classList.remove('is-hidden');
+  }
+  if (diagStatus) {
+    diagStatus.innerText = "NodeNote: " + msg;
+  }
+};
 
 const formatBuildStamp = (isoString) => {
   const builtAt = isoString ? new Date(isoString) : null;
@@ -26,6 +35,15 @@ const formatBuildStamp = (isoString) => {
 if(diagVersion) {
   diagVersion.innerText = formatBuildStamp(buildTimestamp);
 }
+if (buildBadge) {
+  buildBadge.innerText = formatBuildStamp(buildTimestamp);
+}
+
+const collapseDiag = () => {
+  if (sysDiag) {
+    sysDiag.classList.add('is-hidden');
+  }
+};
 
 // Init when DOM is fully parsed
 const initApp = () => {
@@ -109,9 +127,13 @@ const initApp = () => {
       }
     });
 
-    updateDiag("READY: (Double-click to add node)");
+    updateDiag("READY");
+    collapseDiag();
     console.log("NodeNote initialized: All modules ready.");
   } catch (err) {
+    if (sysDiag) {
+      sysDiag.classList.remove('is-hidden');
+    }
     updateDiag("INIT FAILED!");
     console.error("Init failed:", err);
     
