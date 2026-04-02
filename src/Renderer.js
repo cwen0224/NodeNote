@@ -217,6 +217,15 @@ class Renderer {
         store.goToDepth(depth);
       });
     });
+
+    window.requestAnimationFrame(() => {
+      const currentCrumb = breadcrumb.querySelector('.folder-crumb.is-current');
+      if (currentCrumb) {
+        currentCrumb.scrollIntoView({ block: 'nearest', inline: 'end', behavior: 'auto' });
+        return;
+      }
+      breadcrumb.scrollLeft = breadcrumb.scrollWidth;
+    });
   }
 
   scheduleMinimapRender() {

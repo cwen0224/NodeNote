@@ -245,7 +245,7 @@ body, html {
   align-items: center;
   gap: 8px;
   min-width: 0;
-  flex: 0 1 auto;
+  flex: 1 1 auto;
 }
 
 #folder-breadcrumb {
@@ -253,7 +253,8 @@ body, html {
   align-items: center;
   gap: 6px;
   min-width: 0;
-  max-width: min(24vw, 220px);
+  flex: 1 1 auto;
+  max-width: min(52vw, 720px);
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
