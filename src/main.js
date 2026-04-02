@@ -15,7 +15,6 @@ const diagStatus = document.getElementById('diag-status');
 const diagVersion = document.getElementById('diag-version');
 const buildBadge = document.getElementById('build-badge');
 const buildTimestamp = typeof __BUILD_TIMESTAMP__ === 'string' ? __BUILD_TIMESTAMP__ : '';
-const PROMPT_MODE_STORAGE_KEY = 'nodenote.prompt-mode';
 const updateDiag = (msg) => {
   if (sysDiag) {
     sysDiag.classList.remove('is-hidden');
@@ -113,32 +112,68 @@ const initApp = () => {
     // Wire Undo/Redo
     const folderBackBtn = document.getElementById('btn-folder-back');
     const aiPromptCopyBtn = document.getElementById('btn-ai-prompt-copy');
-    const promptTemplateSelect = document.getElementById('prompt-template-select');
+    const promptPicker = document.getElementById('prompt-picker');
     const folderGroupBtn = document.getElementById('btn-folder-group');
     const undoBtn = document.getElementById('btn-undo');
     const redoBtn = document.getElementById('btn-redo');
-    if (promptTemplateSelect) {
-      const savedMode = window.localStorage.getItem(PROMPT_MODE_STORAGE_KEY);
-      if (savedMode) {
-        promptTemplateSelect.value = savedMode;
+    if(folderBackBtn) folderBackBtn.onclick = () => store.exitFolder();
+    const hidePromptPicker = () => {
+      if (!promptPicker || !aiPromptCopyBtn) {
+        return;
       }
-      promptTemplateSelect.onchange = () => {
-        window.localStorage.setItem(PROMPT_MODE_STORAGE_KEY, promptTemplateSelect.value);
+      promptPicker.hidden = true;
+      aiPromptCopyBtn.setAttribute('aria-expanded', 'false');
+    };
+    if (aiPromptCopyBtn) {
+      aiPromptCopyBtn.setAttribute('aria-haspopup', 'menu');
+      aiPromptCopyBtn.setAttribute('aria-expanded', 'false');
+      aiPromptCopyBtn.onclick = (event) => {
+        event.stopPropagation();
+        if (!promptPicker) {
+          return;
+        }
+        const nextHidden = !promptPicker.hidden;
+        promptPicker.hidden = !nextHidden ? true : false;
+        aiPromptCopyBtn.setAttribute('aria-expanded', String(nextHidden));
       };
     }
-    if(folderBackBtn) folderBackBtn.onclick = () => store.exitFolder();
-    if(aiPromptCopyBtn) aiPromptCopyBtn.onclick = async () => {
-      const mode = promptTemplateSelect?.value || 'note';
-      const copied = await copyTextToClipboard(getNodeNotePrompt(mode));
-      if (copied) {
-        aiPromptCopyBtn.textContent = '已複製';
-        window.setTimeout(() => {
-          aiPromptCopyBtn.textContent = '提詞複製';
-        }, 1200);
-      } else {
-        window.alert('複製失敗，請檢查瀏覽器剪貼簿權限。');
-      }
+    if (promptPicker) {
+      promptPicker.addEventListener('click', async (event) => {
+        const item = event.target.closest?.('.prompt-picker-item');
+        if (!item) {
+          return;
+        }
+
+        const mode = item.dataset.promptMode || 'note';
+        const copied = await copyTextToClipboard(getNodeNotePrompt(mode));
+        hidePromptPicker();
+        if (copied) {
+          const original = aiPromptCopyBtn?.textContent || '複製提詞';
+          if (aiPromptCopyBtn) {
+            aiPromptCopyBtn.textContent = '已複製';
+            window.setTimeout(() => {
+              aiPromptCopyBtn.textContent = original;
+            }, 1200);
+          }
+        } else {
+          window.alert('複製失敗，請檢查瀏覽器剪貼簿權限。');
+        }
+      });
     };
+    document.addEventListener('pointerdown', (event) => {
+      if (!promptPicker || promptPicker.hidden) {
+        return;
+      }
+      if (promptPicker.contains(event.target) || aiPromptCopyBtn?.contains(event.target)) {
+        return;
+      }
+      hidePromptPicker();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        hidePromptPicker();
+      }
+    });
     if(folderGroupBtn) folderGroupBtn.onclick = () => nodeManager.groupSelectionIntoFolder();
     if(undoBtn) undoBtn.onclick = () => store.undo();
     if(redoBtn) redoBtn.onclick = () => store.redo();

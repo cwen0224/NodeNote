@@ -38,17 +38,14 @@
           <div id="build-badge" class="toolbar-badge">v--:--</div>
           <div id="cloud-status-badge" class="toolbar-badge">Cloud: off</div>
         </div>
-        <div class="toolbar-prompt-switch">
-          <label for="prompt-template-select">Prompt</label>
-          <select id="prompt-template-select" aria-label="選擇提詞版本">
-            <option value="note">筆記版</option>
-            <option value="story">劇情版</option>
-            <option value="media">媒體版</option>
-          </select>
+        <button id="btn-ai-prompt-copy" type="button">複製提詞</button>
+        <div id="prompt-picker" class="prompt-picker glass-panel" hidden>
+          <button type="button" class="prompt-picker-item" data-prompt-mode="note">筆記版</button>
+          <button type="button" class="prompt-picker-item" data-prompt-mode="story">劇情版</button>
+          <button type="button" class="prompt-picker-item" data-prompt-mode="media">媒體版</button>
         </div>
       </div>
       <div class="actions">
-        <button id="btn-ai-prompt-copy" type="button">提詞複製</button>
         <button id="btn-folder-group" type="button">Group</button>
         <button id="btn-cloud-sync" type="button">Cloud</button>
         <button id="btn-undo">Undo</button>

@@ -245,46 +245,49 @@ body, html {
   margin-left: auto;
 }
 
-.toolbar-prompt-switch {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 30px;
-  padding: 0 8px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+#btn-ai-prompt-copy {
   pointer-events: auto;
 }
 
-.toolbar-prompt-switch label {
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--text-muted);
-  white-space: nowrap;
+.prompt-picker {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  min-width: 136px;
+  border-radius: 12px;
+  background: rgba(14, 20, 30, 0.95);
+  border: 1px solid rgba(88, 166, 255, 0.2);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+  z-index: 1200;
+  pointer-events: auto;
 }
 
-.toolbar-prompt-switch select {
-  appearance: none;
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  min-width: 82px;
-  padding: 4px 22px 4px 8px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(15, 23, 42, 0.72);
+.prompt-picker-item {
+  width: 100%;
+  justify-content: flex-start;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.04);
   color: var(--text-primary);
-  font-size: 0.72rem;
-  line-height: 1;
-  cursor: pointer;
-  outline: none;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  font-size: 0.82rem;
+  text-align: left;
 }
 
-.toolbar-prompt-switch select:hover,
-.toolbar-prompt-switch select:focus-visible {
-  border-color: rgba(88, 166, 255, 0.5);
-  background: rgba(15, 23, 42, 0.9);
+.prompt-picker-item:hover,
+.prompt-picker-item:focus-visible {
+  background: rgba(88, 166, 255, 0.18);
+  border-color: rgba(88, 166, 255, 0.35);
+  outline: none;
+}
+
+.prompt-picker-item.is-active {
+  background: rgba(88, 166, 255, 0.24);
+  border-color: rgba(88, 166, 255, 0.42);
 }
 
 .toolbar-badge {
