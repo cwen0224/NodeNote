@@ -1,7 +1,7 @@
 export const NODE_MIN_SIDE = 260;
-export const NODE_MAX_SIDE = 640;
+export const NODE_MAX_SIDE = 448;
 export const NODE_FOLDER_MIN_SIDE = 320;
-export const NODE_FOLDER_MAX_SIDE = 760;
+export const NODE_FOLDER_MAX_SIDE = 532;
 export const NODE_HEADER_HEIGHT = 42;
 export const NODE_CONTENT_HORIZONTAL_PADDING = 56;
 export const NODE_CONTENT_VERTICAL_PADDING = 24;
