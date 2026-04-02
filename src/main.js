@@ -5,6 +5,7 @@ import { nodeManager } from './NodeManager.js';
 import { connectionManager } from './ConnectionManager.js';
 import { trayManager } from './TrayManager.js';
 import { shortcutManager } from './ShortcutManager.js';
+import { persistenceManager } from './PersistenceManager.js';
 import { store } from './StateStore.js';
 
 const sysDiag = document.getElementById('sys-diag');
@@ -49,6 +50,9 @@ const collapseDiag = () => {
 // Init when DOM is fully parsed
 const initApp = () => {
   try {
+    updateDiag("Restoring autosave...");
+    persistenceManager.init();
+
     updateDiag("Initializing Renderer...");
     renderer.init();
     

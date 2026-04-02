@@ -15,6 +15,7 @@ export class StateStore {
     this.listeners = {};
     this.history = [];
     this.historyIndex = -1;
+    this.historyLimit = 200;
     this.state = this.createCompatibilityView();
 
     this.saveHistory();
@@ -111,7 +112,7 @@ export class StateStore {
 
     this.history.push(this._cloneDocument());
 
-    if (this.history.length > 50) {
+    if (this.history.length > this.historyLimit) {
       this.history.shift();
     }
 
