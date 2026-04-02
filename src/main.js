@@ -113,7 +113,6 @@ const initApp = () => {
     // Wire Undo/Redo
     const folderBackBtn = document.getElementById('btn-folder-back');
     const aiPromptCopyBtn = document.getElementById('btn-ai-prompt-copy');
-    const promptPicker = document.getElementById('prompt-picker');
     const trayDrawer = document.getElementById('tray-drawer');
     const trayToggleBtn = document.getElementById('btn-tray-toggle');
     const trayCloseBtn = document.getElementById('btn-tray-close');
@@ -133,9 +132,6 @@ const initApp = () => {
       }
       window.localStorage.setItem(TRAY_DRAWER_STORAGE_KEY, isOpen ? '1' : '0');
     };
-    if (promptPicker) {
-      promptPicker.hidden = true;
-    }
     if (trayDrawer && trayToggleBtn) {
       const savedTrayState = window.localStorage.getItem(TRAY_DRAWER_STORAGE_KEY);
       setTrayDrawerOpen(savedTrayState !== '0');
@@ -148,36 +144,10 @@ const initApp = () => {
     if (trayCloseBtn) {
       trayCloseBtn.onclick = () => setTrayDrawerOpen(false);
     }
-    const hidePromptPicker = () => {
-      if (!promptPicker || !aiPromptCopyBtn) {
-        return;
-      }
-      promptPicker.hidden = true;
-      aiPromptCopyBtn.setAttribute('aria-expanded', 'false');
-    };
     if (aiPromptCopyBtn) {
-      aiPromptCopyBtn.setAttribute('aria-haspopup', 'menu');
-      aiPromptCopyBtn.setAttribute('aria-expanded', 'false');
-      aiPromptCopyBtn.onclick = (event) => {
+      aiPromptCopyBtn.onclick = async (event) => {
         event.stopPropagation();
-        if (!promptPicker) {
-          return;
-        }
-        const isHidden = Boolean(promptPicker.hidden);
-        promptPicker.hidden = !isHidden;
-        aiPromptCopyBtn.setAttribute('aria-expanded', String(isHidden));
-      };
-    }
-    if (promptPicker) {
-      promptPicker.addEventListener('click', async (event) => {
-        const item = event.target.closest?.('.prompt-picker-item');
-        if (!item) {
-          return;
-        }
-
-        const mode = item.dataset.promptMode || 'note';
-        const copied = await copyTextToClipboard(getNodeNotePrompt(mode));
-        hidePromptPicker();
+        const copied = await copyTextToClipboard(getNodeNotePrompt());
         if (copied) {
           const original = aiPromptCopyBtn?.textContent || '複製提詞';
           if (aiPromptCopyBtn) {
@@ -189,22 +159,8 @@ const initApp = () => {
         } else {
           window.alert('複製失敗，請檢查瀏覽器剪貼簿權限。');
         }
-      });
-    };
-    document.addEventListener('pointerdown', (event) => {
-      if (!promptPicker || promptPicker.hidden) {
-        return;
-      }
-      if (promptPicker.contains(event.target) || aiPromptCopyBtn?.contains(event.target)) {
-        return;
-      }
-      hidePromptPicker();
-    });
-    document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape') {
-        hidePromptPicker();
-      }
-    });
+      };
+    }
     if(folderGroupBtn) folderGroupBtn.onclick = () => nodeManager.groupSelectionIntoFolder();
     if(undoBtn) undoBtn.onclick = () => store.undo();
     if(redoBtn) redoBtn.onclick = () => store.redo();
