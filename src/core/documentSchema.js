@@ -394,6 +394,97 @@ function buildEdgesFromEntities(entities = {}) {
   return edges;
 }
 
+function resolveVisibleEntityId(entityId, document = {}, currentFolderId = ROOT_FOLDER_ID) {
+  const folders = isPlainObject(document.folders) ? document.folders : {};
+  const nodes = isPlainObject(document.nodes) ? document.nodes : {};
+  const entity = nodes[entityId] || folders[entityId];
+  if (!entity) {
+    return null;
+  }
+
+  if (entity.type === 'folder') {
+    if (entity.id === currentFolderId) {
+      return entity.id;
+    }
+
+    let cursor = entity;
+    while (cursor && cursor.parentFolderId && cursor.parentFolderId !== currentFolderId) {
+      cursor = folders[cursor.parentFolderId];
+    }
+
+    if (cursor?.parentFolderId === currentFolderId) {
+      return cursor.id;
+    }
+
+    return null;
+  }
+
+  if (entity.folderId === currentFolderId) {
+    return entity.id;
+  }
+
+  let cursor = folders[entity.folderId];
+  while (cursor) {
+    if (cursor.parentFolderId === currentFolderId) {
+      return cursor.id;
+    }
+    if (!cursor.parentFolderId) {
+      break;
+    }
+    cursor = folders[cursor.parentFolderId];
+  }
+
+  return null;
+}
+
+function projectEdgesForFolderView(document = {}, folderId = ROOT_FOLDER_ID) {
+  const nodes = isPlainObject(document.nodes) ? document.nodes : {};
+  const folders = isPlainObject(document.folders) ? document.folders : {};
+  const edges = Array.isArray(document.edges) ? document.edges : [];
+  const visibleIds = new Set();
+
+  const currentFolder = folders[folderId];
+  if (currentFolder) {
+    visibleIds.add(currentFolder.id);
+  }
+
+  Object.values(nodes).forEach((node) => {
+    if (node?.folderId === folderId) {
+      visibleIds.add(node.id);
+    }
+  });
+
+  Object.values(folders).forEach((folder) => {
+    if (folder?.parentFolderId === folderId) {
+      visibleIds.add(folder.id);
+    }
+  });
+
+  return edges
+    .map((edge) => {
+      if (!isPlainObject(edge)) {
+        return null;
+      }
+
+      const projectedSourceId = resolveVisibleEntityId(edge.fromNodeId || edge.sourceNodeId, document, folderId);
+      const projectedTargetId = resolveVisibleEntityId(edge.toNodeId || edge.targetNodeId, document, folderId);
+      if (!projectedSourceId || !projectedTargetId || projectedSourceId === projectedTargetId) {
+        return null;
+      }
+
+      if (!visibleIds.has(projectedSourceId) || !visibleIds.has(projectedTargetId)) {
+        return null;
+      }
+
+      return {
+        ...clone(edge),
+        fromNodeId: projectedSourceId,
+        toNodeId: projectedTargetId,
+      };
+    })
+    .filter(Boolean);
+}
+
 function ensureFolderHierarchy(document) {
   const folders = isPlainObject(document.folders) ? document.folders : {};
   const nodes = isPlainObject(document.nodes) ? document.nodes : {};
@@ -658,7 +749,7 @@ export function buildFolderDocumentView(document = {}, folderId = ROOT_FOLDER_ID
     }
   });
 
-  const visibleEdges = buildEdgesFromEntities(orderedNodes);
+  const visibleEdges = projectEdgesForFolderView(document, currentFolderId);
   const fallbackEntry = currentFolder.entryNodeId && orderedNodes[currentFolder.entryNodeId]
     ? currentFolder.entryNodeId
     : orderedIds[0] || null;
