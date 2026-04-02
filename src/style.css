@@ -197,38 +197,22 @@ body, html {
   max-width: calc(100vw - 24px);
 }
 
-.toolbar-primary,
-.toolbar-secondary {
+#utility-dock {
+  position: fixed;
+  top: 92px;
+  right: 16px;
+  z-index: 1010;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  min-width: 0;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 8px;
 }
 
-.toolbar-primary {
-  flex-wrap: wrap;
-}
-
-.toolbar-secondary {
-  flex-wrap: wrap;
-  padding-top: 2px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.toolbar-status {
+.utility-status {
   display: flex;
   align-items: center;
   gap: 6px;
-  flex: 0 1 auto;
-  min-width: 0;
-}
-
-.toolbar-badges {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  pointer-events: auto;
 }
 
 .prompt-copy-wrap {
@@ -263,6 +247,10 @@ body, html {
 
 #folder-breadcrumb::-webkit-scrollbar {
   display: none;
+}
+
+.utility-dock .toolbar-badge {
+  pointer-events: auto;
 }
 
 .folder-crumb {
@@ -359,6 +347,10 @@ body, html {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
+}
+
+.prompt-picker[hidden] {
+  display: none !important;
 }
 
 .prompt-copy-wrap > #btn-ai-prompt-copy {
