@@ -124,7 +124,7 @@ body, html {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 8px;
+  gap: 6px;
   pointer-events: none;
 }
 
@@ -132,6 +132,15 @@ body, html {
   display: flex;
   align-items: center;
   gap: 8px;
+  pointer-events: auto;
+}
+
+.prompt-copy-wrap {
+  position: relative;
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-start;
+  width: fit-content;
   pointer-events: auto;
 }
 
@@ -264,6 +273,10 @@ body, html {
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
   z-index: 1200;
   pointer-events: auto;
+}
+
+.prompt-copy-wrap > #btn-ai-prompt-copy {
+  min-width: 108px;
 }
 
 .prompt-picker-item {
