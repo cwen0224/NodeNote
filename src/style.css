@@ -199,20 +199,23 @@ body, html {
 
 #utility-dock {
   position: fixed;
-  top: 92px;
+  top: 16px;
   right: 16px;
   z-index: 1010;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   gap: 8px;
-  padding: 8px;
+  padding: 10px;
+  min-width: 176px;
 }
 
 .utility-status {
   display: flex;
   align-items: center;
   gap: 6px;
+  justify-content: flex-end;
+  width: 100%;
 }
 
 .prompt-copy-wrap {
@@ -326,6 +329,7 @@ body, html {
   gap: 8px;
   flex: 0 0 auto;
   margin-left: auto;
+  flex-wrap: wrap;
 }
 
 #btn-ai-prompt-copy {
