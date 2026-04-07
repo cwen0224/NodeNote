@@ -10,8 +10,8 @@ NodeNote is a node-based JSON notebook for structured notes, media-linked conten
 - Nodes, edges, assets, and metadata are kept in flat registries.
 - Folder depth is a view-layer concept used for navigation and color themes, with up to seven visible layers.
 - Local autosave keeps the current working draft in the browser, with a longer undo history.
-- Cloud sync is a secondary snapshot layer for GitHub Contents API backups.
-- Clipboard, Git, and AI integrations are adapters, not core state.
+- Cloud sync now supports both GitHub snapshot backups and Google Sheet co-editing via an Apps Script-backed sheet adapter.
+- Clipboard, Git, Google Sheets, and AI integrations are adapters, not core state.
 
 ## Run
 

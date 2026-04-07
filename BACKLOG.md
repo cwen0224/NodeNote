@@ -4,8 +4,8 @@
 
 - Cloud sync / GitHub Contents API backup
   - Status: deferred
-  - Keep the current implementation in the repo, but do not extend it for now.
-  - Focus next work on core editor and note-taking features.
+  - Keep the current GitHub backup implementation in the repo, but do not extend it for now.
+  - The new Google Sheet co-edit adapter is the active cloud-sync path.
 
 ## Architecture Debt
 

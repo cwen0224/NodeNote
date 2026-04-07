@@ -1,0 +1,398 @@
+const NODE_NOTE_DEFAULT_PROJECT_KEY = 'default';
+const NODE_NOTE_DEFAULT_REVISION = 0;
+
+function doGet(e) {
+  try {
+    const params = (e && e.parameter) || {};
+    const action = String(params.action || 'state').toLowerCase();
+    const projectKey = normalizeProjectKey_(params.projectKey);
+    validateSecret_(params.secret);
+
+    if (action === 'state') {
+      return jsonResponse_(buildProjectState_(projectKey));
+    }
+
+    if (action === 'ping') {
+      return jsonResponse_({
+        ok: true,
+        projectKey,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
+    return jsonResponse_({
+      ok: false,
+      error: `Unknown action: ${action}`,
+    }, 400);
+  } catch (error) {
+    return jsonResponse_(errorResponse_(error), 500);
+  }
+}
+
+function doPost(e) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+
+  try {
+    const body = parseBody_(e);
+    const action = String(body.action || 'commit').toLowerCase();
+    const projectKey = normalizeProjectKey_(body.projectKey);
+    validateSecret_(body.secret);
+
+    if (action !== 'commit') {
+      return jsonResponse_({
+        ok: false,
+        error: `Unknown action: ${action}`,
+      }, 400);
+    }
+
+    const patch = isPlainObject_(body.patch) ? body.patch : {};
+    const nextState = applyPatch_(projectKey, patch);
+    return jsonResponse_(nextState);
+  } catch (error) {
+    return jsonResponse_(errorResponse_(error), 500);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function buildProjectState_(projectKey) {
+  const spreadsheet = getSpreadsheet_();
+  const stateSheet = getOrCreateSheet_(spreadsheet, 'state', ['projectKey', 'revision', 'updatedAt', 'rootFolderId', 'metaJson', 'assetsJson', 'extrasJson']);
+  const nodesSheet = getOrCreateSheet_(spreadsheet, 'nodes', ['projectKey', 'id', 'payloadJson']);
+  const foldersSheet = getOrCreateSheet_(spreadsheet, 'folders', ['projectKey', 'id', 'payloadJson']);
+  const assetsSheet = getOrCreateSheet_(spreadsheet, 'assets', ['projectKey', 'id', 'payloadJson']);
+
+  const stateRow = findRowByProjectKey_(stateSheet, projectKey);
+  const stateRecord = stateRow ? rowToObject_(stateSheet, stateRow) : null;
+  const nodes = readEntityMap_(nodesSheet, projectKey);
+  const folders = readEntityMap_(foldersSheet, projectKey);
+  const assets = readEntityList_(assetsSheet, projectKey);
+
+  return {
+    ok: true,
+    provider: 'google-sheets',
+    projectKey,
+    revision: Number.parseInt(stateRecord?.revision || `${NODE_NOTE_DEFAULT_REVISION}`, 10) || 0,
+    updatedAt: stateRecord?.updatedAt || null,
+    document: {
+      schemaVersion: '2.0.0',
+      meta: parseJson_(stateRecord?.metaJson, { title: 'Untitled', description: '', tags: [], createdAt: null, updatedAt: null }),
+      rootFolderId: stateRecord?.rootFolderId || 'folder_root',
+      folders,
+      nodes,
+      assets,
+      extras: parseJson_(stateRecord?.extrasJson, {}),
+    },
+  };
+}
+
+function applyPatch_(projectKey, patch) {
+  const spreadsheet = getSpreadsheet_();
+  const stateSheet = getOrCreateSheet_(spreadsheet, 'state', ['projectKey', 'revision', 'updatedAt', 'rootFolderId', 'metaJson', 'assetsJson', 'extrasJson']);
+  const nodesSheet = getOrCreateSheet_(spreadsheet, 'nodes', ['projectKey', 'id', 'payloadJson']);
+  const foldersSheet = getOrCreateSheet_(spreadsheet, 'folders', ['projectKey', 'id', 'payloadJson']);
+  const assetsSheet = getOrCreateSheet_(spreadsheet, 'assets', ['projectKey', 'id', 'payloadJson']);
+
+  const currentStateRow = findRowByProjectKey_(stateSheet, projectKey);
+  const currentState = currentStateRow ? rowToObject_(stateSheet, currentStateRow) : {};
+  const nextRevision = (Number.parseInt(currentState.revision || `${NODE_NOTE_DEFAULT_REVISION}`, 10) || 0) + 1;
+  const updatedAt = new Date().toISOString();
+
+  upsertEntityPatch_(nodesSheet, projectKey, patch.nodes || {}, patch.deletedNodeIds || []);
+  upsertEntityPatch_(foldersSheet, projectKey, patch.folders || {}, patch.deletedFolderIds || []);
+  if (Array.isArray(patch.assets)) {
+    replaceEntityTable_(assetsSheet, projectKey, patch.assets);
+  }
+
+  const nextMeta = isPlainObject_(patch.meta)
+    ? patch.meta
+    : parseJson_(currentState.metaJson, { title: 'Untitled', description: '', tags: [], createdAt: null, updatedAt: null });
+  const nextAssets = Array.isArray(patch.assets)
+    ? patch.assets
+    : parseJson_(currentState.assetsJson, []);
+  const nextExtras = isPlainObject_(patch.extras)
+    ? patch.extras
+    : parseJson_(currentState.extrasJson, {});
+  const nextRootFolderId = typeof patch.rootFolderId === 'string' && patch.rootFolderId.trim()
+    ? patch.rootFolderId.trim()
+    : (currentState.rootFolderId || 'folder_root');
+
+  upsertStateRow_(stateSheet, projectKey, {
+    projectKey,
+    revision: nextRevision,
+    updatedAt,
+    rootFolderId: nextRootFolderId,
+    metaJson: JSON.stringify(nextMeta || {}),
+    assetsJson: JSON.stringify(nextAssets || []),
+    extrasJson: JSON.stringify(nextExtras || {}),
+  });
+
+  return buildProjectState_(projectKey);
+}
+
+function upsertEntityPatch_(sheet, projectKey, upserts, deletes) {
+  const records = [];
+  if (isPlainObject_(upserts)) {
+    Object.entries(upserts).forEach(([id, payload]) => {
+      if (typeof id !== 'string' || !id) {
+        return;
+      }
+      records.push({ projectKey, id, payloadJson: JSON.stringify(payload || {}) });
+    });
+  }
+
+  if (records.length) {
+    upsertTableRows_(sheet, records);
+  }
+
+  if (Array.isArray(deletes) && deletes.length) {
+    deleteTableRows_(sheet, projectKey, deletes);
+  }
+}
+
+function replaceEntityTable_(sheet, projectKey, records) {
+  const sheetRows = readAllRows_(sheet);
+  const kept = [sheetRows[0]];
+  for (let index = 1; index < sheetRows.length; index += 1) {
+    const row = sheetRows[index];
+    if (normalizeProjectKey_(row[0]) !== projectKey) {
+      kept.push(row);
+    }
+  }
+
+  const nextRows = records
+    .filter((record) => isPlainObject_(record) && typeof record.id === 'string' && record.id.trim())
+    .map((record) => [projectKey, String(record.id), JSON.stringify(record)]);
+
+  writeAllRows_(sheet, kept.concat(nextRows));
+}
+
+function upsertStateRow_(sheet, projectKey, record) {
+  const rows = readAllRows_(sheet);
+  const header = rows[0] || ['projectKey', 'revision', 'updatedAt', 'rootFolderId', 'metaJson', 'assetsJson', 'extrasJson'];
+  const nextRow = [
+    projectKey,
+    record.revision || 0,
+    record.updatedAt || new Date().toISOString(),
+    record.rootFolderId || 'folder_root',
+    record.metaJson || '{}',
+    record.assetsJson || '[]',
+    record.extrasJson || '{}',
+  ];
+
+  let replaced = false;
+  for (let index = 1; index < rows.length; index += 1) {
+    if (normalizeProjectKey_(rows[index][0]) === projectKey) {
+      rows[index] = nextRow;
+      replaced = true;
+      break;
+    }
+  }
+
+  if (!replaced) {
+    rows.push(nextRow);
+  }
+
+  writeAllRows_(sheet, [header].concat(rows.slice(1)));
+}
+
+function readEntityMap_(sheet, projectKey) {
+  const rows = readAllRows_(sheet);
+  const map = {};
+  for (let index = 1; index < rows.length; index += 1) {
+    const row = rows[index];
+    if (normalizeProjectKey_(row[0]) !== projectKey) {
+      continue;
+    }
+
+    const id = String(row[1] || '').trim();
+    if (!id) {
+      continue;
+    }
+
+    map[id] = parseJson_(row[2], {});
+  }
+  return map;
+}
+
+function readEntityList_(sheet, projectKey) {
+  const rows = readAllRows_(sheet);
+  const list = [];
+  for (let index = 1; index < rows.length; index += 1) {
+    const row = rows[index];
+    if (normalizeProjectKey_(row[0]) !== projectKey) {
+      continue;
+    }
+
+    const payload = parseJson_(row[2], null);
+    if (payload) {
+      list.push(payload);
+    }
+  }
+  return list;
+}
+
+function readAllRows_(sheet) {
+  const range = sheet.getDataRange();
+  const values = range.getValues();
+  return values.length ? values : [sheet.getRange(1, 1, 1, Math.max(1, sheet.getLastColumn())).getValues()[0]];
+}
+
+function writeAllRows_(sheet, rows) {
+  sheet.clearContents();
+  if (!rows.length) {
+    return;
+  }
+
+  const width = Math.max(...rows.map((row) => row.length));
+  const padded = rows.map((row) => {
+    const next = row.slice();
+    while (next.length < width) {
+      next.push('');
+    }
+    return next;
+  });
+  sheet.getRange(1, 1, padded.length, width).setValues(padded);
+}
+
+function upsertTableRows_(sheet, records) {
+  const rows = readAllRows_(sheet);
+  const header = rows[0] || ['projectKey', 'id', 'payloadJson'];
+  const rowIndexByKey = new Map();
+  for (let index = 1; index < rows.length; index += 1) {
+    rowIndexByKey.set(`${normalizeProjectKey_(rows[index][0])}::${String(rows[index][1] || '')}`, index + 1);
+  }
+
+  records.forEach((record) => {
+    const row = [record.projectKey, record.id, record.payloadJson];
+    const key = `${normalizeProjectKey_(record.projectKey)}::${record.id}`;
+    if (rowIndexByKey.has(key)) {
+      const rowIndex = rowIndexByKey.get(key);
+      sheet.getRange(rowIndex, 1, 1, row.length).setValues([row]);
+    } else {
+      sheet.appendRow(row);
+    }
+  });
+
+  if (rows.length === 1 && header.length) {
+    sheet.getRange(1, 1, 1, header.length).setValues([header]);
+  }
+}
+
+function deleteTableRows_(sheet, projectKey, ids) {
+  if (!Array.isArray(ids) || !ids.length) {
+    return;
+  }
+
+  const rows = readAllRows_(sheet);
+  const rowIndices = [];
+  for (let index = 1; index < rows.length; index += 1) {
+    const row = rows[index];
+    if (normalizeProjectKey_(row[0]) !== projectKey) {
+      continue;
+    }
+
+    const id = String(row[1] || '').trim();
+    if (ids.includes(id)) {
+      rowIndices.push(index + 1);
+    }
+  }
+
+  rowIndices.sort((a, b) => b - a).forEach((rowIndex) => {
+    sheet.deleteRow(rowIndex);
+  });
+}
+
+function getOrCreateSheet_(spreadsheet, name, headers) {
+  let sheet = spreadsheet.getSheetByName(name);
+  if (!sheet) {
+    sheet = spreadsheet.insertSheet(name);
+  }
+
+  const currentHeaders = sheet.getLastRow() > 0
+    ? sheet.getRange(1, 1, 1, Math.max(1, sheet.getLastColumn())).getValues()[0]
+    : [];
+  if (!currentHeaders.length || String(currentHeaders[0] || '').trim() !== String(headers[0] || '').trim()) {
+    sheet.clearContents();
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  }
+
+  return sheet;
+}
+
+function getSpreadsheet_() {
+  const props = PropertiesService.getScriptProperties();
+  const spreadsheetId = String(props.getProperty('NODENOTE_SPREADSHEET_ID') || '').trim();
+  if (spreadsheetId) {
+    return SpreadsheetApp.openById(spreadsheetId);
+  }
+
+  const active = SpreadsheetApp.getActiveSpreadsheet();
+  if (!active) {
+    throw new Error('找不到可用的 Spreadsheet，請先綁定腳本或設定 NODENOTE_SPREADSHEET_ID');
+  }
+
+  return active;
+}
+
+function normalizeProjectKey_(value) {
+  const text = String(value || '').trim();
+  return text || NODE_NOTE_DEFAULT_PROJECT_KEY;
+}
+
+function parseBody_(e) {
+  const raw = String(e?.postData?.contents || '').trim();
+  if (!raw) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    throw new Error(`無法解析請求：${error.message}`);
+  }
+}
+
+function parseJson_(value, fallback) {
+  if (typeof value !== 'string' || !value.trim()) {
+    return fallback;
+  }
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
+
+function isPlainObject_(value) {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function validateSecret_(providedSecret) {
+  const expected = String(PropertiesService.getScriptProperties().getProperty('NODENOTE_SECRET') || '').trim();
+  if (!expected) {
+    return true;
+  }
+
+  const next = String(providedSecret || '').trim();
+  if (next !== expected) {
+    throw new Error('Secret 不符');
+  }
+
+  return true;
+}
+
+function errorResponse_(error) {
+  return {
+    ok: false,
+    error: error && error.message ? error.message : String(error || 'Unknown error'),
+  };
+}
+
+function jsonResponse_(payload, statusCode) {
+  const output = ContentService.createTextOutput(JSON.stringify(payload));
+  output.setMimeType(ContentService.MimeType.JSON);
+  return output;
+}

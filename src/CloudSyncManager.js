@@ -1,13 +1,21 @@
 import { renderer } from './Renderer.js';
 import { persistenceManager } from './PersistenceManager.js';
 import { store } from './StateStore.js';
-import { normalizeDocument } from './core/documentSchema.js';
+import { createDefaultDocument, normalizeDocument } from './core/documentSchema.js';
+import {
+  applyCollaborativePatch,
+  createCollaborativePatch,
+  isCollaborativePatchEmpty,
+} from './core/googleSheetCollab.js';
 
 const CONFIG_STORAGE_KEY = 'nodenote.cloudsync.config.v1';
 const STATE_STORAGE_KEY = 'nodenote.cloudsync.state.v1';
 const DEFAULT_SYNC_PATH = 'project-state.json';
 const CLOUD_SYNC_VERSION = '1.0.0';
 const AUTO_SYNC_DEBOUNCE_MS = 2800;
+const SHEET_AUTO_SYNC_DEBOUNCE_MS = 1200;
+const DEFAULT_SHEET_POLL_MS = 2000;
+const SHEET_CLIENT_STORAGE_KEY = 'nodenote.sheet.client-id.v1';
 
 function isPlainObject(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -58,6 +66,69 @@ function formatClockStamp(isoString) {
   const hours = String(value.getHours()).padStart(2, '0');
   const minutes = String(value.getMinutes()).padStart(2, '0');
   return `${hours}:${minutes}`;
+}
+
+function buildDocumentFingerprint(document) {
+  return JSON.stringify(document ?? null);
+}
+
+function isDeepEqual(a, b) {
+  if (a === b) {
+    return true;
+  }
+
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
+      return false;
+    }
+
+    for (let index = 0; index < a.length; index += 1) {
+      if (!isDeepEqual(a[index], b[index])) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  if (typeof a !== 'object' || typeof b !== 'object' || !a || !b) {
+    return false;
+  }
+
+  const keysA = Object.keys(a).sort();
+  const keysB = Object.keys(b).sort();
+  if (keysA.length !== keysB.length) {
+    return false;
+  }
+
+  for (let index = 0; index < keysA.length; index += 1) {
+    if (keysA[index] !== keysB[index]) {
+      return false;
+    }
+    const key = keysA[index];
+    if (!isDeepEqual(a[key], b[key])) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function createClientId() {
+  return `client_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function readOrCreateClientId() {
+  try {
+    const stored = localStorage.getItem(SHEET_CLIENT_STORAGE_KEY);
+    if (stored) {
+      return stored;
+    }
+    const next = createClientId();
+    localStorage.setItem(SHEET_CLIENT_STORAGE_KEY, next);
+    return next;
+  } catch {
+    return createClientId();
+  }
 }
 
 function buildFingerprint(snapshot) {
@@ -116,11 +187,16 @@ class CloudSyncManager {
     this.statusText = null;
     this.inputs = {};
     this.syncTimer = null;
+    this.pollTimer = null;
     this.syncInFlight = false;
     this.pendingSnapshot = null;
     this.skipNextAutosave = false;
     this.initialized = false;
     this.boundAutosave = this.handleAutosave.bind(this);
+    this.sheetClientId = readOrCreateClientId();
+    this.sheetBaselineDocument = null;
+    this.sheetLastRevision = 0;
+    this.sheetLastFingerprint = null;
   }
 
   init() {
@@ -133,7 +209,8 @@ class CloudSyncManager {
     this.buildDialog();
     this.bindEvents();
     this.applyStateToUI();
-    if (this.config.restoreOnStartupWhenEmpty && !persistenceManager.wasRestored()) {
+    this.refreshTransportMode();
+    if (this.config.restoreOnStartupWhenEmpty && this.isConfigReady() && !persistenceManager.wasRestored()) {
       queueMicrotask(() => {
         this.pullNow({ skipConfirm: true });
       });
@@ -151,6 +228,11 @@ class CloudSyncManager {
       token: '',
       autoSync: true,
       restoreOnStartupWhenEmpty: false,
+      sheetWebAppUrl: '',
+      sheetProjectKey: 'default',
+      sheetClientName: '',
+      sheetSecret: '',
+      sheetPollIntervalMs: DEFAULT_SHEET_POLL_MS,
     };
 
     try {
@@ -188,6 +270,7 @@ class CloudSyncManager {
       lastError: null,
       lastRemoteSha: null,
       lastFingerprint: null,
+      lastRemoteRevision: 0,
       syncCount: 0,
     };
 
@@ -219,6 +302,11 @@ class CloudSyncManager {
     store.on('autosave:updated', (snapshot) => this.handleAutosave(snapshot));
     this.toolbarButton?.addEventListener('click', () => this.openDialog());
     this.statusBadge?.addEventListener('click', () => this.openDialog());
+    this.inputs.provider?.addEventListener('change', () => {
+      this.updateProviderPanels();
+      this.updateStatusBadge();
+      this.updateDialogStatus();
+    });
 
     this.overlay?.addEventListener('click', (event) => {
       if (event.target === this.overlay) {
@@ -263,7 +351,7 @@ class CloudSyncManager {
         <div class="cloud-sync-header">
           <div>
             <h2>Cloud Sync</h2>
-            <p>本機 autosave 保留較多步數，雲端只存最新快照。</p>
+            <p>GitHub 用最新快照備份，Google Sheet 用近即時共編。</p>
           </div>
           <button type="button" class="cloud-sync-close" data-cloud-action="close" aria-label="關閉雲端同步">×</button>
         </div>
@@ -271,29 +359,63 @@ class CloudSyncManager {
         <div class="cloud-sync-form">
           <label class="cloud-sync-field">
             <span>Provider</span>
-            <input type="text" data-cloud-field="provider" value="github" readonly />
+            <select data-cloud-field="provider">
+              <option value="github">GitHub 備份</option>
+              <option value="sheets">Google Sheet 共編</option>
+            </select>
           </label>
-          <label class="cloud-sync-field">
-            <span>Owner</span>
-            <input type="text" data-cloud-field="owner" autocomplete="off" />
-          </label>
-          <label class="cloud-sync-field">
-            <span>Repository</span>
-            <input type="text" data-cloud-field="repo" autocomplete="off" />
-          </label>
-          <label class="cloud-sync-field">
-            <span>Branch</span>
-            <input type="text" data-cloud-field="branch" autocomplete="off" />
-          </label>
-          <label class="cloud-sync-field cloud-sync-field--wide">
-            <span>Path</span>
-            <input type="text" data-cloud-field="path" autocomplete="off" />
-          </label>
-          <label class="cloud-sync-field cloud-sync-field--wide">
-            <span>GitHub Token</span>
-            <input type="password" data-cloud-field="token" autocomplete="off" />
-            <small>Token 會存進瀏覽器本機，只建議使用 Contents: write 的 fine-grained PAT。</small>
-          </label>
+          <section class="cloud-sync-provider-group" data-provider-panel="github">
+            <div class="cloud-sync-grid">
+              <label class="cloud-sync-field">
+                <span>Owner</span>
+                <input type="text" data-cloud-field="owner" autocomplete="off" />
+              </label>
+              <label class="cloud-sync-field">
+                <span>Repository</span>
+                <input type="text" data-cloud-field="repo" autocomplete="off" />
+              </label>
+              <label class="cloud-sync-field">
+                <span>Branch</span>
+                <input type="text" data-cloud-field="branch" autocomplete="off" />
+              </label>
+              <label class="cloud-sync-field cloud-sync-field--wide">
+                <span>Path</span>
+                <input type="text" data-cloud-field="path" autocomplete="off" />
+              </label>
+              <label class="cloud-sync-field cloud-sync-field--wide">
+                <span>GitHub Token</span>
+                <input type="password" data-cloud-field="token" autocomplete="off" />
+                <small>Token 會存進瀏覽器本機，只建議使用 Contents: write 的 fine-grained PAT。</small>
+              </label>
+            </div>
+          </section>
+          <section class="cloud-sync-provider-group" data-provider-panel="sheets">
+            <div class="cloud-sync-note">
+              Google Sheet 模式會透過 Apps Script Web App 讀寫試算表，並以輪詢方式近即時同步。
+            </div>
+            <div class="cloud-sync-grid">
+              <label class="cloud-sync-field cloud-sync-field--wide">
+                <span>Web App URL</span>
+                <input type="text" data-cloud-field="sheetWebAppUrl" autocomplete="off" placeholder="https://script.google.com/macros/s/..." />
+              </label>
+              <label class="cloud-sync-field">
+                <span>Project Key</span>
+                <input type="text" data-cloud-field="sheetProjectKey" autocomplete="off" placeholder="default" />
+              </label>
+              <label class="cloud-sync-field">
+                <span>Client Name</span>
+                <input type="text" data-cloud-field="sheetClientName" autocomplete="off" placeholder="Alice" />
+              </label>
+              <label class="cloud-sync-field">
+                <span>Secret</span>
+                <input type="password" data-cloud-field="sheetSecret" autocomplete="off" />
+              </label>
+              <label class="cloud-sync-field">
+                <span>Poll Interval (ms)</span>
+                <input type="number" min="1000" step="250" data-cloud-field="sheetPollIntervalMs" autocomplete="off" />
+              </label>
+            </div>
+          </section>
           <label class="cloud-sync-toggle">
             <input type="checkbox" data-cloud-field="autoSync" />
             <span>自動同步最新快照</span>
@@ -316,6 +438,7 @@ class CloudSyncManager {
     this.panel = this.overlay.querySelector('.cloud-sync-panel');
     this.statusText = this.overlay.querySelector('.cloud-sync-status');
     this.inputs = this.collectInputs();
+    this.updateProviderPanels();
   }
 
   collectInputs() {
@@ -326,6 +449,11 @@ class CloudSyncManager {
       branch: this.overlay?.querySelector('[data-cloud-field="branch"]') || null,
       path: this.overlay?.querySelector('[data-cloud-field="path"]') || null,
       token: this.overlay?.querySelector('[data-cloud-field="token"]') || null,
+      sheetWebAppUrl: this.overlay?.querySelector('[data-cloud-field="sheetWebAppUrl"]') || null,
+      sheetProjectKey: this.overlay?.querySelector('[data-cloud-field="sheetProjectKey"]') || null,
+      sheetClientName: this.overlay?.querySelector('[data-cloud-field="sheetClientName"]') || null,
+      sheetSecret: this.overlay?.querySelector('[data-cloud-field="sheetSecret"]') || null,
+      sheetPollIntervalMs: this.overlay?.querySelector('[data-cloud-field="sheetPollIntervalMs"]') || null,
       autoSync: this.overlay?.querySelector('[data-cloud-field="autoSync"]') || null,
       restoreOnStartupWhenEmpty: this.overlay?.querySelector('[data-cloud-field="restoreOnStartupWhenEmpty"]') || null,
     };
@@ -333,6 +461,7 @@ class CloudSyncManager {
 
   applyStateToUI() {
     this.fillInputsFromConfig();
+    this.updateProviderPanels();
     this.updateStatusBadge();
     this.updateDialogStatus();
   }
@@ -361,12 +490,39 @@ class CloudSyncManager {
     if (this.inputs.token) {
       this.inputs.token.value = config.token || '';
     }
+    if (this.inputs.sheetWebAppUrl) {
+      this.inputs.sheetWebAppUrl.value = config.sheetWebAppUrl || '';
+    }
+    if (this.inputs.sheetProjectKey) {
+      this.inputs.sheetProjectKey.value = config.sheetProjectKey || 'default';
+    }
+    if (this.inputs.sheetClientName) {
+      this.inputs.sheetClientName.value = config.sheetClientName || '';
+    }
+    if (this.inputs.sheetSecret) {
+      this.inputs.sheetSecret.value = config.sheetSecret || '';
+    }
+    if (this.inputs.sheetPollIntervalMs) {
+      this.inputs.sheetPollIntervalMs.value = String(Number.isFinite(config.sheetPollIntervalMs) ? config.sheetPollIntervalMs : DEFAULT_SHEET_POLL_MS);
+    }
     if (this.inputs.autoSync) {
       this.inputs.autoSync.checked = Boolean(config.autoSync);
     }
     if (this.inputs.restoreOnStartupWhenEmpty) {
       this.inputs.restoreOnStartupWhenEmpty.checked = Boolean(config.restoreOnStartupWhenEmpty);
     }
+  }
+
+  updateProviderPanels() {
+    if (!this.overlay) {
+      return;
+    }
+
+    const provider = this.inputs.provider?.value || this.config.provider || 'github';
+    this.overlay.querySelectorAll?.('[data-provider-panel]').forEach((panel) => {
+      const isActive = panel.dataset.providerPanel === provider;
+      panel.hidden = !isActive;
+    });
   }
 
   readConfigFromInputs() {
@@ -379,10 +535,21 @@ class CloudSyncManager {
       token: sanitizeString(this.inputs.token?.value),
       autoSync: Boolean(this.inputs.autoSync?.checked),
       restoreOnStartupWhenEmpty: Boolean(this.inputs.restoreOnStartupWhenEmpty?.checked),
+      sheetWebAppUrl: sanitizeString(this.inputs.sheetWebAppUrl?.value),
+      sheetProjectKey: sanitizeString(this.inputs.sheetProjectKey?.value, 'default'),
+      sheetClientName: sanitizeString(this.inputs.sheetClientName?.value),
+      sheetSecret: sanitizeString(this.inputs.sheetSecret?.value),
+      sheetPollIntervalMs: Number.isFinite(Number(this.inputs.sheetPollIntervalMs?.value))
+        ? Math.max(1000, Number(this.inputs.sheetPollIntervalMs?.value))
+        : DEFAULT_SHEET_POLL_MS,
     };
   }
 
   isConfigReady() {
+    if (this.config.provider === 'sheets') {
+      return Boolean(this.config.sheetWebAppUrl && this.config.sheetProjectKey);
+    }
+
     return Boolean(
       this.config.provider === 'github' &&
       this.config.owner &&
@@ -435,24 +602,29 @@ class CloudSyncManager {
       return;
     }
 
+    const label = this.getProviderLabel();
     this.statusBadge.classList.remove('is-idle', 'is-syncing', 'is-error', 'is-off');
     if (!this.isConfigReady()) {
       this.statusBadge.classList.add('is-off');
-      this.statusBadge.textContent = 'Cloud: off';
-      this.statusBadge.title = '點擊設定 GitHub 雲端同步';
+      this.statusBadge.textContent = `${label}: off`;
+      this.statusBadge.title = this.config.provider === 'sheets'
+        ? '點擊設定 Google Sheet 共編'
+        : '點擊設定 GitHub 雲端同步';
       return;
     }
 
     if (this.syncInFlight) {
       this.statusBadge.classList.add('is-syncing');
-      this.statusBadge.textContent = 'Cloud: sync';
-      this.statusBadge.title = '雲端快照同步中';
+      this.statusBadge.textContent = `${label}: sync`;
+      this.statusBadge.title = this.config.provider === 'sheets'
+        ? 'Google Sheet 共編同步中'
+        : '雲端快照同步中';
       return;
     }
 
     if (this.state.lastError) {
       this.statusBadge.classList.add('is-error');
-      this.statusBadge.textContent = 'Cloud: error';
+      this.statusBadge.textContent = `${label}: error`;
       this.statusBadge.title = this.state.lastError;
       return;
     }
@@ -460,13 +632,17 @@ class CloudSyncManager {
     this.statusBadge.classList.add('is-idle');
     if (this.state.lastSyncedAt) {
       const stamp = formatClockStamp(this.state.lastSyncedAt);
-      this.statusBadge.textContent = `Cloud: ${stamp}`;
-      this.statusBadge.title = detail || message || `上次雲端同步 ${stamp}`;
+      this.statusBadge.textContent = `${label}: ${stamp}`;
+      this.statusBadge.title = detail || message || (this.config.provider === 'sheets'
+        ? `上次 Google Sheet 同步 ${stamp}`
+        : `上次雲端同步 ${stamp}`);
       return;
     }
 
-    this.statusBadge.textContent = 'Cloud: ready';
-    this.statusBadge.title = detail || message || '雲端同步已就緒';
+    this.statusBadge.textContent = `${label}: ready`;
+    this.statusBadge.title = detail || message || (this.config.provider === 'sheets'
+      ? 'Google Sheet 共編已就緒'
+      : '雲端同步已就緒');
   }
 
   updateDialogStatus(message = '', detail = '') {
@@ -476,15 +652,23 @@ class CloudSyncManager {
 
     let text = '尚未設定雲端同步。';
     if (!this.isConfigReady()) {
-      text = '請填入 GitHub Owner / Repository / Branch / Path / Token。';
+      text = this.config.provider === 'sheets'
+        ? '請填入 Google Sheet Web App URL / Project Key。'
+        : '請填入 GitHub Owner / Repository / Branch / Path / Token。';
     } else if (this.syncInFlight) {
-      text = '正在同步雲端快照...';
+      text = this.config.provider === 'sheets'
+        ? '正在同步 Google Sheet 共編內容...'
+        : '正在同步雲端快照...';
     } else if (this.state.lastError) {
       text = `錯誤：${this.state.lastError}`;
     } else if (this.state.lastSyncedAt) {
-      text = `上次同步：${formatClockStamp(this.state.lastSyncedAt)}`;
+      text = this.config.provider === 'sheets'
+        ? `上次 Google Sheet 同步：${formatClockStamp(this.state.lastSyncedAt)}`
+        : `上次同步：${formatClockStamp(this.state.lastSyncedAt)}`;
     } else {
-      text = '已就緒，等下一次 autosave 就會同步。';
+      text = this.config.provider === 'sheets'
+        ? '已就緒，會輪詢 Google Sheet 並同步本機修改。'
+        : '已就緒，等下一次 autosave 就會同步。';
     }
 
     if (message && kindLabel(message) === 'error') {
@@ -498,6 +682,7 @@ class CloudSyncManager {
 
   openDialog() {
     this.fillInputsFromConfig();
+    this.updateProviderPanels();
     this.updateStatusBadge();
     this.updateDialogStatus();
     if (this.overlay) {
@@ -515,6 +700,8 @@ class CloudSyncManager {
     const nextConfig = this.readConfigFromInputs();
     this.saveConfig(nextConfig);
     this.fillInputsFromConfig();
+    this.updateProviderPanels();
+    this.refreshTransportMode();
     this.setStatus('idle', '雲端設定已儲存');
 
     if (syncImmediately && this.isConfigReady()) {
@@ -522,8 +709,365 @@ class CloudSyncManager {
     }
   }
 
+  refreshTransportMode() {
+    if (this.config.provider === 'sheets' && this.isConfigReady()) {
+      this.startSheetPolling();
+      return;
+    }
+
+    this.stopSheetPolling();
+  }
+
+  startSheetPolling() {
+    this.stopSheetPolling();
+
+    if (this.config.provider !== 'sheets' || !this.isConfigReady()) {
+      return;
+    }
+
+    const interval = this.getSheetPollIntervalMs();
+    if (!Number.isFinite(interval) || interval <= 0) {
+      return;
+    }
+
+    this.pollTimer = window.setInterval(() => {
+      if (document.hidden || this.syncInFlight) {
+        return;
+      }
+      this.pollSheetNow().catch((error) => {
+        console.warn('Google Sheet poll failed', error);
+      });
+    }, interval);
+
+    queueMicrotask(() => {
+      if (this.config.provider === 'sheets' && this.isConfigReady()) {
+        this.pollSheetNow().catch((error) => {
+          console.warn('Google Sheet initial poll failed', error);
+        });
+      }
+    });
+  }
+
+  stopSheetPolling() {
+    if (this.pollTimer) {
+      window.clearInterval(this.pollTimer);
+      this.pollTimer = null;
+    }
+  }
+
+  getSheetPollIntervalMs() {
+    const raw = Number(this.config.sheetPollIntervalMs);
+    return Number.isFinite(raw) ? Math.max(1000, Math.floor(raw)) : DEFAULT_SHEET_POLL_MS;
+  }
+
+  getSheetClientName() {
+    const explicit = sanitizeString(this.config.sheetClientName);
+    if (explicit) {
+      return explicit;
+    }
+
+    return `NodeNote-${this.sheetClientId.slice(-4)}`;
+  }
+
+  getProviderLabel() {
+    return this.config.provider === 'sheets' ? 'Sheet' : 'Cloud';
+  }
+
+  getProviderTitleLabel() {
+    return this.config.provider === 'sheets' ? 'Google Sheet' : 'Cloud';
+  }
+
+  getSheetRequestUrl(action = 'state', extraParams = {}) {
+    const base = sanitizeString(this.config.sheetWebAppUrl);
+    if (!base) {
+      return '';
+    }
+
+    let url;
+    try {
+      url = new URL(base);
+    } catch {
+      return base;
+    }
+
+    url.searchParams.set('action', action);
+    url.searchParams.set('projectKey', sanitizeString(this.config.sheetProjectKey, 'default'));
+    url.searchParams.set('clientId', this.sheetClientId);
+    const secret = sanitizeString(this.config.sheetSecret);
+    if (secret) {
+      url.searchParams.set('secret', secret);
+    }
+    Object.entries(extraParams || {}).forEach(([key, value]) => {
+      if (typeof value !== 'undefined' && value !== null && String(value).length > 0) {
+        url.searchParams.set(key, String(value));
+      }
+    });
+    return url.toString();
+  }
+
+  createSheetPayloadFromSnapshot(snapshot = null) {
+    const document = snapshot?.document ? snapshot.document : store.getDocumentSnapshot();
+    const baseline = this.sheetBaselineDocument || createDefaultDocument();
+    const patch = createCollaborativePatch(baseline, document);
+    return {
+      action: 'commit',
+      schema: 'nodenote.sheet.cocollab',
+      version: CLOUD_SYNC_VERSION,
+      projectKey: sanitizeString(this.config.sheetProjectKey, 'default'),
+      clientId: this.sheetClientId,
+      clientName: this.getSheetClientName(),
+      secret: sanitizeString(this.config.sheetSecret),
+      baseRevision: this.sheetLastRevision || 0,
+      savedAt: new Date().toISOString(),
+      patch,
+    };
+  }
+
+  async pushSheetSnapshot(snapshot = null, { force = false } = {}) {
+    if (!this.isConfigReady()) {
+      this.setStatus('error', '請先完成 Google Sheet 設定');
+      return false;
+    }
+
+    const currentDocument = snapshot?.document ? snapshot.document : store.getDocumentSnapshot();
+    const baselineDocument = this.sheetBaselineDocument || createDefaultDocument();
+    const patch = createCollaborativePatch(baselineDocument, currentDocument);
+    if (isCollaborativePatchEmpty(patch)) {
+      const fingerprint = buildDocumentFingerprint(currentDocument);
+      this.state.lastFingerprint = fingerprint;
+      this.state.lastError = null;
+      this.saveState();
+      this.updateStatusBadge('Sheet content unchanged');
+      this.updateDialogStatus('Google Sheet 內容沒有變化。');
+      return true;
+    }
+
+    this.syncInFlight = true;
+    this.updateStatusBadge('Sheet sync...');
+    this.updateDialogStatus('正在同步 Google Sheet 共編內容...');
+
+    try {
+      const payload = {
+        action: 'commit',
+        schema: 'nodenote.sheet.cocollab',
+        version: CLOUD_SYNC_VERSION,
+        projectKey: sanitizeString(this.config.sheetProjectKey, 'default'),
+        clientId: this.sheetClientId,
+        clientName: this.getSheetClientName(),
+        secret: sanitizeString(this.config.sheetSecret),
+        baseRevision: this.sheetLastRevision || 0,
+        savedAt: snapshot?.savedAt || new Date().toISOString(),
+        patch,
+      };
+
+      const response = await this.requestJson(this.getSheetRequestUrl('commit'), {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const nextDocument = response?.document ? normalizeDocument(response.document) : currentDocument;
+      const nextRevision = Number.isFinite(response?.revision) ? response.revision : (this.sheetLastRevision + 1);
+      const mergedFingerprint = buildDocumentFingerprint(nextDocument);
+
+      this.sheetBaselineDocument = clone(nextDocument);
+      this.sheetLastRevision = nextRevision;
+      this.state.lastRemoteRevision = nextRevision;
+      this.state.lastFingerprint = mergedFingerprint;
+      this.state.lastSyncedAt = response?.updatedAt || new Date().toISOString();
+      this.state.syncCount = (this.state.syncCount || 0) + 1;
+      this.state.lastError = null;
+      this.saveState();
+
+      const previousPath = store.getCurrentDocumentPath();
+      if (response?.document && !isDeepEqual(currentDocument, nextDocument)) {
+        this.skipNextAutosave = true;
+        store.replaceDocument(nextDocument, { resetHistory: true, saveToHistory: false });
+        if (previousPath.length) {
+          store.restoreNavigation({ path: previousPath, viewportStack: [] });
+        }
+        renderer.renderAll();
+      }
+
+      this.setStatus('ok', 'Google Sheet 同步完成', `Revision ${nextRevision}`);
+      return true;
+    } catch (error) {
+      const message = this.getErrorMessage(error);
+      this.state.lastError = message;
+      this.saveState();
+      this.setStatus('error', message);
+      return false;
+    } finally {
+      this.syncInFlight = false;
+      this.updateStatusBadge();
+      this.updateDialogStatus();
+      if (this.pendingSnapshot) {
+        this.queueSync(this.pendingSnapshot);
+      }
+    }
+  }
+
+  async pollSheetNow() {
+    if (!this.isConfigReady()) {
+      return false;
+    }
+
+    this.updateStatusBadge('Sheet polling...');
+
+    try {
+      const response = await this.requestJson(this.getSheetRequestUrl('state', {
+        revision: this.sheetLastRevision || 0,
+      }), {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+        },
+      });
+
+      if (!response?.document) {
+        return false;
+      }
+
+      const remoteRevision = Number.isFinite(response.revision) ? response.revision : 0;
+      if (remoteRevision <= (this.sheetLastRevision || 0)) {
+        this.updateStatusBadge();
+        this.updateDialogStatus();
+        return true;
+      }
+
+      const remoteDocument = normalizeDocument(response.document);
+      const currentDocument = store.getDocumentSnapshot();
+      const baselineDocument = this.sheetBaselineDocument || createDefaultDocument();
+      const localPatch = createCollaborativePatch(baselineDocument, currentDocument);
+      const mergedDocument = isCollaborativePatchEmpty(localPatch)
+        ? remoteDocument
+        : applyCollaborativePatch(remoteDocument, localPatch);
+
+      this.sheetLastRevision = remoteRevision;
+      this.state.lastRemoteRevision = remoteRevision;
+      this.state.lastSyncedAt = response?.updatedAt || new Date().toISOString();
+      this.state.lastError = null;
+      this.saveState();
+
+      const previousPath = store.getCurrentDocumentPath();
+      if (!isDeepEqual(currentDocument, mergedDocument)) {
+        this.skipNextAutosave = true;
+        store.replaceDocument(mergedDocument, { resetHistory: true, saveToHistory: false });
+        if (previousPath.length) {
+          store.restoreNavigation({ path: previousPath, viewportStack: [] });
+        }
+        renderer.renderAll();
+      }
+
+      this.sheetBaselineDocument = clone(remoteDocument);
+      this.state.lastFingerprint = buildDocumentFingerprint(mergedDocument);
+      this.setStatus('ok', 'Google Sheet 已同步', `Revision ${remoteRevision}`);
+
+      if (!isCollaborativePatchEmpty(localPatch) && this.config.autoSync) {
+        this.queueSync({
+          schema: 'nodenote.sheet.cocollab',
+          version: CLOUD_SYNC_VERSION,
+          savedAt: new Date().toISOString(),
+          document: mergedDocument,
+        });
+      }
+
+      return true;
+    } catch (error) {
+      const message = this.getErrorMessage(error);
+      this.state.lastError = message;
+      this.saveState();
+      this.setStatus('error', message);
+      return false;
+    }
+  }
+
+  async pullSheetNow({ skipConfirm = false } = {}) {
+    if (!this.isConfigReady()) {
+      this.setStatus('error', '請先完成 Google Sheet 設定');
+      return false;
+    }
+
+    if (!skipConfirm && !window.confirm('Google Sheet 會覆蓋目前工作區，確定要拉回嗎？')) {
+      return false;
+    }
+
+    this.syncInFlight = true;
+    this.updateStatusBadge('Sheet pulling...');
+    this.updateDialogStatus('正在從 Google Sheet 拉回內容...');
+
+    try {
+      const response = await this.requestJson(this.getSheetRequestUrl('state'), {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+        },
+      });
+
+      if (!response?.document) {
+        this.setStatus('error', 'Google Sheet 沒有找到內容，請先完成一次同步');
+        return false;
+      }
+
+      const remoteDocument = normalizeDocument(response.document);
+      const currentDocument = store.getDocumentSnapshot();
+      const baselineDocument = this.sheetBaselineDocument || createDefaultDocument();
+      const localPatch = createCollaborativePatch(baselineDocument, currentDocument);
+      const mergedDocument = isCollaborativePatchEmpty(localPatch)
+        ? remoteDocument
+        : applyCollaborativePatch(remoteDocument, localPatch);
+
+      const previousPath = store.getCurrentDocumentPath();
+      this.skipNextAutosave = true;
+      store.replaceDocument(mergedDocument, { resetHistory: true, saveToHistory: false });
+      if (previousPath.length) {
+        store.restoreNavigation({ path: previousPath, viewportStack: [] });
+      }
+      renderer.renderAll();
+
+      this.sheetBaselineDocument = clone(remoteDocument);
+      this.sheetLastRevision = Number.isFinite(response.revision) ? response.revision : this.sheetLastRevision;
+      this.state.lastRemoteRevision = this.sheetLastRevision;
+      this.state.lastFingerprint = buildDocumentFingerprint(mergedDocument);
+      this.state.lastSyncedAt = response?.updatedAt || new Date().toISOString();
+      this.state.lastError = null;
+      this.saveState();
+      this.setStatus('ok', 'Google Sheet 拉回完成', `Revision ${this.sheetLastRevision || 0}`);
+      return true;
+    } catch (error) {
+      const message = this.getErrorMessage(error);
+      this.state.lastError = message;
+      this.saveState();
+      this.setStatus('error', message);
+      return false;
+    } finally {
+      this.syncInFlight = false;
+      this.updateStatusBadge();
+      this.updateDialogStatus();
+    }
+  }
+
   createSnapshot() {
+    if (this.config.provider === 'sheets') {
+      return this.createSheetSnapshot();
+    }
     return persistenceManager.createSnapshot();
+  }
+
+  createSheetSnapshot() {
+    return {
+      schema: 'nodenote.sheet.collab',
+      version: CLOUD_SYNC_VERSION,
+      savedAt: new Date().toISOString(),
+      baseRevision: this.sheetLastRevision || 0,
+      clientId: this.sheetClientId,
+      clientName: sanitizeString(this.config.sheetClientName, 'NodeNote'),
+      projectKey: sanitizeString(this.config.sheetProjectKey, 'default'),
+      document: store.getDocumentSnapshot(),
+    };
   }
 
   handleAutosave(snapshot) {
@@ -537,7 +1081,9 @@ class CloudSyncManager {
       return;
     }
 
-    const fingerprint = buildFingerprint(snapshot);
+    const fingerprint = this.config.provider === 'sheets'
+      ? buildDocumentFingerprint(snapshot.document)
+      : buildFingerprint(snapshot);
     if (fingerprint && fingerprint === this.state.lastFingerprint) {
       this.updateStatusBadge();
       return;
@@ -553,11 +1099,14 @@ class CloudSyncManager {
       window.clearTimeout(this.syncTimer);
     }
 
-    this.updateStatusBadge('Cloud sync queued');
+    this.updateStatusBadge(this.config.provider === 'sheets' ? 'Sheet sync queued' : 'Cloud sync queued');
+    const debounceMs = this.config.provider === 'sheets'
+      ? SHEET_AUTO_SYNC_DEBOUNCE_MS
+      : AUTO_SYNC_DEBOUNCE_MS;
     this.syncTimer = window.setTimeout(() => {
       this.syncTimer = null;
       this.flushSyncQueue();
-    }, AUTO_SYNC_DEBOUNCE_MS);
+    }, debounceMs);
   }
 
   async flushSyncQueue() {
@@ -582,6 +1131,10 @@ class CloudSyncManager {
   }
 
   async pushSnapshot(snapshot, { force = false } = {}) {
+    if (this.config.provider === 'sheets') {
+      return this.pushSheetSnapshot(snapshot, { force });
+    }
+
     if (!this.isConfigReady()) {
       this.setStatus('error', '請先完成雲端設定');
       return false;
@@ -641,6 +1194,10 @@ class CloudSyncManager {
   }
 
   async pullNow({ skipConfirm = false } = {}) {
+    if (this.config.provider === 'sheets') {
+      return this.pullSheetNow({ skipConfirm });
+    }
+
     if (!this.isConfigReady()) {
       this.setStatus('error', '請先完成雲端設定');
       return false;
@@ -768,6 +1325,14 @@ class CloudSyncManager {
       throw error;
     }
 
+    if (parsed && parsed.ok === false) {
+      const message = parsed.error || parsed.message || 'Request failed';
+      const error = new Error(message);
+      error.status = response.status || 500;
+      error.response = parsed;
+      throw error;
+    }
+
     return parsed;
   }
 
@@ -781,10 +1346,16 @@ class CloudSyncManager {
     }
 
     if (error.status === 401 || error.status === 403) {
+      if (this.config.provider === 'sheets') {
+        return 'Google Sheet Web App 權限不足或 Secret 錯誤';
+      }
       return 'GitHub Token 無效或沒有 Contents: write 權限';
     }
 
     if (error.status === 404) {
+      if (this.config.provider === 'sheets') {
+        return '找不到指定的 Google Sheet Web App URL';
+      }
       return '找不到指定的 Repo / Branch / Path';
     }
 

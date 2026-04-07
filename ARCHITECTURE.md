@@ -135,6 +135,7 @@ External integrations should stay outside the core document model.
 - clipboard
 - Git sync
 - cloud sync / remote snapshot backup
+- Google Sheet collaboration sync
 - file import/export
 - AI JSON generation / validation
 - storage persistence

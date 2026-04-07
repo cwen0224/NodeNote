@@ -1109,6 +1109,30 @@ button:hover {
   gap: 12px;
 }
 
+.cloud-sync-provider-group {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cloud-sync-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.cloud-sync-note {
+  grid-column: 1 / -1;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(88, 166, 255, 0.08);
+  border: 1px solid rgba(88, 166, 255, 0.18);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
 .cloud-sync-field,
 .cloud-sync-toggle {
   display: flex;
@@ -1135,7 +1159,24 @@ button:hover {
   outline: none;
 }
 
+.cloud-sync-field select {
+  width: 100%;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(15, 23, 42, 0.58);
+  color: var(--text-primary);
+  outline: none;
+  font: inherit;
+}
+
 .cloud-sync-field input:focus {
+  border-color: rgba(88, 166, 255, 0.9);
+  box-shadow: 0 0 0 1px rgba(88, 166, 255, 0.32);
+}
+
+.cloud-sync-field select:focus {
   border-color: rgba(88, 166, 255, 0.9);
   box-shadow: 0 0 0 1px rgba(88, 166, 255, 0.32);
 }
