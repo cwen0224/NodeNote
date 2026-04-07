@@ -497,9 +497,10 @@ button:hover {
 .minimap-node {
   position: absolute;
   border-radius: 4px;
-  background: rgba(88, 166, 255, 0.28);
-  border: 1px solid rgba(88, 166, 255, 0.45);
-  box-shadow: 0 0 0 1px rgba(13, 17, 23, 0.5);
+  background: rgba(88, 166, 255, 0.42);
+  border: 1px solid rgba(88, 166, 255, 0.72);
+  box-shadow: 0 0 0 1px rgba(13, 17, 23, 0.58), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  opacity: 0.96;
   pointer-events: none;
 }
 
