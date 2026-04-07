@@ -246,7 +246,7 @@ class Renderer {
     };
 
     this.minimap.addEventListener('pointerdown', (event) => {
-      if (event.button !== 0) return;
+      if (event.pointerType === 'mouse' && event.button !== 0) return;
       if (!this.minimapLayout) {
         this.renderMinimap();
       }
