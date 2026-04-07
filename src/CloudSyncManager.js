@@ -16,6 +16,7 @@ const AUTO_SYNC_DEBOUNCE_MS = 2800;
 const SHEET_AUTO_SYNC_DEBOUNCE_MS = 1200;
 const DEFAULT_SHEET_POLL_MS = 2000;
 const SHEET_CLIENT_STORAGE_KEY = 'nodenote.sheet.client-id.v1';
+const DEFAULT_SHEET_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbya8qJjNRDSSk7nZuGx0-ACZTt6fIHisw7uaZ-zmGpf3JgB17HVhH7bDUHGIg3eEOyz/exec';
 
 function isPlainObject(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -220,7 +221,7 @@ class CloudSyncManager {
 
   loadConfig() {
     const defaults = {
-      provider: 'github',
+      provider: 'sheets',
       owner: 'cwen0224',
       repo: 'NodeNote',
       branch: 'master',
@@ -228,9 +229,9 @@ class CloudSyncManager {
       token: '',
       autoSync: true,
       restoreOnStartupWhenEmpty: false,
-      sheetWebAppUrl: '',
+      sheetWebAppUrl: DEFAULT_SHEET_WEB_APP_URL,
       sheetProjectKey: 'default',
-      sheetClientName: '',
+      sheetClientName: 'NodeNote',
       sheetSecret: '',
       sheetPollIntervalMs: DEFAULT_SHEET_POLL_MS,
     };
