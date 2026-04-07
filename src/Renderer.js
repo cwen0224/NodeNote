@@ -612,13 +612,15 @@ class Renderer {
         const targetPortSide = typeof linkValue === 'string' ? 'left' : linkValue?.targetPort || 'left';
         const targetNode = store.state.nodes[targetId];
         if (targetNode) {
+          const sourceRect = this.getNodeWorldRect(sourceNode.id);
+          const targetRect = this.getNodeWorldRect(targetNode.id);
           const sourcePoint = this.getPortWorldPoint(sourceNode.id, sourcePortSide) || this.getNodeCenterWorldPoint(sourceNode);
           const targetPoint = this.getPortWorldPoint(targetNode.id, targetPortSide) || this.getNodeCenterWorldPoint(targetNode);
           const sX = sourcePoint.x;
           const sY = sourcePoint.y;
           const tX = targetPoint.x;
           const tY = targetPoint.y;
-          this.drawOrthogonalPath(sX, sY, tX, tY, key, sourceNode.id, targetNode.id, sourcePortSide, targetPortSide);
+          this.drawOrthogonalPath(sX, sY, tX, tY, key, sourceNode.id, targetNode.id, sourcePortSide, targetPortSide, sourceRect, targetRect);
         }
       });
     });
@@ -712,7 +714,7 @@ class Renderer {
     return parts.join(' ');
   }
 
-  drawOrthogonalPath(sX, sY, tX, tY, key, sourceId, targetId, sourcePortSide, targetPortSide) {
+  drawOrthogonalPath(sX, sY, tX, tY, key, sourceId, targetId, sourcePortSide, targetPortSide, sourceRect = null, targetRect = null) {
     const labelText = String(key ?? '').trim();
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
     path.setAttribute("class", "connection-path");
@@ -735,9 +737,17 @@ class Renderer {
     const targetVector = getPortDirectionVector(targetPortSide);
     const distance = Math.max(1, Math.hypot(tX - sX, tY - sY));
     const exitDistance = Math.max(36, Math.min(120, distance * 0.18));
-    const elbowDistance = Math.max(40, Math.min(180, distance * 0.24));
+    const elbowDistance = Math.max(56, Math.min(180, distance * 0.28));
     const sourceIsHorizontal = sourceVector.x !== 0;
     const targetIsHorizontal = targetVector.x !== 0;
+    const sourceCenterX = sourceRect?.centerX ?? sX;
+    const sourceCenterY = sourceRect?.centerY ?? sY;
+    const targetCenterX = targetRect?.centerX ?? tX;
+    const targetCenterY = targetRect?.centerY ?? tY;
+    const aboveBoth = Math.min(sourceRect?.top ?? sY, targetRect?.top ?? tY) - elbowDistance;
+    const belowBoth = Math.max(sourceRect?.bottom ?? sY, targetRect?.bottom ?? tY) + elbowDistance;
+    const leftOfBoth = Math.min(sourceRect?.left ?? sX, targetRect?.left ?? tX) - elbowDistance;
+    const rightOfBoth = Math.max(sourceRect?.right ?? sX, targetRect?.right ?? tX) + elbowDistance;
     const sourceExit = {
       x: sX + (sourceVector.x * exitDistance),
       y: sY + (sourceVector.y * exitDistance),
@@ -753,32 +763,25 @@ class Renderer {
     ];
 
     if (sourceIsHorizontal && targetIsHorizontal) {
-      const routeY = Math.max(sourceExit.y, targetEntry.y) + elbowDistance;
+      const routeY = targetCenterY >= sourceCenterY ? belowBoth : aboveBoth;
       routePoints.push(
         { x: sourceExit.x, y: routeY },
         { x: targetEntry.x, y: routeY },
       );
     } else if (!sourceIsHorizontal && !targetIsHorizontal) {
-      const sourcePointsDown = sourceVector.y > 0;
-      const sourcePointsUp = sourceVector.y < 0;
-      const targetPointsUp = targetVector.y < 0;
-      const targetPointsDown = targetVector.y > 0;
-      let routeY = sourceExit.y + ((Math.sign(targetEntry.y - sourceExit.y) || sourceVector.y || 1) * elbowDistance);
-
-      if (sourcePointsDown && targetPointsUp) {
-        routeY = Math.max(sourceExit.y, targetEntry.y) + elbowDistance;
-      } else if (sourcePointsUp && targetPointsDown) {
-        routeY = Math.min(sourceExit.y, targetEntry.y) - elbowDistance;
-      }
-
+      const routeX = targetCenterX >= sourceCenterX ? rightOfBoth : leftOfBoth;
       routePoints.push(
-        { x: sourceExit.x, y: routeY },
-        { x: targetEntry.x, y: routeY },
+        { x: routeX, y: sourceExit.y },
+        { x: routeX, y: targetEntry.y },
       );
     } else if (sourceIsHorizontal && !targetIsHorizontal) {
-      routePoints.push({ x: targetEntry.x, y: sourceExit.y });
+      const routeX = sourceVector.x > 0 ? rightOfBoth : leftOfBoth;
+      routePoints.push({ x: routeX, y: sourceExit.y });
+      routePoints.push({ x: routeX, y: targetEntry.y });
     } else {
-      routePoints.push({ x: sourceExit.x, y: targetEntry.y });
+      const routeY = sourceVector.y > 0 ? belowBoth : aboveBoth;
+      routePoints.push({ x: sourceExit.x, y: routeY });
+      routePoints.push({ x: targetEntry.x, y: routeY });
     }
 
     routePoints.push(targetEntry, { x: tX, y: tY });
@@ -909,6 +912,26 @@ class Renderer {
     return {
       x: (rect.left + rect.width / 2 - x) / scale,
       y: (rect.top + rect.height / 2 - y) / scale,
+    };
+  }
+
+  getNodeWorldRect(nodeId) {
+    const nodeEl = document.querySelector(`.node[data-id="${nodeId}"]`);
+    if (!nodeEl) {
+      return null;
+    }
+
+    const rect = nodeEl.getBoundingClientRect();
+    const { x, y, scale } = store.getTransform();
+    return {
+      left: (rect.left - x) / scale,
+      top: (rect.top - y) / scale,
+      right: (rect.right - x) / scale,
+      bottom: (rect.bottom - y) / scale,
+      width: rect.width / scale,
+      height: rect.height / scale,
+      centerX: ((rect.left + rect.width / 2) - x) / scale,
+      centerY: ((rect.top + rect.height / 2) - y) / scale,
     };
   }
 
