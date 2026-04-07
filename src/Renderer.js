@@ -753,10 +753,10 @@ class Renderer {
     ];
 
     if (sourceIsHorizontal && targetIsHorizontal) {
-      const routeX = sourceExit.x + ((Math.sign(targetEntry.x - sourceExit.x) || sourceVector.x || 1) * elbowDistance);
+      const routeY = Math.max(sourceExit.y, targetEntry.y) + elbowDistance;
       routePoints.push(
-        { x: routeX, y: sourceExit.y },
-        { x: routeX, y: targetEntry.y },
+        { x: sourceExit.x, y: routeY },
+        { x: targetEntry.x, y: routeY },
       );
     } else if (!sourceIsHorizontal && !targetIsHorizontal) {
       const sourcePointsDown = sourceVector.y > 0;
