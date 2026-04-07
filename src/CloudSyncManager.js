@@ -21,6 +21,8 @@ const LEGACY_SHEET_WEB_APP_URLS = new Set([
   'https://script.google.com/macros/s/AKfycbya8qJjNRDSSk7nZuGx0-ACZTt6fIHisw7uaZ-zmGpf3JgB17HVhH7bDUHGIg3eEOyz/exec',
   'https://script.google.com/macros/s/AKfycbwez1B0c5LClHi4kYXqWyuEtCtDstFz0QRkSfBkQib7LSJG4-KzOeVrose73hANvueP/exec',
 ]);
+const SYNC_LOG_STORAGE_KEY = 'nodenote.cloudsync.logs.v1';
+const MAX_SYNC_LOG_ENTRIES = 80;
 
 function isPlainObject(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -71,6 +73,75 @@ function formatClockStamp(isoString) {
   const hours = String(value.getHours()).padStart(2, '0');
   const minutes = String(value.getMinutes()).padStart(2, '0');
   return `${hours}:${minutes}`;
+}
+
+function formatLogStamp(isoString) {
+  const value = isoString ? new Date(isoString) : null;
+  if (!value || Number.isNaN(value.getTime())) {
+    return '--:--:--';
+  }
+
+  const hours = String(value.getHours()).padStart(2, '0');
+  const minutes = String(value.getMinutes()).padStart(2, '0');
+  const seconds = String(value.getSeconds()).padStart(2, '0');
+  return `${hours}:${minutes}:${seconds}`;
+}
+
+function withLogHint(text) {
+  const value = String(text || '').trim();
+  return value ? `${value}（點擊查看本機同步日誌）` : '點擊查看本機同步日誌';
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function compactLogText(value, limit = 220) {
+  if (value == null) {
+    return '';
+  }
+
+  let text = '';
+  if (typeof value === 'string') {
+    text = value;
+  } else if (isPlainObject(value) || Array.isArray(value)) {
+    try {
+      text = JSON.stringify(value);
+    } catch {
+      text = '';
+    }
+  } else {
+    text = String(value);
+  }
+
+  text = text.replace(/\s+/g, ' ').trim();
+  if (text.length > limit) {
+    return `${text.slice(0, Math.max(0, limit - 1))}…`;
+  }
+  return text;
+}
+
+function normalizeLogLevel(level) {
+  const value = String(level || 'info').toLowerCase();
+  if (value === 'ok') {
+    return 'success';
+  }
+  if (value === 'warning') {
+    return 'warn';
+  }
+  if (['info', 'success', 'warn', 'error'].includes(value)) {
+    return value;
+  }
+  return 'info';
+}
+
+function createLogId() {
+  return `log_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function buildDocumentFingerprint(document) {
@@ -185,11 +256,14 @@ class CloudSyncManager {
   constructor() {
     this.config = this.loadConfig();
     this.state = this.loadState();
+    this.logEntries = this.loadLogs();
     this.toolbarButton = null;
     this.statusBadge = null;
     this.overlay = null;
     this.panel = null;
     this.statusText = null;
+    this.logSummary = null;
+    this.logList = null;
     this.inputs = {};
     this.syncTimer = null;
     this.pollTimer = null;
@@ -215,6 +289,7 @@ class CloudSyncManager {
     this.bindEvents();
     this.applyStateToUI();
     this.refreshTransportMode();
+    this.appendSyncLog('info', 'init', '同步管理器啟動', '本機同步日誌已就緒');
     if (this.config.restoreOnStartupWhenEmpty && this.isConfigReady() && !persistenceManager.wasRestored()) {
       queueMicrotask(() => {
         this.pullNow({ skipConfirm: true });
@@ -321,6 +396,10 @@ class CloudSyncManager {
       this.updateDialogStatus();
     });
 
+    this.statusBadge?.addEventListener('click', () => {
+      this.openDialog();
+    });
+
     this.overlay?.addEventListener('click', (event) => {
       if (event.target === this.overlay) {
         this.closeDialog();
@@ -340,6 +419,10 @@ class CloudSyncManager {
         this.saveConfigFromDialog({ syncImmediately: true });
       } else if (action === 'pull') {
         this.pullNow();
+      } else if (action === 'copy-logs') {
+        this.copySyncLogsToClipboard();
+      } else if (action === 'clear-logs') {
+        this.clearSyncLogs();
       } else if (action === 'close') {
         this.closeDialog();
       }
@@ -433,16 +516,30 @@ class CloudSyncManager {
             <input type="checkbox" data-cloud-field="autoSync" />
             <span>自動同步最新快照</span>
           </label>
-          <label class="cloud-sync-toggle">
-            <input type="checkbox" data-cloud-field="restoreOnStartupWhenEmpty" />
-            <span>啟動時若本機沒有草稿，允許從雲端還原</span>
-          </label>
+        <label class="cloud-sync-toggle">
+          <input type="checkbox" data-cloud-field="restoreOnStartupWhenEmpty" />
+          <span>啟動時若本機沒有草稿，允許從雲端還原</span>
+        </label>
+      </div>
+      <section class="cloud-sync-log-panel">
+        <div class="cloud-sync-log-header">
+          <div>
+            <h3>本機同步日誌</h3>
+            <p>只存在這台裝置的瀏覽器本機，可用來追蹤同步、驗證與錯誤。</p>
+          </div>
+          <div class="cloud-sync-log-actions">
+            <button type="button" data-cloud-action="copy-logs">複製日誌</button>
+            <button type="button" data-cloud-action="clear-logs">清空</button>
+          </div>
         </div>
-        <div class="cloud-sync-actions">
-          <button type="button" data-cloud-action="save">保存設定</button>
-          <button type="button" data-cloud-action="push">立即同步</button>
-          <button type="button" data-cloud-action="pull">從雲端拉回</button>
-          <button type="button" data-cloud-action="close">關閉</button>
+        <div class="cloud-sync-log-summary" data-cloud-log-summary>尚未記錄任何同步日誌。</div>
+        <div class="cloud-sync-log-list" data-cloud-log-list></div>
+      </section>
+      <div class="cloud-sync-actions">
+        <button type="button" data-cloud-action="save">保存設定</button>
+        <button type="button" data-cloud-action="push">立即同步</button>
+        <button type="button" data-cloud-action="pull">從雲端拉回</button>
+        <button type="button" data-cloud-action="close">關閉</button>
         </div>
       </div>
     `;
@@ -450,8 +547,11 @@ class CloudSyncManager {
     document.body.appendChild(this.overlay);
     this.panel = this.overlay.querySelector('.cloud-sync-panel');
     this.statusText = this.overlay.querySelector('.cloud-sync-status');
+    this.logSummary = this.overlay.querySelector('[data-cloud-log-summary]');
+    this.logList = this.overlay.querySelector('[data-cloud-log-list]');
     this.inputs = this.collectInputs();
     this.updateProviderPanels();
+    this.renderSyncLogs();
   }
 
   collectInputs() {
@@ -477,6 +577,7 @@ class CloudSyncManager {
     this.updateProviderPanels();
     this.updateStatusBadge();
     this.updateDialogStatus();
+    this.renderSyncLogs();
   }
 
   fillInputsFromConfig() {
@@ -610,6 +711,176 @@ class CloudSyncManager {
     this.updateDialogStatus(message, detail);
   }
 
+  loadLogs() {
+    try {
+      const raw = localStorage.getItem(SYNC_LOG_STORAGE_KEY);
+      if (!raw) {
+        return [];
+      }
+
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) {
+        return [];
+      }
+
+      return parsed
+        .map((entry) => this.normalizeLogEntry(entry))
+        .filter(Boolean)
+        .slice(0, MAX_SYNC_LOG_ENTRIES);
+    } catch {
+      return [];
+    }
+  }
+
+  saveLogs() {
+    try {
+      localStorage.setItem(SYNC_LOG_STORAGE_KEY, JSON.stringify(this.logEntries.slice(0, MAX_SYNC_LOG_ENTRIES)));
+    } catch {
+      // Ignore quota / storage availability issues.
+    }
+  }
+
+  normalizeLogEntry(entry) {
+    if (!isPlainObject(entry)) {
+      return null;
+    }
+
+    const at = typeof entry.at === 'string' ? entry.at : new Date().toISOString();
+    const level = normalizeLogLevel(entry.level);
+    const action = sanitizeString(entry.action, 'sync');
+    const message = sanitizeString(entry.message, '同步日誌');
+    const detail = compactLogText(entry.detail ?? entry.summary ?? entry.note ?? '');
+    const context = isPlainObject(entry.context) ? entry.context : {};
+
+    return {
+      id: sanitizeString(entry.id, createLogId()),
+      at,
+      level,
+      action,
+      message,
+      detail,
+      context,
+    };
+  }
+
+  appendSyncLog(level, action, message, detail = '', context = {}) {
+    const entry = this.normalizeLogEntry({
+      id: createLogId(),
+      at: new Date().toISOString(),
+      level,
+      action,
+      message,
+      detail,
+      context: isPlainObject(context) ? context : {},
+    });
+
+    if (!entry) {
+      return null;
+    }
+
+    this.logEntries = [entry, ...this.logEntries].slice(0, MAX_SYNC_LOG_ENTRIES);
+    this.saveLogs();
+    this.renderSyncLogs();
+    return entry;
+  }
+
+  renderSyncLogs() {
+    if (this.logSummary) {
+      const count = this.logEntries.length;
+      const latest = this.logEntries[0];
+      this.logSummary.textContent = count > 0
+        ? `${count} 筆，最新 ${formatLogStamp(latest?.at)} ${compactLogText(latest?.message, 48)}`
+        : '尚未記錄任何同步日誌。';
+    }
+
+    if (!this.logList) {
+      return;
+    }
+
+    if (!this.logEntries.length) {
+      this.logList.innerHTML = '<div class="cloud-sync-log-empty">目前沒有本機同步日誌。</div>';
+      return;
+    }
+
+    this.logList.innerHTML = this.logEntries
+      .map((entry) => {
+        const detail = entry.detail ? `<div class="cloud-sync-log-detail">${escapeHtml(entry.detail)}</div>` : '';
+        const context = entry.context && Object.keys(entry.context).length > 0
+          ? `<div class="cloud-sync-log-context">${escapeHtml(compactLogText(entry.context, 160))}</div>`
+          : '';
+        return `
+          <article class="cloud-sync-log-item is-${escapeHtml(entry.level)}">
+            <div class="cloud-sync-log-top">
+              <span class="cloud-sync-log-time">${escapeHtml(formatLogStamp(entry.at))}</span>
+              <span class="cloud-sync-log-level">${escapeHtml(entry.level.toUpperCase())}</span>
+              <span class="cloud-sync-log-action">${escapeHtml(entry.action)}</span>
+            </div>
+            <div class="cloud-sync-log-message">${escapeHtml(entry.message)}</div>
+            ${detail}
+            ${context}
+          </article>
+        `;
+      })
+      .join('');
+  }
+
+  buildSyncLogText() {
+    if (!this.logEntries.length) {
+      return 'NodeNote 本機同步日誌目前是空的。';
+    }
+
+    return this.logEntries
+      .map((entry) => {
+        const parts = [
+          `[${formatLogStamp(entry.at)}]`,
+          entry.level.toUpperCase(),
+          entry.action,
+          entry.message,
+        ];
+        if (entry.detail) {
+          parts.push(`- ${entry.detail}`);
+        }
+        if (entry.context && Object.keys(entry.context).length > 0) {
+          parts.push(`context=${compactLogText(entry.context, 180)}`);
+        }
+        return parts.join(' ');
+      })
+      .join('\n');
+  }
+
+  async copySyncLogsToClipboard() {
+    const text = this.buildSyncLogText();
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.setAttribute('readonly', 'true');
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        textarea.remove();
+      }
+      this.setStatus('idle', '本機同步日誌已複製');
+      this.appendSyncLog('info', 'log', '複製本機同步日誌');
+      return true;
+    } catch (error) {
+      this.setStatus('error', '複製日誌失敗');
+      this.appendSyncLog('error', 'log', '複製本機同步日誌失敗', this.getErrorMessage(error));
+      return false;
+    }
+  }
+
+  clearSyncLogs() {
+    this.logEntries = [];
+    this.saveLogs();
+    this.renderSyncLogs();
+    this.setStatus('idle', '本機同步日誌已清空');
+  }
+
   updateStatusBadge(message = '', detail = '') {
     if (!this.statusBadge) {
       return;
@@ -620,25 +891,25 @@ class CloudSyncManager {
     if (!this.isConfigReady()) {
       this.statusBadge.classList.add('is-off');
       this.statusBadge.textContent = `${label}: off`;
-      this.statusBadge.title = this.config.provider === 'sheets'
+      this.statusBadge.title = withLogHint(this.config.provider === 'sheets'
         ? 'Google Sheet 同步未就緒'
-        : 'GitHub 備份未就緒';
+        : 'GitHub 備份未就緒');
       return;
     }
 
     if (this.syncInFlight) {
       this.statusBadge.classList.add('is-syncing');
       this.statusBadge.textContent = `${label}: sync`;
-      this.statusBadge.title = this.config.provider === 'sheets'
+      this.statusBadge.title = withLogHint(this.config.provider === 'sheets'
         ? 'Google Sheet 同步中'
-        : 'GitHub 備份同步中';
+        : 'GitHub 備份同步中');
       return;
     }
 
     if (this.state.lastError) {
       this.statusBadge.classList.add('is-error');
       this.statusBadge.textContent = `${label}: error`;
-      this.statusBadge.title = this.state.lastError;
+      this.statusBadge.title = withLogHint(this.state.lastError);
       return;
     }
 
@@ -646,16 +917,16 @@ class CloudSyncManager {
     if (this.state.lastSyncedAt) {
       const stamp = formatClockStamp(this.state.lastSyncedAt);
       this.statusBadge.textContent = `${label}: ${stamp}`;
-      this.statusBadge.title = detail || message || (this.config.provider === 'sheets'
+      this.statusBadge.title = withLogHint(detail || message || (this.config.provider === 'sheets'
         ? `上次 Google Sheet 同步 ${stamp}`
-        : `上次 GitHub 備份 ${stamp}`);
+        : `上次 GitHub 備份 ${stamp}`));
       return;
     }
 
     this.statusBadge.textContent = `${label}: ready`;
-    this.statusBadge.title = detail || message || (this.config.provider === 'sheets'
+    this.statusBadge.title = withLogHint(detail || message || (this.config.provider === 'sheets'
       ? 'Google Sheet 同步已就緒'
-      : 'GitHub 備份已就緒');
+      : 'GitHub 備份已就緒'));
   }
 
   updateDialogStatus(message = '', detail = '') {
@@ -841,6 +1112,7 @@ class CloudSyncManager {
   async pushSheetSnapshot(snapshot = null, { force = false } = {}) {
     if (!this.isConfigReady()) {
       this.setStatus('error', '請先完成 Google Sheet 設定');
+      this.appendSyncLog('error', 'sheet', 'Google Sheet 同步失敗', '請先完成 Google Sheet 設定');
       return false;
     }
 
@@ -854,12 +1126,14 @@ class CloudSyncManager {
       this.saveState();
       this.updateStatusBadge('Sheet content unchanged');
       this.updateDialogStatus('Google Sheet 內容沒有變化。');
+      this.appendSyncLog('info', 'sheet', 'Google Sheet 內容沒有變化', `revision=${this.sheetLastRevision || 0}`);
       return true;
     }
 
     this.syncInFlight = true;
     this.updateStatusBadge('Sheet sync...');
     this.updateDialogStatus('正在同步 Google Sheet 共編內容...');
+    this.appendSyncLog('info', 'sheet', '開始同步 Google Sheet 共編內容', `revision=${this.sheetLastRevision || 0}`);
 
     try {
       const payload = {
@@ -908,12 +1182,18 @@ class CloudSyncManager {
       }
 
       this.setStatus('ok', 'Google Sheet 同步完成', `Revision ${nextRevision}`);
+      this.appendSyncLog('success', 'sheet', 'Google Sheet 同步完成', `revision=${nextRevision}`, {
+        savedAt: this.state.lastSyncedAt,
+      });
       return true;
     } catch (error) {
       const message = this.getErrorMessage(error);
       this.state.lastError = message;
       this.saveState();
       this.setStatus('error', message);
+      this.appendSyncLog('error', 'sheet', 'Google Sheet 同步失敗', message, {
+        status: error?.status || null,
+      });
       return false;
     } finally {
       this.syncInFlight = false;
@@ -928,11 +1208,13 @@ class CloudSyncManager {
   async verifySheetUpload() {
     if (!this.isConfigReady()) {
       this.setStatus('error', '請先完成 Google Sheet 設定');
+      this.appendSyncLog('error', 'sheet-verify', 'Google Sheet 驗證失敗', '請先完成 Google Sheet 設定');
       return false;
     }
 
     this.updateStatusBadge('Sheet verifying...');
     this.updateDialogStatus('正在驗證 Google Sheet 是否真的寫入...');
+    this.appendSyncLog('info', 'sheet-verify', '開始驗證 Google Sheet 寫入');
 
     try {
       const response = await this.requestJson(this.getSheetRequestUrl('state', {
@@ -962,12 +1244,18 @@ class CloudSyncManager {
       this.state.lastError = null;
       this.saveState();
       this.setStatus('ok', 'Google Sheet 驗證成功', `Revision ${this.sheetLastRevision || 0}`);
+      this.appendSyncLog('success', 'sheet-verify', 'Google Sheet 驗證成功', `revision=${this.sheetLastRevision || 0}`, {
+        savedAt: this.state.lastSyncedAt,
+      });
       return true;
     } catch (error) {
       const message = this.getErrorMessage(error);
       this.state.lastError = message;
       this.saveState();
       this.setStatus('error', message);
+      this.appendSyncLog('error', 'sheet-verify', 'Google Sheet 驗證失敗', message, {
+        status: error?.status || null,
+      });
       return false;
     }
   }
@@ -1027,6 +1315,9 @@ class CloudSyncManager {
       this.sheetBaselineDocument = clone(remoteDocument);
       this.state.lastFingerprint = buildDocumentFingerprint(mergedDocument);
       this.setStatus('ok', 'Google Sheet 已同步', `Revision ${remoteRevision}`);
+      this.appendSyncLog('success', 'sheet-poll', 'Google Sheet 輪詢同步成功', `revision=${remoteRevision}`, {
+        savedAt: this.state.lastSyncedAt,
+      });
 
       if (!isCollaborativePatchEmpty(localPatch) && this.config.autoSync) {
         this.queueSync({
@@ -1043,6 +1334,9 @@ class CloudSyncManager {
       this.state.lastError = message;
       this.saveState();
       this.setStatus('error', message);
+      this.appendSyncLog('error', 'sheet-poll', 'Google Sheet 輪詢失敗', message, {
+        status: error?.status || null,
+      });
       return false;
     }
   }
@@ -1050,6 +1344,7 @@ class CloudSyncManager {
   async pullSheetNow({ skipConfirm = false } = {}) {
     if (!this.isConfigReady()) {
       this.setStatus('error', '請先完成 Google Sheet 設定');
+      this.appendSyncLog('error', 'sheet-pull', 'Google Sheet 拉回失敗', '請先完成 Google Sheet 設定');
       return false;
     }
 
@@ -1060,6 +1355,7 @@ class CloudSyncManager {
     this.syncInFlight = true;
     this.updateStatusBadge('Sheet pulling...');
     this.updateDialogStatus('正在從 Google Sheet 拉回內容...');
+    this.appendSyncLog('info', 'sheet-pull', '開始從 Google Sheet 拉回內容');
 
     try {
       const response = await this.requestJson(this.getSheetRequestUrl('state'), {
@@ -1071,6 +1367,7 @@ class CloudSyncManager {
 
       if (!response?.document) {
         this.setStatus('error', 'Google Sheet 沒有找到內容，請先完成一次同步');
+        this.appendSyncLog('error', 'sheet-pull', 'Google Sheet 拉回失敗', 'Google Sheet 沒有找到內容，請先完成一次同步');
         return false;
       }
 
@@ -1098,12 +1395,18 @@ class CloudSyncManager {
       this.state.lastError = null;
       this.saveState();
       this.setStatus('ok', 'Google Sheet 拉回完成', `Revision ${this.sheetLastRevision || 0}`);
+      this.appendSyncLog('success', 'sheet-pull', 'Google Sheet 拉回完成', `revision=${this.sheetLastRevision || 0}`, {
+        savedAt: this.state.lastSyncedAt,
+      });
       return true;
     } catch (error) {
       const message = this.getErrorMessage(error);
       this.state.lastError = message;
       this.saveState();
       this.setStatus('error', message);
+      this.appendSyncLog('error', 'sheet-pull', 'Google Sheet 拉回失敗', message, {
+        status: error?.status || null,
+      });
       return false;
     } finally {
       this.syncInFlight = false;
@@ -1206,6 +1509,7 @@ class CloudSyncManager {
       this.refreshTransportMode();
     }
 
+    this.appendSyncLog('info', 'sheet', '手動同步並驗證已觸發');
     const synced = await this.syncNow({ force });
     if (!synced || this.config.provider !== 'sheets') {
       return synced;
@@ -1221,6 +1525,7 @@ class CloudSyncManager {
 
     if (!this.isConfigReady()) {
       this.setStatus('error', '請先完成雲端設定');
+      this.appendSyncLog('error', 'github', 'GitHub 同步失敗', '請先完成雲端設定');
       return false;
     }
 
@@ -1233,6 +1538,7 @@ class CloudSyncManager {
     this.syncInFlight = true;
     this.updateStatusBadge('Cloud sync...');
     this.updateDialogStatus('正在同步雲端快照...');
+    this.appendSyncLog('info', 'github', '開始同步 GitHub 快照', `path=${this.config.path}`);
 
     try {
       const remote = await this.getRemoteFile({ allowMissing: true });
@@ -1260,12 +1566,18 @@ class CloudSyncManager {
       this.state.lastError = null;
       this.saveState();
       this.setStatus('ok', '雲端同步完成', `上次同步 ${formatClockStamp(this.state.lastSyncedAt)}`);
+      this.appendSyncLog('success', 'github', 'GitHub 同步完成', `path=${this.config.path}`, {
+        sha: this.state.lastRemoteSha || null,
+      });
       return true;
     } catch (error) {
       const message = this.getErrorMessage(error);
       this.state.lastError = message;
       this.saveState();
       this.setStatus('error', message);
+      this.appendSyncLog('error', 'github', 'GitHub 同步失敗', message, {
+        status: error?.status || null,
+      });
       return false;
     } finally {
       this.syncInFlight = false;
@@ -1284,6 +1596,7 @@ class CloudSyncManager {
 
     if (!this.isConfigReady()) {
       this.setStatus('error', '請先完成雲端設定');
+      this.appendSyncLog('error', 'github-pull', 'GitHub 拉回失敗', '請先完成雲端設定');
       return false;
     }
 
@@ -1294,11 +1607,13 @@ class CloudSyncManager {
     this.syncInFlight = true;
     this.updateStatusBadge('Cloud pulling...');
     this.updateDialogStatus('正在從雲端拉回快照...');
+    this.appendSyncLog('info', 'github-pull', '開始從 GitHub 拉回快照', `path=${this.config.path}`);
 
     try {
       const remote = await this.getRemoteFile({ allowMissing: true });
       if (!remote) {
         this.setStatus('error', '雲端沒有找到快照檔，請先按一次立即同步');
+        this.appendSyncLog('error', 'github-pull', 'GitHub 拉回失敗', '雲端沒有找到快照檔，請先按一次立即同步');
         return false;
       }
 
@@ -1329,12 +1644,18 @@ class CloudSyncManager {
       this.state.lastError = null;
       this.saveState();
       this.setStatus('ok', '雲端拉回完成', `上次同步 ${formatClockStamp(this.state.lastSyncedAt)}`);
+      this.appendSyncLog('success', 'github-pull', 'GitHub 拉回完成', `path=${this.config.path}`, {
+        sha: this.state.lastRemoteSha || null,
+      });
       return true;
     } catch (error) {
       const message = this.getErrorMessage(error);
       this.state.lastError = message;
       this.saveState();
       this.setStatus('error', message);
+      this.appendSyncLog('error', 'github-pull', 'GitHub 拉回失敗', message, {
+        status: error?.status || null,
+      });
       return false;
     } finally {
       this.syncInFlight = false;

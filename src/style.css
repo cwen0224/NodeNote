@@ -851,6 +851,10 @@ button:hover {
   color: var(--text-muted);
 }
 
+#sync-status-badge {
+  cursor: pointer;
+}
+
 .tray-slot-label {
   font-size: 0.8rem;
   font-weight: 600;
@@ -1101,6 +1105,125 @@ button:hover {
   color: var(--text-primary);
   font-size: 0.85rem;
   line-height: 1.45;
+}
+
+.cloud-sync-log-panel {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(15, 23, 42, 0.35);
+}
+
+.cloud-sync-log-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cloud-sync-log-header h3 {
+  margin-bottom: 4px;
+  font-size: 0.88rem;
+  line-height: 1.2;
+}
+
+.cloud-sync-log-header p {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.cloud-sync-log-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+}
+
+.cloud-sync-log-actions button {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 0.76rem;
+}
+
+.cloud-sync-log-summary {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.cloud-sync-log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 240px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.cloud-sync-log-empty {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.cloud-sync-log-item {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(9, 12, 18, 0.42);
+}
+
+.cloud-sync-log-item.is-success {
+  border-color: rgba(72, 187, 120, 0.35);
+}
+
+.cloud-sync-log-item.is-error {
+  border-color: rgba(239, 68, 68, 0.45);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.cloud-sync-log-item.is-warn {
+  border-color: rgba(250, 204, 21, 0.35);
+}
+
+.cloud-sync-log-item.is-info {
+  border-color: rgba(88, 166, 255, 0.28);
+}
+
+.cloud-sync-log-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 0.68rem;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+}
+
+.cloud-sync-log-message {
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.cloud-sync-log-detail,
+.cloud-sync-log-context {
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .cloud-sync-form {
