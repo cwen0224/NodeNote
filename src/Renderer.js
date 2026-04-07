@@ -272,43 +272,41 @@ class Renderer {
   }
 
   shouldAutoFitGraph() {
-    const nodes = Object.values(store.state.nodes || {});
-    if (!nodes.length) {
+    if (!this.viewport) {
       return false;
     }
 
-    const viewportRect = this.getViewportWorldRect();
-    const viewportRight = viewportRect.minX + viewportRect.width;
-    const viewportBottom = viewportRect.minY + viewportRect.height;
-    const { scale } = store.getTransform();
+    const nodeEls = Array.from(document.querySelectorAll('.node'));
+    if (!nodeEls.length) {
+      return true;
+    }
 
-    let hasVisibleNode = false;
-    let hasReadableNode = false;
+    const viewportRect = this.viewport.getBoundingClientRect();
+    const minReadableSize = 56;
+    let visibleCount = 0;
+    let readableCount = 0;
 
-    nodes.forEach((node) => {
-      const size = this.getNodeWorldSize(node);
-      const left = Number(node.x) || 0;
-      const top = Number(node.y) || 0;
-      const right = left + size.width;
-      const bottom = top + size.height;
-      const intersects = !(right < viewportRect.minX || left > viewportRight || bottom < viewportRect.minY || top > viewportBottom);
+    nodeEls.forEach((nodeEl) => {
+      const rect = nodeEl.getBoundingClientRect();
+      const intersects = !(rect.right < viewportRect.left
+        || rect.left > viewportRect.right
+        || rect.bottom < viewportRect.top
+        || rect.top > viewportRect.bottom);
       if (!intersects) {
         return;
       }
 
-      hasVisibleNode = true;
-      const screenWidth = size.width * scale;
-      const screenHeight = size.height * scale;
-      if (Math.max(screenWidth, screenHeight) >= 56) {
-        hasReadableNode = true;
+      visibleCount += 1;
+      if (Math.max(rect.width, rect.height) >= minReadableSize) {
+        readableCount += 1;
       }
     });
 
-    if (!hasVisibleNode) {
+    if (!visibleCount) {
       return true;
     }
 
-    if (!hasReadableNode && scale < 0.35) {
+    if (!readableCount) {
       return true;
     }
 
