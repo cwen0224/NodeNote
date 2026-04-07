@@ -753,8 +753,8 @@ class Renderer {
       y: sY + (sourceVector.y * exitDistance),
     };
     const targetEntry = {
-      x: tX - (targetVector.x * exitDistance),
-      y: tY - (targetVector.y * exitDistance),
+      x: tX + (targetVector.x * exitDistance),
+      y: tY + (targetVector.y * exitDistance),
     };
 
     const routePoints = [
