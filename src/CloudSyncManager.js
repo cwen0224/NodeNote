@@ -17,6 +17,10 @@ const SHEET_AUTO_SYNC_DEBOUNCE_MS = 1200;
 const DEFAULT_SHEET_POLL_MS = 2000;
 const SHEET_CLIENT_STORAGE_KEY = 'nodenote.sheet.client-id.v1';
 const DEFAULT_SHEET_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwoztDsaKOldxW3HxJ_DTnaem58yCqKeQk-6kbqXj-E9LZ9dGuGhZUOF_JZY6HNejQC/exec';
+const LEGACY_SHEET_WEB_APP_URLS = new Set([
+  'https://script.google.com/macros/s/AKfycbya8qJjNRDSSk7nZuGx0-ACZTt6fIHisw7uaZ-zmGpf3JgB17HVhH7bDUHGIg3eEOyz/exec',
+  'https://script.google.com/macros/s/AKfycbwez1B0c5LClHi4kYXqWyuEtCtDstFz0QRkSfBkQib7LSJG4-KzOeVrose73hANvueP/exec',
+]);
 
 function isPlainObject(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -205,8 +209,8 @@ class CloudSyncManager {
       return;
     }
 
-    this.toolbarButton = document.getElementById('btn-cloud-sync');
-    this.statusBadge = document.getElementById('cloud-status-badge');
+    this.toolbarButton = document.getElementById('btn-sync-now');
+    this.statusBadge = document.getElementById('sync-status-badge');
     this.buildDialog();
     this.bindEvents();
     this.applyStateToUI();
@@ -243,10 +247,20 @@ class CloudSyncManager {
       }
 
       const parsed = JSON.parse(raw);
-      return {
+      const next = {
         ...defaults,
         ...(isPlainObject(parsed) ? parsed : {}),
       };
+      if (next.provider === 'sheets') {
+        const currentUrl = sanitizeString(next.sheetWebAppUrl);
+        if (!currentUrl || LEGACY_SHEET_WEB_APP_URLS.has(currentUrl)) {
+          next.sheetWebAppUrl = DEFAULT_SHEET_WEB_APP_URL;
+        }
+        if (!sanitizeString(next.sheetClientName)) {
+          next.sheetClientName = defaults.sheetClientName;
+        }
+      }
+      return next;
     } catch {
       return { ...defaults };
     }
@@ -301,8 +315,6 @@ class CloudSyncManager {
 
   bindEvents() {
     store.on('autosave:updated', (snapshot) => this.handleAutosave(snapshot));
-    this.toolbarButton?.addEventListener('click', () => this.openDialog());
-    this.statusBadge?.addEventListener('click', () => this.openDialog());
     this.inputs.provider?.addEventListener('change', () => {
       this.updateProviderPanels();
       this.updateStatusBadge();
@@ -609,8 +621,8 @@ class CloudSyncManager {
       this.statusBadge.classList.add('is-off');
       this.statusBadge.textContent = `${label}: off`;
       this.statusBadge.title = this.config.provider === 'sheets'
-        ? '點擊設定 Google Sheet 共編'
-        : '點擊設定 GitHub 雲端同步';
+        ? 'Google Sheet 同步未就緒'
+        : 'GitHub 備份未就緒';
       return;
     }
 
@@ -618,8 +630,8 @@ class CloudSyncManager {
       this.statusBadge.classList.add('is-syncing');
       this.statusBadge.textContent = `${label}: sync`;
       this.statusBadge.title = this.config.provider === 'sheets'
-        ? 'Google Sheet 共編同步中'
-        : '雲端快照同步中';
+        ? 'Google Sheet 同步中'
+        : 'GitHub 備份同步中';
       return;
     }
 
@@ -636,14 +648,14 @@ class CloudSyncManager {
       this.statusBadge.textContent = `${label}: ${stamp}`;
       this.statusBadge.title = detail || message || (this.config.provider === 'sheets'
         ? `上次 Google Sheet 同步 ${stamp}`
-        : `上次雲端同步 ${stamp}`);
+        : `上次 GitHub 備份 ${stamp}`);
       return;
     }
 
     this.statusBadge.textContent = `${label}: ready`;
     this.statusBadge.title = detail || message || (this.config.provider === 'sheets'
-      ? 'Google Sheet 共編已就緒'
-      : '雲端同步已就緒');
+      ? 'Google Sheet 同步已就緒'
+      : 'GitHub 備份已就緒');
   }
 
   updateDialogStatus(message = '', detail = '') {
@@ -651,15 +663,15 @@ class CloudSyncManager {
       return;
     }
 
-    let text = '尚未設定雲端同步。';
+    let text = '尚未設定同步。';
     if (!this.isConfigReady()) {
       text = this.config.provider === 'sheets'
         ? '請填入 Google Sheet Web App URL / Project Key。'
         : '請填入 GitHub Owner / Repository / Branch / Path / Token。';
     } else if (this.syncInFlight) {
       text = this.config.provider === 'sheets'
-        ? '正在同步 Google Sheet 共編內容...'
-        : '正在同步雲端快照...';
+        ? '正在同步 Google Sheet 內容...'
+        : '正在同步 GitHub 快照...';
     } else if (this.state.lastError) {
       text = `錯誤：${this.state.lastError}`;
     } else if (this.state.lastSyncedAt) {
@@ -703,11 +715,13 @@ class CloudSyncManager {
     this.fillInputsFromConfig();
     this.updateProviderPanels();
     this.refreshTransportMode();
-    this.setStatus('idle', '雲端設定已儲存');
+    this.setStatus('idle', '同步設定已儲存');
 
     if (syncImmediately && this.isConfigReady()) {
-      this.syncNow({ force: true });
+      return this.syncNow({ force: true });
     }
+
+    return true;
   }
 
   refreshTransportMode() {
@@ -771,11 +785,11 @@ class CloudSyncManager {
   }
 
   getProviderLabel() {
-    return this.config.provider === 'sheets' ? 'Sheet' : 'Cloud';
+    return this.config.provider === 'sheets' ? 'Sync' : 'Backup';
   }
 
   getProviderTitleLabel() {
-    return this.config.provider === 'sheets' ? 'Google Sheet' : 'Cloud';
+    return this.config.provider === 'sheets' ? 'Google Sheet' : 'GitHub';
   }
 
   getSheetRequestUrl(action = 'state', extraParams = {}) {
@@ -908,6 +922,53 @@ class CloudSyncManager {
       if (this.pendingSnapshot) {
         this.queueSync(this.pendingSnapshot);
       }
+    }
+  }
+
+  async verifySheetUpload() {
+    if (!this.isConfigReady()) {
+      this.setStatus('error', '請先完成 Google Sheet 設定');
+      return false;
+    }
+
+    this.updateStatusBadge('Sheet verifying...');
+    this.updateDialogStatus('正在驗證 Google Sheet 是否真的寫入...');
+
+    try {
+      const response = await this.requestJson(this.getSheetRequestUrl('state', {
+        revision: this.sheetLastRevision || 0,
+      }), {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+        },
+      });
+
+      if (!response?.document) {
+        throw new Error('驗證失敗：讀回不到 Google Sheet 內容');
+      }
+
+      const remoteDocument = normalizeDocument(response.document);
+      const localDocument = store.getDocumentSnapshot();
+      if (!isDeepEqual(remoteDocument, localDocument)) {
+        throw new Error('驗證失敗：Sheet 讀回內容與本機不同步');
+      }
+
+      this.sheetBaselineDocument = clone(remoteDocument);
+      this.sheetLastRevision = Number.isFinite(response.revision) ? response.revision : this.sheetLastRevision;
+      this.state.lastRemoteRevision = this.sheetLastRevision;
+      this.state.lastFingerprint = buildDocumentFingerprint(remoteDocument);
+      this.state.lastSyncedAt = response?.updatedAt || new Date().toISOString();
+      this.state.lastError = null;
+      this.saveState();
+      this.setStatus('ok', 'Google Sheet 驗證成功', `Revision ${this.sheetLastRevision || 0}`);
+      return true;
+    } catch (error) {
+      const message = this.getErrorMessage(error);
+      this.state.lastError = message;
+      this.saveState();
+      this.setStatus('error', message);
+      return false;
     }
   }
 
@@ -1128,7 +1189,29 @@ class CloudSyncManager {
 
     const snapshot = this.pendingSnapshot || this.createSnapshot();
     this.pendingSnapshot = null;
-    await this.pushSnapshot(snapshot, { force });
+    return this.pushSnapshot(snapshot, { force });
+  }
+
+  async syncAndVerifyNow({ force = true } = {}) {
+    if (this.config.provider !== 'sheets') {
+      this.config = {
+        ...this.config,
+        provider: 'sheets',
+        sheetWebAppUrl: sanitizeString(this.config.sheetWebAppUrl) || DEFAULT_SHEET_WEB_APP_URL,
+        sheetProjectKey: sanitizeString(this.config.sheetProjectKey, 'default'),
+        sheetClientName: sanitizeString(this.config.sheetClientName, 'NodeNote'),
+      };
+      this.saveConfig();
+      this.applyStateToUI();
+      this.refreshTransportMode();
+    }
+
+    const synced = await this.syncNow({ force });
+    if (!synced || this.config.provider !== 'sheets') {
+      return synced;
+    }
+
+    return this.verifySheetUpload();
   }
 
   async pushSnapshot(snapshot, { force = false } = {}) {

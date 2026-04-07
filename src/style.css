@@ -354,24 +354,24 @@ body, html {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
-#cloud-status-badge {
+#sync-status-badge {
   cursor: pointer;
   user-select: none;
 }
 
-#cloud-status-badge.is-off {
+#sync-status-badge.is-off {
   color: #8b949e;
 }
 
-#cloud-status-badge.is-idle {
+#sync-status-badge.is-idle {
   color: #9ae6b4;
 }
 
-#cloud-status-badge.is-syncing {
+#sync-status-badge.is-syncing {
   color: #fbbf24;
 }
 
-#cloud-status-badge.is-error {
+#sync-status-badge.is-error {
   color: #fda4af;
 }
 

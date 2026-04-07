@@ -88,7 +88,7 @@ const initApp = () => {
     updateDiag("Restoring autosave...");
     persistenceManager.init();
 
-    updateDiag("Initializing CloudSyncManager...");
+    updateDiag("Initializing Sync Manager...");
     cloudSyncManager.init();
 
     updateDiag("Initializing Renderer...");
@@ -112,6 +112,7 @@ const initApp = () => {
     updateDiag("Wiring Toolbar...");
     // Wire Undo/Redo
     const folderBackBtn = document.getElementById('btn-folder-back');
+    const syncBtn = document.getElementById('btn-sync-now');
     const aiPromptCopyBtn = document.getElementById('btn-ai-prompt-copy');
     const trayDrawer = document.getElementById('tray-drawer');
     const trayCloseBtn = document.getElementById('btn-tray-close');
@@ -126,6 +127,10 @@ const initApp = () => {
       }
     };
     if(folderBackBtn) folderBackBtn.onclick = () => store.exitFolder();
+    if (syncBtn) {
+      syncBtn.textContent = '同步';
+      syncBtn.title = '同步並驗證 Google Sheet';
+    }
     const setTrayDrawerOpen = (isOpen) => {
       if (!trayDrawer) {
         return;
@@ -197,6 +202,11 @@ const initApp = () => {
         } else {
           window.alert('複製失敗，請檢查瀏覽器剪貼簿權限。');
         }
+      };
+    }
+    if (syncBtn) {
+      syncBtn.onclick = async () => {
+        await cloudSyncManager.syncAndVerifyNow({ force: true });
       };
     }
     if(folderGroupBtn) folderGroupBtn.onclick = () => nodeManager.groupSelectionIntoFolder();
