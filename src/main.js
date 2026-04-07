@@ -206,7 +206,7 @@ const initApp = () => {
     }
     if (syncBtn) {
       syncBtn.onclick = async () => {
-        await cloudSyncManager.syncAndVerifyNow({ force: true });
+        await cloudSyncManager.syncNow({ force: true });
       };
     }
     if(folderGroupBtn) folderGroupBtn.onclick = () => nodeManager.groupSelectionIntoFolder();
