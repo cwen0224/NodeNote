@@ -14,6 +14,7 @@ This folder contains the Google Apps Script backend used by NodeNote's Google Sh
    - Execute as: `Me`
    - Who has access: `Anyone` or `Anyone with the link`
 6. Copy the `/exec` Web App URL into NodeNote's Cloud Sync panel.
+7. If no spreadsheet is bound yet, the first `state` or `commit` call will auto-create a spreadsheet named `NodeNote Collaboration Data` and persist its id.
 
 ## Sheets used
 

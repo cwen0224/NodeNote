@@ -83,6 +83,8 @@ function buildProjectState_(projectKey) {
   return {
     ok: true,
     provider: 'google-sheets',
+    spreadsheetId: spreadsheet.getId(),
+    spreadsheetUrl: spreadsheet.getUrl(),
     projectKey,
     revision: Number.parseInt(stateRecord?.revision || `${NODE_NOTE_DEFAULT_REVISION}`, 10) || 0,
     updatedAt: stateRecord?.updatedAt || null,
@@ -376,9 +378,12 @@ function getSpreadsheet_() {
 
   const active = SpreadsheetApp.getActiveSpreadsheet();
   if (!active) {
-    throw new Error('找不到可用的 Spreadsheet，請先綁定腳本或設定 NODENOTE_SPREADSHEET_ID');
+    const created = SpreadsheetApp.create('NodeNote Collaboration Data');
+    props.setProperty('NODENOTE_SPREADSHEET_ID', created.getId());
+    return created;
   }
 
+  props.setProperty('NODENOTE_SPREADSHEET_ID', active.getId());
   return active;
 }
 
