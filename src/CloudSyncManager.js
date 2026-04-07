@@ -16,7 +16,7 @@ const AUTO_SYNC_DEBOUNCE_MS = 2800;
 const SHEET_AUTO_SYNC_DEBOUNCE_MS = 1200;
 const DEFAULT_SHEET_POLL_MS = 2000;
 const SHEET_CLIENT_STORAGE_KEY = 'nodenote.sheet.client-id.v1';
-const DEFAULT_SHEET_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwez1B0c5LClHi4kYXqWyuEtCtDstFz0QRkSfBkQib7LSJG4-KzOeVrose73hANvueP/exec';
+const DEFAULT_SHEET_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwoztDsaKOldxW3HxJ_DTnaem58yCqKeQk-6kbqXj-E9LZ9dGuGhZUOF_JZY6HNejQC/exec';
 
 function isPlainObject(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
