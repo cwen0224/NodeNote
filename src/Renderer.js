@@ -35,6 +35,8 @@ class Renderer {
     };
     this.portRevealRaf = null;
     this.minimapRaf = null;
+    this.visibilityCheckRaf = null;
+    this.pendingVisibilityCheck = false;
     this.connectionRouteCache = new Map();
 
     this.setupMinimapEvents();
@@ -51,14 +53,23 @@ class Renderer {
 
     // Listen for state and node updates
     store.on('state:updated', () => this.renderAll());
+    store.on('document:updated', () => this.scheduleVisibilityCheck());
     store.on('navigation:updated', (payload) => {
       if (payload?.action === 'enter') {
         window.requestAnimationFrame(() => {
           this.fitGraphToViewport();
         });
+        return;
+      }
+
+      if (payload?.action === 'restore' || payload?.action === 'reset' || payload?.action === 'normalize') {
+        this.scheduleVisibilityCheck();
       }
     });
-    store.on('nodes:updated', () => this.renderAll());
+    store.on('nodes:updated', () => {
+      this.scheduleVisibilityCheck();
+      this.renderAll();
+    });
     store.on('connections:updated', () => this.renderConnections());
     store.on('selection:updated', () => this.syncSelectionState());
     
@@ -127,6 +138,7 @@ class Renderer {
     this.renderMinimap();
     this.updatePortReveal();
     this.syncSelectionState();
+    this.scheduleVisibilityCheck();
   }
 
   escapeHtml(value) {
@@ -236,6 +248,71 @@ class Renderer {
       this.minimapRaf = null;
       this.renderMinimap();
     });
+  }
+
+  scheduleVisibilityCheck() {
+    if (this.visibilityCheckRaf) {
+      return;
+    }
+
+    this.pendingVisibilityCheck = true;
+    this.visibilityCheckRaf = window.requestAnimationFrame(() => {
+      this.visibilityCheckRaf = null;
+      if (!this.pendingVisibilityCheck) {
+        return;
+      }
+
+      this.pendingVisibilityCheck = false;
+      if (!this.shouldAutoFitGraph()) {
+        return;
+      }
+
+      this.fitGraphToViewport();
+    });
+  }
+
+  shouldAutoFitGraph() {
+    const nodes = Object.values(store.state.nodes || {});
+    if (!nodes.length) {
+      return false;
+    }
+
+    const viewportRect = this.getViewportWorldRect();
+    const viewportRight = viewportRect.minX + viewportRect.width;
+    const viewportBottom = viewportRect.minY + viewportRect.height;
+    const { scale } = store.getTransform();
+
+    let hasVisibleNode = false;
+    let hasReadableNode = false;
+
+    nodes.forEach((node) => {
+      const size = this.getNodeWorldSize(node);
+      const left = Number(node.x) || 0;
+      const top = Number(node.y) || 0;
+      const right = left + size.width;
+      const bottom = top + size.height;
+      const intersects = !(right < viewportRect.minX || left > viewportRight || bottom < viewportRect.minY || top > viewportBottom);
+      if (!intersects) {
+        return;
+      }
+
+      hasVisibleNode = true;
+      const screenWidth = size.width * scale;
+      const screenHeight = size.height * scale;
+      if (Math.max(screenWidth, screenHeight) >= 56) {
+        hasReadableNode = true;
+      }
+    });
+
+    if (!hasVisibleNode) {
+      return true;
+    }
+
+    if (!hasReadableNode && scale < 0.35) {
+      return true;
+    }
+
+    return false;
   }
 
   setupMinimapEvents() {
