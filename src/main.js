@@ -120,6 +120,7 @@ const initApp = () => {
     const undoBtn = document.getElementById('btn-undo');
     const redoBtn = document.getElementById('btn-redo');
     let trayHoverCloseTimer = 0;
+    const isCoarsePointer = window.matchMedia('(hover: none), (pointer: coarse)').matches;
     const clearTrayHoverCloseTimer = () => {
       if (trayHoverCloseTimer) {
         window.clearTimeout(trayHoverCloseTimer);
@@ -144,45 +145,54 @@ const initApp = () => {
     };
     if (trayDrawer) {
       const savedTrayState = window.localStorage.getItem(TRAY_DRAWER_STORAGE_KEY);
-      setTrayDrawerOpen(savedTrayState !== '0');
-      const hoverOpenThreshold = 24;
-      const hoverCloseThreshold = 280;
+      setTrayDrawerOpen(isCoarsePointer ? false : savedTrayState !== '0');
 
-      document.addEventListener('pointermove', (event) => {
-        if (!trayDrawer) {
-          return;
-        }
+      if (isCoarsePointer) {
+        trayDrawer.addEventListener('pointerdown', (event) => {
+          if (trayDrawer.classList.contains('is-collapsed') && event.pointerType !== 'mouse') {
+            setTrayDrawerOpen(true);
+          }
+        });
+      } else {
+        const hoverOpenThreshold = 24;
+        const hoverCloseThreshold = 280;
 
-        const isCollapsed = trayDrawer.classList.contains('is-collapsed');
-        const x = Number.isFinite(event.clientX) ? event.clientX : window.innerWidth;
+        document.addEventListener('pointermove', (event) => {
+          if (!trayDrawer) {
+            return;
+          }
 
-        if (x <= hoverOpenThreshold) {
-          setTrayDrawerOpen(true);
-          return;
-        }
+          const isCollapsed = trayDrawer.classList.contains('is-collapsed');
+          const x = Number.isFinite(event.clientX) ? event.clientX : window.innerWidth;
 
-        if (!isCollapsed && x > hoverCloseThreshold) {
+          if (x <= hoverOpenThreshold) {
+            setTrayDrawerOpen(true);
+            return;
+          }
+
+          if (!isCollapsed && x > hoverCloseThreshold) {
+            clearTrayHoverCloseTimer();
+            trayHoverCloseTimer = window.setTimeout(() => {
+              if (!trayDrawer.matches(':hover')) {
+                setTrayDrawerOpen(false);
+              }
+            }, 180);
+          }
+        }, { passive: true });
+
+        trayDrawer.addEventListener('pointerenter', () => {
+          clearTrayHoverCloseTimer();
+        });
+
+        trayDrawer.addEventListener('pointerleave', () => {
           clearTrayHoverCloseTimer();
           trayHoverCloseTimer = window.setTimeout(() => {
             if (!trayDrawer.matches(':hover')) {
               setTrayDrawerOpen(false);
             }
           }, 180);
-        }
-      }, { passive: true });
-
-      trayDrawer.addEventListener('pointerenter', () => {
-        clearTrayHoverCloseTimer();
-      });
-
-      trayDrawer.addEventListener('pointerleave', () => {
-        clearTrayHoverCloseTimer();
-        trayHoverCloseTimer = window.setTimeout(() => {
-          if (!trayDrawer.matches(':hover')) {
-            setTrayDrawerOpen(false);
-          }
-        }, 180);
-      });
+        });
+      }
     }
     if (trayCloseBtn) {
       trayCloseBtn.onclick = () => setTrayDrawerOpen(false);
