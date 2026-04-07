@@ -68,6 +68,7 @@ function doPost(e) {
 
 function buildProjectState_(projectKey) {
   const spreadsheet = getSpreadsheet_();
+  ensureSpreadsheetLayout_(spreadsheet);
   const stateSheet = getOrCreateSheet_(spreadsheet, 'state', ['projectKey', 'revision', 'updatedAt', 'rootFolderId', 'metaJson', 'assetsJson', 'extrasJson']);
   const nodesSheet = getOrCreateSheet_(spreadsheet, 'nodes', ['projectKey', 'id', 'payloadJson']);
   const foldersSheet = getOrCreateSheet_(spreadsheet, 'folders', ['projectKey', 'id', 'payloadJson']);
@@ -112,6 +113,7 @@ function buildProjectState_(projectKey) {
 
 function applyPatch_(projectKey, patch) {
   const spreadsheet = getSpreadsheet_();
+  ensureSpreadsheetLayout_(spreadsheet);
   const stateSheet = getOrCreateSheet_(spreadsheet, 'state', ['projectKey', 'revision', 'updatedAt', 'rootFolderId', 'metaJson', 'assetsJson', 'extrasJson']);
   const nodesSheet = getOrCreateSheet_(spreadsheet, 'nodes', ['projectKey', 'id', 'payloadJson']);
   const foldersSheet = getOrCreateSheet_(spreadsheet, 'folders', ['projectKey', 'id', 'payloadJson']);
@@ -425,6 +427,34 @@ function getSpreadsheet_() {
 
   props.setProperty('NODENOTE_SPREADSHEET_ID', active.getId());
   return active;
+}
+
+function ensureSpreadsheetLayout_(spreadsheet) {
+  if (!spreadsheet) {
+    return;
+  }
+
+  let dashboard = spreadsheet.getSheetByName('dashboard');
+  if (!dashboard) {
+    dashboard = spreadsheet.insertSheet('dashboard', 0);
+  }
+
+  try {
+    spreadsheet.setActiveSheet(dashboard);
+    spreadsheet.moveActiveSheet(1);
+  } catch {
+    // Best effort only.
+  }
+
+  const sheets = spreadsheet.getSheets();
+  const defaultSheet = sheets.find((sheet) => sheet.getName() === 'Sheet1');
+  if (defaultSheet && sheets.length > 1) {
+    try {
+      spreadsheet.deleteSheet(defaultSheet);
+    } catch {
+      // Ignore if the spreadsheet refuses deletion.
+    }
+  }
 }
 
 function normalizeProjectKey_(value) {
