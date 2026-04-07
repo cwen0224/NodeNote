@@ -8,6 +8,12 @@ import { createNodeId, materializeClipboardPayload } from './core/graphClipboard
 import { resolveNodeSize } from './core/nodeSizing.js';
 import { MAX_FOLDER_DEPTH } from './core/folderTheme.js';
 import { computeNodesBounds } from './core/selectionGeometry.js';
+import {
+  createUniqueParamKey,
+  deepClone,
+  getNodeLabel,
+  isPlainObject,
+} from './core/connectionData.js';
 
 class NodeManager {
   constructor() {
@@ -20,67 +26,6 @@ class NodeManager {
     this.dragStartPositions = new Map();
     this.dragOffset = { x: 0, y: 0 };
     this.contentTimeout = null;
-  }
-
-  cloneValue(value) {
-    return JSON.parse(JSON.stringify(value));
-  }
-
-  isPlainObject(value) {
-    return typeof value === 'object' && value !== null && !Array.isArray(value);
-  }
-
-  buildEdgesFromNodes(nodes = {}) {
-    const edges = [];
-
-    Object.entries(this.isPlainObject(nodes) ? nodes : {}).forEach(([sourceId, node]) => {
-      if (!this.isPlainObject(node?.params)) {
-        return;
-      }
-
-      Object.entries(node.params).forEach(([key, linkValue]) => {
-        const targetId = typeof linkValue === 'string' ? linkValue : linkValue?.targetId;
-        if (!targetId || !nodes[targetId]) {
-          return;
-        }
-
-        edges.push({
-          id: `${sourceId}_${key}_${targetId}`,
-          kind: 'flow',
-          key,
-          label: key,
-          fromNodeId: sourceId,
-          fromPortId: typeof linkValue === 'object' && linkValue ? (linkValue.sourcePort || 'right') : 'right',
-          toNodeId: targetId,
-          toPortId: typeof linkValue === 'object' && linkValue ? (linkValue.targetPort || 'left') : 'left',
-        });
-      });
-    });
-
-    return edges;
-  }
-
-  getNodeLabel(node) {
-    if (!node || typeof node !== 'object') {
-      return '';
-    }
-
-    return String(node.title || node.content || node.id || '').trim();
-  }
-
-  createUniqueParamKey(params = {}, baseKey = 'link') {
-    const normalizedBase = String(baseKey || 'link').trim() || 'link';
-    if (!Object.prototype.hasOwnProperty.call(params, normalizedBase)) {
-      return normalizedBase;
-    }
-
-    let suffix = 2;
-    let candidate = `${normalizedBase}_${suffix}`;
-    while (Object.prototype.hasOwnProperty.call(params, candidate)) {
-      suffix += 1;
-      candidate = `${normalizedBase}_${suffix}`;
-    }
-    return candidate;
   }
 
   getNodeBounds(nodes = {}, nodeIds = []) {
@@ -285,7 +230,7 @@ class NodeManager {
     const selectedSet = new Set(selectedIds);
     const selectionBounds = this.getNodeBounds(currentDocument.nodes, selectedIds);
     const margin = 56;
-    const folderTitleSource = this.getNodeLabel(currentDocument.nodes[selectedIds[0]]);
+    const folderTitleSource = getNodeLabel(currentDocument.nodes[selectedIds[0]]);
     const folderTitle = folderTitleSource ? `Folder · ${folderTitleSource.slice(0, 24)}` : 'Folder';
     const summaryText = `${selectedIds.length} nodes`;
     const existingIds = new Set([
@@ -329,7 +274,7 @@ class NodeManager {
         return;
       }
 
-      if (this.isPlainObject(sourceNode.params)) {
+      if (isPlainObject(sourceNode.params)) {
         Object.entries(sourceNode.params).forEach(([key, linkValue]) => {
           const targetId = typeof linkValue === 'string' ? linkValue : linkValue?.targetId;
           if (!targetId) {
@@ -346,7 +291,7 @@ class NodeManager {
             return;
           }
 
-          const folderKey = this.createUniqueParamKey(folderParams, key);
+          const folderKey = createUniqueParamKey(folderParams, key);
           folderParams[folderKey] = {
             targetId,
             sourcePort,
@@ -373,7 +318,7 @@ class NodeManager {
     });
 
     Object.values(currentDocument.nodes).forEach((node) => {
-      if (!node || selectedSet.has(node.id) || !this.isPlainObject(node.params)) {
+      if (!node || selectedSet.has(node.id) || !isPlainObject(node.params)) {
         return;
       }
 
@@ -386,7 +331,7 @@ class NodeManager {
         const sourcePort = typeof linkValue === 'object' && linkValue ? (linkValue.sourcePort || 'right') : 'right';
         const targetPort = typeof linkValue === 'object' && linkValue ? (linkValue.targetPort || 'left') : 'left';
         node.params[key] = {
-          ...(typeof linkValue === 'object' && linkValue ? this.cloneValue(linkValue) : {}),
+          ...(typeof linkValue === 'object' && linkValue ? deepClone(linkValue) : {}),
           targetId: folderNodeId,
           sourcePort,
           targetPort,
@@ -461,12 +406,12 @@ class NodeManager {
 
     const restoreIncomingLinks = (folderId) => {
       Object.values(allEntities()).forEach((entity) => {
-        if (!this.isPlainObject(entity?.params)) {
+        if (!isPlainObject(entity?.params)) {
           return;
         }
 
         Object.entries(entity.params).forEach(([key, linkValue]) => {
-          if (!this.isPlainObject(linkValue)) {
+          if (!isPlainObject(linkValue)) {
             return;
           }
 
@@ -475,7 +420,7 @@ class NodeManager {
           }
 
           entity.params[key] = {
-            ...this.cloneValue(linkValue),
+            ...deepClone(linkValue),
             targetId: linkValue.groupedTargetId,
           };
           delete entity.params[key].groupedTargetId;
@@ -484,12 +429,12 @@ class NodeManager {
     };
 
     const restoreOutgoingLinks = (folder) => {
-      if (!this.isPlainObject(folder?.params)) {
+      if (!isPlainObject(folder?.params)) {
         return;
       }
 
       Object.entries(folder.params).forEach(([key, linkValue]) => {
-        if (!this.isPlainObject(linkValue)) {
+        if (!isPlainObject(linkValue)) {
           return;
         }
 
@@ -506,11 +451,11 @@ class NodeManager {
           return;
         }
 
-        if (!this.isPlainObject(sourceNode.params)) {
+        if (!isPlainObject(sourceNode.params)) {
           sourceNode.params = {};
         }
 
-        const restoredLink = this.cloneValue(linkValue);
+        const restoredLink = deepClone(linkValue);
         delete restoredLink.originNodeId;
         delete restoredLink.originKey;
         sourceNode.params[originKey] = restoredLink;
@@ -775,11 +720,11 @@ class NodeManager {
         folderRecord.x = node.x;
         folderRecord.y = node.y;
         folderRecord.size = node.size || folderRecord.size;
-        folderRecord.params = this.cloneValue(node.params || {});
-        folderRecord.children = Array.isArray(node.children) ? this.cloneValue(node.children) : [];
+        folderRecord.params = deepClone(node.params || {});
+        folderRecord.children = Array.isArray(node.children) ? deepClone(node.children) : [];
         folderRecord.entryNodeId = node.entryNodeId || folderRecord.entryNodeId;
-        folderRecord.boundaryLinks = this.cloneValue(node.boundaryLinks || []);
-        folderRecord.sourceNodeIds = this.cloneValue(node.sourceNodeIds || []);
+        folderRecord.boundaryLinks = deepClone(node.boundaryLinks || []);
+        folderRecord.sourceNodeIds = deepClone(node.sourceNodeIds || []);
         store.addFolderToFolder(folderRecord, parentFolderId);
         insertedFolderIds.add(nodeId);
         pendingFolders.splice(index, 1);
@@ -808,11 +753,11 @@ class NodeManager {
       folderRecord.x = node.x;
       folderRecord.y = node.y;
       folderRecord.size = node.size || folderRecord.size;
-      folderRecord.params = this.cloneValue(node.params || {});
-      folderRecord.children = Array.isArray(node.children) ? this.cloneValue(node.children) : [];
+      folderRecord.params = deepClone(node.params || {});
+      folderRecord.children = Array.isArray(node.children) ? deepClone(node.children) : [];
       folderRecord.entryNodeId = node.entryNodeId || folderRecord.entryNodeId;
-      folderRecord.boundaryLinks = this.cloneValue(node.boundaryLinks || []);
-      folderRecord.sourceNodeIds = this.cloneValue(node.sourceNodeIds || []);
+      folderRecord.boundaryLinks = deepClone(node.boundaryLinks || []);
+      folderRecord.sourceNodeIds = deepClone(node.sourceNodeIds || []);
       store.addFolderToFolder(folderRecord, folderRecord.parentFolderId);
       insertedFolderIds.add(nodeId);
     });
@@ -838,3 +783,4 @@ class NodeManager {
 }
 
 export const nodeManager = new NodeManager();
+

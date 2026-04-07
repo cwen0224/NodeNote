@@ -3,6 +3,7 @@
  * Handles the interaction of drawing a line from one node to another.
  */
 import { store } from './StateStore.js';
+import { getPortSide } from './core/connectionData.js';
 
 class ConnectionManager {
   constructor() {
@@ -90,7 +91,7 @@ class ConnectionManager {
     if (targetNodeEl && targetNodeEl.dataset.id !== this.sourceNodeId) {
       store.setLastActiveNode(targetNodeEl.dataset.id);
       const targetPortSide = this.resolveTargetPortSide(targetNodeEl, targetPortEl, e.clientX, e.clientY);
-      const sourcePortSide = this.getPortSide(this.sourcePortEl);
+      const sourcePortSide = getPortSide(this.sourcePortEl);
       this.showNamingPopup(
         this.sourceNodeId,
         targetNodeEl.dataset.id,
@@ -204,14 +205,6 @@ class ConnectionManager {
     return true;
   }
 
-  getPortSide(portEl) {
-    if (!portEl) {
-      return null;
-    }
-    const classes = Array.from(portEl.classList);
-    return ['top', 'right', 'bottom', 'left'].find((side) => classes.includes(side)) || null;
-  }
-
   getPortWorldPoint(portEl) {
     if (!portEl) {
       return null;
@@ -226,7 +219,7 @@ class ConnectionManager {
 
   resolveTargetPortSide(targetNodeEl, targetPortEl, clientX, clientY) {
     if (targetPortEl) {
-      return this.getPortSide(targetPortEl) || 'left';
+      return getPortSide(targetPortEl) || 'left';
     }
     const rect = targetNodeEl.getBoundingClientRect();
     const distances = [
@@ -241,3 +234,4 @@ class ConnectionManager {
 }
 
 export const connectionManager = new ConnectionManager();
+
