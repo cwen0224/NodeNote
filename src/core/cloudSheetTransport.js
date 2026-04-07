@@ -1,6 +1,6 @@
 import { sanitizeText } from './cloudSyncUtils.js';
 
-export const DEFAULT_SHEET_POLL_MS = 2000;
+export const DEFAULT_SHEET_POLL_MS = 5000;
 
 export function resolveSheetClientName(config, fallback = 'NodeNote') {
   const explicit = sanitizeText(config?.sheetClientName);
@@ -12,7 +12,7 @@ export function resolveSheetPollIntervalMs(config, defaultMs = DEFAULT_SHEET_POL
   if (!Number.isFinite(raw) || raw <= 0) {
     return defaultMs;
   }
-  return Math.max(1000, raw);
+  return Math.max(defaultMs, raw);
 }
 
 export function buildSheetRequestUrl({

@@ -81,6 +81,7 @@ class CloudSyncManager {
     this.sheetBaselineDocument = null;
     this.sheetLastRevision = 0;
     this.sheetLastFingerprint = null;
+    this.boundVisibilityChange = this.handleVisibilityChange.bind(this);
   }
 
   init() {
@@ -139,6 +140,9 @@ class CloudSyncManager {
         if (!sanitizeString(next.sheetClientName)) {
           next.sheetClientName = defaults.sheetClientName;
         }
+        if (!Number.isFinite(next.sheetPollIntervalMs) || next.sheetPollIntervalMs < DEFAULT_SHEET_POLL_MS) {
+          next.sheetPollIntervalMs = DEFAULT_SHEET_POLL_MS;
+        }
       }
       return next;
     } catch {
@@ -195,6 +199,7 @@ class CloudSyncManager {
 
   bindEvents() {
     store.on('autosave:updated', (snapshot) => this.handleAutosave(snapshot));
+    document.addEventListener('visibilitychange', this.boundVisibilityChange);
     this.inputs.provider?.addEventListener('change', () => {
       this.updateProviderPanels();
       this.updateStatusBadge();
@@ -807,12 +812,21 @@ class CloudSyncManager {
   }
 
   refreshTransportMode() {
-    if (this.config.provider === 'sheets' && this.isConfigReady()) {
+    if (this.config.provider === 'sheets' && this.isConfigReady() && !document.hidden) {
       this.startSheetPolling();
       return;
     }
 
     this.stopSheetPolling();
+  }
+
+  handleVisibilityChange() {
+    if (document.hidden) {
+      this.stopSheetPolling();
+      return;
+    }
+
+    this.refreshTransportMode();
   }
 
   startSheetPolling() {
