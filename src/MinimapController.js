@@ -10,21 +10,19 @@ class MinimapController {
     this.minimapViewport = null;
     this.minimapPadding = 12;
     this.minimapLayout = null;
-    this.minimapDragState = {
+    this.dragState = {
       active: false,
       pointerId: null,
     };
-    this.minimapRaf = null;
-    this.syncRaf = null;
-    this.lastViewportSignature = '';
-    this.boundWindowResize = null;
-    this.boundTransformUpdate = null;
-    this.boundStateUpdate = null;
-    this.boundNodesUpdate = null;
-    this.boundNavigationUpdate = null;
+    this.renderRaf = null;
+    this.boundResize = null;
+    this.boundTransform = null;
+    this.boundState = null;
+    this.boundNodes = null;
+    this.boundNavigation = null;
     this.boundNodeMoved = null;
-    this.boundNodeContentUpdated = null;
-    this.boundNodeTitleUpdated = null;
+    this.boundNodeContent = null;
+    this.boundNodeTitle = null;
   }
 
   init() {
@@ -35,42 +33,39 @@ class MinimapController {
     this.minimapContent = document.getElementById('minimap-content');
     this.minimapViewport = document.getElementById('minimap-viewport');
 
-    if (!this.minimap || !this.minimapContent || !this.minimapViewport) {
+    if (!this.viewport || !this.minimap || !this.minimapContent || !this.minimapViewport) {
       return;
     }
 
-    this.boundWindowResize = () => {
+    this.boundResize = () => {
       this.minimapLayout = null;
       this.render();
     };
-    this.boundTransformUpdate = () => this.updateViewport();
-    this.boundStateUpdate = () => this.scheduleRender();
-    this.boundNodesUpdate = () => this.scheduleRender();
-    this.boundNavigationUpdate = () => this.scheduleRender();
+    this.boundTransform = () => this.updateViewport();
+    this.boundState = () => this.scheduleRender();
+    this.boundNodes = () => this.scheduleRender();
+    this.boundNavigation = () => this.scheduleRender();
     this.boundNodeMoved = () => this.scheduleRender();
-    this.boundNodeContentUpdated = () => this.scheduleRender();
-    this.boundNodeTitleUpdated = () => this.scheduleRender();
+    this.boundNodeContent = () => this.scheduleRender();
+    this.boundNodeTitle = () => this.scheduleRender();
 
-    window.addEventListener('resize', this.boundWindowResize);
-    store.on('transform:updated', this.boundTransformUpdate);
-    store.on('state:updated', this.boundStateUpdate);
-    store.on('nodes:updated', this.boundNodesUpdate);
-    store.on('navigation:updated', this.boundNavigationUpdate);
+    window.addEventListener('resize', this.boundResize);
+    store.on('transform:updated', this.boundTransform);
+    store.on('state:updated', this.boundState);
+    store.on('nodes:updated', this.boundNodes);
+    store.on('navigation:updated', this.boundNavigation);
     store.on('node:moved', this.boundNodeMoved);
-    store.on('node:contentUpdated', this.boundNodeContentUpdated);
-    store.on('node:titleUpdated', this.boundNodeTitleUpdated);
+    store.on('node:contentUpdated', this.boundNodeContent);
+    store.on('node:titleUpdated', this.boundNodeTitle);
 
     this.setupEvents();
     this.render();
-    this.startViewportSyncLoop();
     this.initialized = true;
   }
 
   setupEvents() {
-    if (!this.minimap) return;
-
     const updateFromPointer = (event) => {
-      this.dragViewportFromPoint(event.clientX, event.clientY);
+      this.moveViewportToPoint(event.clientX, event.clientY);
     };
 
     const startDrag = (event) => {
@@ -79,14 +74,14 @@ class MinimapController {
         this.render();
       }
 
-      this.minimapDragState.active = true;
-      this.minimapDragState.pointerId = event.pointerId;
+      this.dragState.active = true;
+      this.dragState.pointerId = event.pointerId;
       this.minimap.classList.add('is-dragging');
 
       try {
         this.minimap.setPointerCapture?.(event.pointerId);
       } catch {
-        // Ignore pointer-capture failures on transient pointers.
+        // Ignore pointer capture failures.
       }
 
       event.preventDefault();
@@ -94,21 +89,21 @@ class MinimapController {
       updateFromPointer(event);
     };
 
-    const handleMove = (event) => {
-      if (!this.minimapDragState.active) return;
-      if (this.minimapDragState.pointerId !== event.pointerId) return;
+    const moveDrag = (event) => {
+      if (!this.dragState.active) return;
+      if (this.dragState.pointerId !== event.pointerId) return;
       event.preventDefault();
       updateFromPointer(event);
     };
 
     const endDrag = (event) => {
-      if (!this.minimapDragState.active) return;
-      if (this.minimapDragState.pointerId !== null && event.pointerId !== this.minimapDragState.pointerId) {
+      if (!this.dragState.active) return;
+      if (this.dragState.pointerId !== null && event.pointerId !== this.dragState.pointerId) {
         return;
       }
 
-      this.minimapDragState.active = false;
-      this.minimapDragState.pointerId = null;
+      this.dragState.active = false;
+      this.dragState.pointerId = null;
       this.minimap.classList.remove('is-dragging');
       if (this.minimap.hasPointerCapture?.(event.pointerId)) {
         this.minimap.releasePointerCapture(event.pointerId);
@@ -116,62 +111,53 @@ class MinimapController {
     };
 
     this.minimap.addEventListener('pointerdown', startDrag);
+    this.minimap.addEventListener('pointermove', moveDrag);
+    this.minimap.addEventListener('pointerup', endDrag);
+    this.minimap.addEventListener('pointercancel', endDrag);
+    this.minimap.addEventListener('lostpointercapture', () => {
+      this.dragState.active = false;
+      this.dragState.pointerId = null;
+      this.minimap.classList.remove('is-dragging');
+    });
+
     this.minimap.addEventListener('dblclick', (event) => {
       event.preventDefault();
       event.stopPropagation();
-      this.minimapDragState.active = false;
-      this.minimapDragState.pointerId = null;
+      this.dragState.active = false;
+      this.dragState.pointerId = null;
       this.minimap.classList.remove('is-dragging');
       const focused = this.focusOnLastActiveNode();
       if (!focused) {
         this.focusFromPoint(event.clientX, event.clientY);
       }
     });
+
     this.minimap.addEventListener('wheel', (event) => {
       event.preventDefault();
       event.stopPropagation();
       this.zoomFromWheel(event.clientX, event.clientY, event.deltaY);
     }, { passive: false });
 
-    window.addEventListener('pointermove', handleMove, { passive: false });
+    window.addEventListener('pointermove', moveDrag, { passive: false });
     window.addEventListener('pointerup', endDrag, { passive: false });
     window.addEventListener('pointercancel', endDrag, { passive: false });
-
-    this.minimap.addEventListener('lostpointercapture', () => {
-      this.minimapDragState.active = false;
-      this.minimapDragState.pointerId = null;
-      this.minimap.classList.remove('is-dragging');
-    });
   }
 
   scheduleRender() {
-    if (!this.minimap || this.minimapRaf) return;
+    if (!this.minimap || this.renderRaf) return;
 
-    this.minimapRaf = window.requestAnimationFrame(() => {
-      this.minimapRaf = null;
+    this.renderRaf = window.requestAnimationFrame(() => {
+      this.renderRaf = null;
       this.render();
     });
   }
 
-  startViewportSyncLoop() {
-    if (this.syncRaf) return;
-
-    const tick = () => {
-      if (!this.minimap) {
-        this.syncRaf = null;
-        return;
-      }
-
-      const signature = this.getViewportSignature();
-      if (signature !== this.lastViewportSignature) {
-        this.lastViewportSignature = signature;
-        this.updateViewport();
-      }
-
-      this.syncRaf = window.requestAnimationFrame(tick);
+  getNodeWorldSize(node) {
+    const size = resolveNodeSize(node);
+    return {
+      width: Math.max(1, size.width),
+      height: Math.max(1, size.height),
     };
-
-    this.syncRaf = window.requestAnimationFrame(tick);
   }
 
   getGraphBounds() {
@@ -191,13 +177,13 @@ class MinimapController {
     let maxX = -Infinity;
     let maxY = -Infinity;
 
-    nodes.forEach((node) => {
+    for (const node of nodes) {
       const size = this.getNodeWorldSize(node);
       minX = Math.min(minX, node.x);
       minY = Math.min(minY, node.y);
       maxX = Math.max(maxX, node.x + size.width);
       maxY = Math.max(maxY, node.y + size.height);
-    });
+    }
 
     const padding = 160;
     return {
@@ -220,10 +206,8 @@ class MinimapController {
     const graphWidth = Math.max(1, bounds.width);
     const graphHeight = Math.max(1, bounds.height);
     const scale = Math.min(innerWidth / graphWidth, innerHeight / graphHeight);
-    const scaledWidth = graphWidth * scale;
-    const scaledHeight = graphHeight * scale;
-    const offsetX = (containerWidth - scaledWidth) / 2;
-    const offsetY = (containerHeight - scaledHeight) / 2;
+    const offsetX = (containerWidth - graphWidth * scale) / 2;
+    const offsetY = (containerHeight - graphHeight * scale) / 2;
 
     this.minimapLayout = {
       bounds,
@@ -249,7 +233,7 @@ class MinimapController {
     const fragment = document.createDocumentFragment();
     this.minimapContent.innerHTML = '';
 
-    nodes.forEach((node) => {
+    for (const node of nodes) {
       const size = this.getNodeWorldSize(node);
       const nodeEl = document.createElement('div');
       nodeEl.className = `minimap-node${node.type === 'folder' ? ' is-folder' : ''}`;
@@ -259,20 +243,18 @@ class MinimapController {
 
       const left = layout.offsetX + (node.x - layout.bounds.minX) * layout.scale;
       const top = layout.offsetY + (node.y - layout.bounds.minY) * layout.scale;
-      const width = Math.max(8, size.width * layout.scale);
-      const height = Math.max(8, size.height * layout.scale);
+      const width = Math.max(6, size.width * layout.scale);
+      const height = Math.max(6, size.height * layout.scale);
 
       nodeEl.style.left = `${left}px`;
       nodeEl.style.top = `${top}px`;
       nodeEl.style.width = `${width}px`;
       nodeEl.style.height = `${height}px`;
-      nodeEl.setAttribute('aria-hidden', 'true');
       fragment.appendChild(nodeEl);
-    });
+    }
 
     this.minimapContent.appendChild(fragment);
     this.updateViewport(layout);
-    this.lastViewportSignature = this.getViewportSignature();
   }
 
   updateViewport(layout = null) {
@@ -285,6 +267,7 @@ class MinimapController {
     const viewportRect = this.viewport?.getBoundingClientRect?.();
     const viewportWidth = viewportRect?.width ?? this.viewport?.clientWidth ?? window.innerWidth;
     const viewportHeight = viewportRect?.height ?? this.viewport?.clientHeight ?? window.innerHeight;
+
     const worldLeft = -x / scale;
     const worldTop = -y / scale;
     const worldRight = worldLeft + (viewportWidth / scale);
@@ -294,35 +277,11 @@ class MinimapController {
     const top = currentLayout.offsetY + (worldTop - currentLayout.bounds.minY) * currentLayout.scale;
     const right = currentLayout.offsetX + (worldRight - currentLayout.bounds.minX) * currentLayout.scale;
     const bottom = currentLayout.offsetY + (worldBottom - currentLayout.bounds.minY) * currentLayout.scale;
-    const width = Math.max(4, right - left);
-    const height = Math.max(4, bottom - top);
 
     this.minimapViewport.style.left = `${left}px`;
     this.minimapViewport.style.top = `${top}px`;
-    this.minimapViewport.style.width = `${width}px`;
-    this.minimapViewport.style.height = `${height}px`;
-  }
-
-  getViewportSignature() {
-    const { x, y, scale } = store.getTransform();
-    const viewportRect = this.viewport?.getBoundingClientRect?.();
-    const viewportWidth = viewportRect?.width ?? this.viewport?.clientWidth ?? window.innerWidth;
-    const viewportHeight = viewportRect?.height ?? this.viewport?.clientHeight ?? window.innerHeight;
-    const layout = this.minimapLayout;
-    const bounds = layout?.bounds;
-
-    return [
-      Math.round(x * 1000) / 1000,
-      Math.round(y * 1000) / 1000,
-      Math.round(scale * 1000) / 1000,
-      Math.round(viewportWidth * 10) / 10,
-      Math.round(viewportHeight * 10) / 10,
-      Math.round(layout?.scale ? layout.scale * 100000 : 0),
-      Math.round(bounds?.minX ?? 0),
-      Math.round(bounds?.minY ?? 0),
-      Math.round(bounds?.width ?? 0),
-      Math.round(bounds?.height ?? 0),
-    ].join('|');
+    this.minimapViewport.style.width = `${Math.max(4, right - left)}px`;
+    this.minimapViewport.style.height = `${Math.max(4, bottom - top)}px`;
   }
 
   getPoint(clientX, clientY) {
@@ -347,7 +306,7 @@ class MinimapController {
     };
   }
 
-  dragViewportFromPoint(clientX, clientY) {
+  moveViewportToPoint(clientX, clientY) {
     const point = this.getPoint(clientX, clientY);
     if (!point) return;
 
@@ -357,7 +316,7 @@ class MinimapController {
     const viewportHeight = this.viewport?.clientHeight ?? window.innerHeight;
 
     let nextScale = scale;
-    if (this.minimapDragState.active) {
+    if (this.dragState.active) {
       const edgeThreshold = Math.max(28, Math.min(72, Math.round(Math.min(minimapRect.width, minimapRect.height) * 0.18)));
       const distanceToEdge = Math.min(
         localX,
@@ -367,14 +326,12 @@ class MinimapController {
       );
       const edgeIntensity = Math.max(0, Math.min(1, 1 - (distanceToEdge / edgeThreshold)));
       if (edgeIntensity > 0) {
-        const zoomFactor = 1 - (edgeIntensity * 0.015);
-        nextScale = Math.max(0.1, scale * zoomFactor);
+        nextScale = Math.max(0.1, scale * (1 - (edgeIntensity * 0.015)));
       }
     }
 
     const nextX = (viewportWidth / 2) - (worldX * nextScale);
     const nextY = (viewportHeight / 2) - (worldY * nextScale);
-
     store.setTransform(nextX, nextY, nextScale);
   }
 
@@ -420,8 +377,7 @@ class MinimapController {
     const minScale = 0.1;
     const maxScale = 5;
     const zoomFactor = 1 - deltaY * zoomSpeed;
-    let nextScale = scale * zoomFactor;
-    nextScale = Math.max(minScale, Math.min(maxScale, nextScale));
+    const nextScale = Math.max(minScale, Math.min(maxScale, scale * zoomFactor));
 
     const viewportWidth = this.viewport?.clientWidth ?? window.innerWidth;
     const viewportHeight = this.viewport?.clientHeight ?? window.innerHeight;
@@ -429,14 +385,6 @@ class MinimapController {
     const nextY = (viewportHeight / 2) - (worldY * nextScale);
 
     store.setTransform(nextX, nextY, nextScale);
-  }
-
-  getNodeWorldSize(node) {
-    const size = resolveNodeSize(node);
-    return {
-      width: Math.max(1, size.width),
-      height: Math.max(1, size.height),
-    };
   }
 
   getNodeCenterWorldPoint(node) {
