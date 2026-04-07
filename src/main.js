@@ -3,7 +3,7 @@ import { renderer } from './Renderer.js';
 import { inputController } from './InputController.js';
 import { nodeManager } from './NodeManager.js';
 import { connectionManager } from './ConnectionManager.js';
-import { minimapController } from './MinimapController.js';
+import { minimapController } from './MinimapCanvasController.js';
 import { trayManager } from './TrayManager.js';
 import { shortcutManager } from './ShortcutManager.js';
 import { persistenceManager } from './PersistenceManager.js';

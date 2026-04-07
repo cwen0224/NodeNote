@@ -1,19 +1,20 @@
 import { store } from './StateStore.js';
 import { resolveNodeSize } from './core/nodeSizing.js';
+import { getFolderTheme } from './core/folderTheme.js';
 
-class MinimapController {
+class MinimapCanvasController {
   constructor() {
     this.initialized = false;
     this.viewport = null;
     this.minimap = null;
-    this.minimapContent = null;
-    this.minimapViewport = null;
-    this.minimapPadding = 12;
-    this.minimapLayout = null;
+    this.canvas = null;
+    this.ctx = null;
     this.dragState = {
       active: false,
       pointerId: null,
     };
+    this.minimapPadding = 12;
+    this.minimapLayout = null;
     this.renderRaf = null;
     this.boundResize = null;
     this.boundTransform = null;
@@ -30,10 +31,10 @@ class MinimapController {
 
     this.viewport = document.getElementById('viewport');
     this.minimap = document.getElementById('minimap');
-    this.minimapContent = document.getElementById('minimap-content');
-    this.minimapViewport = document.getElementById('minimap-viewport');
+    this.canvas = document.getElementById('minimap-canvas');
+    this.ctx = this.canvas?.getContext?.('2d', { alpha: true });
 
-    if (!this.viewport || !this.minimap || !this.minimapContent || !this.minimapViewport) {
+    if (!this.viewport || !this.minimap || !this.canvas || !this.ctx) {
       return;
     }
 
@@ -41,7 +42,7 @@ class MinimapController {
       this.minimapLayout = null;
       this.render();
     };
-    this.boundTransform = () => this.updateViewport();
+    this.boundTransform = () => this.scheduleRender();
     this.boundState = () => this.scheduleRender();
     this.boundNodes = () => this.scheduleRender();
     this.boundNavigation = () => this.scheduleRender();
@@ -194,13 +195,32 @@ class MinimapController {
     };
   }
 
+  updateCanvasSize() {
+    const rect = this.minimap.getBoundingClientRect();
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const width = Math.max(1, Math.round(rect.width * dpr));
+    const height = Math.max(1, Math.round(rect.height * dpr));
+
+    if (this.canvas.width !== width || this.canvas.height !== height) {
+      this.canvas.width = width;
+      this.canvas.height = height;
+    }
+
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return {
+      width: rect.width,
+      height: rect.height,
+      dpr,
+    };
+  }
+
   computeLayout() {
     if (!this.minimap) return null;
 
-    const minimapRect = this.minimap.getBoundingClientRect();
+    const rect = this.minimap.getBoundingClientRect();
     const bounds = this.getGraphBounds();
-    const containerWidth = Math.max(1, minimapRect.width);
-    const containerHeight = Math.max(1, minimapRect.height);
+    const containerWidth = Math.max(1, rect.width);
+    const containerHeight = Math.max(1, rect.height);
     const innerWidth = Math.max(1, containerWidth - this.minimapPadding * 2);
     const innerHeight = Math.max(1, containerHeight - this.minimapPadding * 2);
     const graphWidth = Math.max(1, bounds.width);
@@ -224,45 +244,48 @@ class MinimapController {
   }
 
   render() {
-    if (!this.minimap || !this.minimapContent || !this.minimapViewport) return;
+    if (!this.minimap || !this.canvas || !this.ctx) return;
 
+    const { width, height } = this.updateCanvasSize();
     const layout = this.computeLayout();
     if (!layout) return;
 
+    const ctx = this.ctx;
+    ctx.clearRect(0, 0, width, height);
+
+    this.drawNodes(ctx, layout);
+    this.drawViewport(ctx, layout);
+  }
+
+  drawNodes(ctx, layout) {
     const nodes = Object.values(store.state.nodes || {});
-    const fragment = document.createDocumentFragment();
-    this.minimapContent.innerHTML = '';
 
     for (const node of nodes) {
       const size = this.getNodeWorldSize(node);
-      const nodeEl = document.createElement('div');
-      nodeEl.className = `minimap-node${node.type === 'folder' ? ' is-folder' : ''}`;
-      if (node.id === store.state.entryNodeId) {
-        nodeEl.classList.add('is-entry');
-      }
+      const x = layout.offsetX + (node.x - layout.bounds.minX) * layout.scale;
+      const y = layout.offsetY + (node.y - layout.bounds.minY) * layout.scale;
+      const w = Math.max(4, size.width * layout.scale);
+      const h = Math.max(4, size.height * layout.scale);
+      const isEntry = node.id === store.state.entryNodeId;
+      const isFolder = node.type === 'folder';
+      const theme = isFolder ? getFolderTheme(node.depth ?? 0) : null;
 
-      const left = layout.offsetX + (node.x - layout.bounds.minX) * layout.scale;
-      const top = layout.offsetY + (node.y - layout.bounds.minY) * layout.scale;
-      const width = Math.max(6, size.width * layout.scale);
-      const height = Math.max(6, size.height * layout.scale);
-
-      nodeEl.style.left = `${left}px`;
-      nodeEl.style.top = `${top}px`;
-      nodeEl.style.width = `${width}px`;
-      nodeEl.style.height = `${height}px`;
-      fragment.appendChild(nodeEl);
+      ctx.save();
+      ctx.fillStyle = isEntry
+        ? 'rgba(52, 211, 153, 0.92)'
+        : (theme ? this.withAlpha(theme.accent, 0.75) : 'rgba(88, 166, 255, 0.72)');
+      ctx.strokeStyle = isEntry
+        ? 'rgba(52, 211, 153, 0.98)'
+        : (theme ? this.withAlpha(theme.accent, 0.95) : 'rgba(88, 166, 255, 0.96)');
+      ctx.lineWidth = 1.5;
+      this.roundRect(ctx, x, y, w, h, Math.max(2, Math.min(5, Math.min(w, h) * 0.18)));
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
     }
-
-    this.minimapContent.appendChild(fragment);
-    this.updateViewport(layout);
   }
 
-  updateViewport(layout = null) {
-    if (!this.minimapViewport) return;
-
-    const currentLayout = layout ?? this.minimapLayout ?? this.computeLayout();
-    if (!currentLayout) return;
-
+  drawViewport(ctx, layout) {
     const { x, y, scale } = store.getTransform();
     const viewportRect = this.viewport?.getBoundingClientRect?.();
     const viewportWidth = viewportRect?.width ?? this.viewport?.clientWidth ?? window.innerWidth;
@@ -273,15 +296,55 @@ class MinimapController {
     const worldRight = worldLeft + (viewportWidth / scale);
     const worldBottom = worldTop + (viewportHeight / scale);
 
-    const left = currentLayout.offsetX + (worldLeft - currentLayout.bounds.minX) * currentLayout.scale;
-    const top = currentLayout.offsetY + (worldTop - currentLayout.bounds.minY) * currentLayout.scale;
-    const right = currentLayout.offsetX + (worldRight - currentLayout.bounds.minX) * currentLayout.scale;
-    const bottom = currentLayout.offsetY + (worldBottom - currentLayout.bounds.minY) * currentLayout.scale;
+    const left = layout.offsetX + (worldLeft - layout.bounds.minX) * layout.scale;
+    const top = layout.offsetY + (worldTop - layout.bounds.minY) * layout.scale;
+    const right = layout.offsetX + (worldRight - layout.bounds.minX) * layout.scale;
+    const bottom = layout.offsetY + (worldBottom - layout.bounds.minY) * layout.scale;
 
-    this.minimapViewport.style.left = `${left}px`;
-    this.minimapViewport.style.top = `${top}px`;
-    this.minimapViewport.style.width = `${Math.max(4, right - left)}px`;
-    this.minimapViewport.style.height = `${Math.max(4, bottom - top)}px`;
+    ctx.save();
+    ctx.fillStyle = 'rgba(88, 166, 255, 0.10)';
+    ctx.strokeStyle = 'rgba(88, 166, 255, 0.96)';
+    ctx.lineWidth = 2;
+    this.roundRect(ctx, left, top, Math.max(4, right - left), Math.max(4, bottom - top), 6);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  roundRect(ctx, x, y, w, h, r) {
+    const radius = Math.max(0, Math.min(r, Math.min(w, h) / 2));
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + w - radius, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+    ctx.lineTo(x + w, y + h - radius);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+    ctx.lineTo(x + radius, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.closePath();
+  }
+
+  withAlpha(color, alpha) {
+    if (typeof color !== 'string') return `rgba(88, 166, 255, ${alpha})`;
+    if (color.startsWith('#')) {
+      const hex = color.slice(1);
+      const normalized = hex.length === 3
+        ? hex.split('').map((c) => c + c).join('')
+        : hex.padEnd(6, '0').slice(0, 6);
+      const r = Number.parseInt(normalized.slice(0, 2), 16);
+      const g = Number.parseInt(normalized.slice(2, 4), 16);
+      const b = Number.parseInt(normalized.slice(4, 6), 16);
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+    return color.replace(/rgba?\(([^)]+)\)/, (_, body) => {
+      const parts = body.split(',').map((part) => part.trim());
+      if (parts.length >= 3) {
+        return `rgba(${parts[0]}, ${parts[1]}, ${parts[2]}, ${alpha})`;
+      }
+      return color;
+    });
   }
 
   getPoint(clientX, clientY) {
@@ -396,4 +459,4 @@ class MinimapController {
   }
 }
 
-export const minimapController = new MinimapController();
+export const minimapController = new MinimapCanvasController();
