@@ -1,6 +1,6 @@
 import { normalizeDocument } from './documentSchema.js';
 
-function isPlainObject(value) {
+export function isPlainObject(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 

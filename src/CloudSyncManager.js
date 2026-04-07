@@ -19,6 +19,7 @@ import {
   escapeHtml,
   formatClockStamp,
   formatLogStamp,
+  isPlainObject,
   isDeepEqual,
   normalizeCloudSnapshot,
   normalizeLogLevel,
