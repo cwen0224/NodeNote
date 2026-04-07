@@ -17,10 +17,17 @@ This folder contains the Google Apps Script backend used by NodeNote's Google Sh
 
 ## Sheets used
 
+- `dashboard`
 - `state`
 - `nodes`
 - `folders`
 - `assets`
+
+## What to look at
+
+- `dashboard` shows the current `projectKey`, revision, timestamp, and entity counts.
+- `state` stores the latest document metadata and revision.
+- `nodes`, `folders`, and `assets` store the actual data rows.
 
 ## Notes
 

@@ -62,12 +62,23 @@ function buildProjectState_(projectKey) {
   const nodesSheet = getOrCreateSheet_(spreadsheet, 'nodes', ['projectKey', 'id', 'payloadJson']);
   const foldersSheet = getOrCreateSheet_(spreadsheet, 'folders', ['projectKey', 'id', 'payloadJson']);
   const assetsSheet = getOrCreateSheet_(spreadsheet, 'assets', ['projectKey', 'id', 'payloadJson']);
+  const dashboardSheet = getOrCreateSheet_(spreadsheet, 'dashboard', ['metric', 'value', 'updatedAt']);
 
   const stateRow = findRowByProjectKey_(stateSheet, projectKey);
   const stateRecord = stateRow ? rowToObject_(stateSheet, stateRow) : null;
   const nodes = readEntityMap_(nodesSheet, projectKey);
   const folders = readEntityMap_(foldersSheet, projectKey);
   const assets = readEntityList_(assetsSheet, projectKey);
+
+  upsertDashboardSheet_(dashboardSheet, {
+    projectKey,
+    revision: Number.parseInt(stateRecord?.revision || `${NODE_NOTE_DEFAULT_REVISION}`, 10) || 0,
+    updatedAt: stateRecord?.updatedAt || null,
+    rootFolderId: stateRecord?.rootFolderId || 'folder_root',
+    nodeCount: Object.keys(nodes).length,
+    folderCount: Object.keys(folders).length,
+    assetCount: assets.length,
+  });
 
   return {
     ok: true,
@@ -93,6 +104,7 @@ function applyPatch_(projectKey, patch) {
   const nodesSheet = getOrCreateSheet_(spreadsheet, 'nodes', ['projectKey', 'id', 'payloadJson']);
   const foldersSheet = getOrCreateSheet_(spreadsheet, 'folders', ['projectKey', 'id', 'payloadJson']);
   const assetsSheet = getOrCreateSheet_(spreadsheet, 'assets', ['projectKey', 'id', 'payloadJson']);
+  const dashboardSheet = getOrCreateSheet_(spreadsheet, 'dashboard', ['metric', 'value', 'updatedAt']);
 
   const currentStateRow = findRowByProjectKey_(stateSheet, projectKey);
   const currentState = currentStateRow ? rowToObject_(stateSheet, currentStateRow) : {};
@@ -126,6 +138,16 @@ function applyPatch_(projectKey, patch) {
     metaJson: JSON.stringify(nextMeta || {}),
     assetsJson: JSON.stringify(nextAssets || []),
     extrasJson: JSON.stringify(nextExtras || {}),
+  });
+
+  upsertDashboardSheet_(dashboardSheet, {
+    projectKey,
+    revision: nextRevision,
+    updatedAt,
+    rootFolderId: nextRootFolderId,
+    nodeCount: countProjectRows_(nodesSheet, projectKey),
+    folderCount: countProjectRows_(foldersSheet, projectKey),
+    assetCount: Array.isArray(nextAssets) ? nextAssets.length : 0,
   });
 
   return buildProjectState_(projectKey);
@@ -254,6 +276,30 @@ function writeAllRows_(sheet, rows) {
     return next;
   });
   sheet.getRange(1, 1, padded.length, width).setValues(padded);
+}
+
+function upsertDashboardSheet_(sheet, stats) {
+  const rows = [
+    ['metric', 'value', 'updatedAt'],
+    ['projectKey', stats.projectKey || NODE_NOTE_DEFAULT_PROJECT_KEY, stats.updatedAt || new Date().toISOString()],
+    ['revision', String(stats.revision || 0), stats.updatedAt || new Date().toISOString()],
+    ['rootFolderId', stats.rootFolderId || 'folder_root', stats.updatedAt || new Date().toISOString()],
+    ['nodeCount', String(stats.nodeCount || 0), stats.updatedAt || new Date().toISOString()],
+    ['folderCount', String(stats.folderCount || 0), stats.updatedAt || new Date().toISOString()],
+    ['assetCount', String(stats.assetCount || 0), stats.updatedAt || new Date().toISOString()],
+  ];
+  writeAllRows_(sheet, rows);
+}
+
+function countProjectRows_(sheet, projectKey) {
+  const rows = readAllRows_(sheet);
+  let count = 0;
+  for (let index = 1; index < rows.length; index += 1) {
+    if (normalizeProjectKey_(rows[index][0]) === projectKey) {
+      count += 1;
+    }
+  }
+  return count;
 }
 
 function upsertTableRows_(sheet, records) {
