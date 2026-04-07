@@ -35,6 +35,7 @@ class Renderer {
     };
     this.portRevealRaf = null;
     this.minimapRaf = null;
+    this.connectionRouteCache = new Map();
 
     this.setupMinimapEvents();
 
@@ -736,8 +737,8 @@ class Renderer {
     const sourceVector = getPortDirectionVector(sourcePortSide);
     const targetVector = getPortDirectionVector(targetPortSide);
     const distance = Math.max(1, Math.hypot(tX - sX, tY - sY));
-    const exitDistance = Math.max(20, Math.min(64, distance * 0.1));
-    const routePadding = Math.max(18, Math.min(32, Math.round(distance * 0.05)));
+    const exitDistance = Math.max(18, Math.min(56, distance * 0.09));
+    const routePadding = Math.max(14, Math.min(24, Math.round(distance * 0.04)));
     const sourceIsHorizontal = sourceVector.x !== 0;
     const targetIsHorizontal = targetVector.x !== 0;
     const sourceBounds = sourceRect || { left: sX, right: sX, top: sY, bottom: sY };
@@ -759,46 +760,126 @@ class Renderer {
       return total + Math.hypot(point.x - previous.x, point.y - previous.y);
     }, 0);
 
-    const routePoints = [
+    const routeKey = `${sourceId}|${sourcePortSide}|${targetId}|${targetPortSide}|${labelText}`;
+    const candidates = [];
+    const isInsidePaddedRect = (point, rect) => point.x >= (rect.left - routePadding)
+      && point.x <= (rect.right + routePadding)
+      && point.y >= (rect.top - routePadding)
+      && point.y <= (rect.bottom + routePadding);
+    const makeRoutePoints = (innerPoints = []) => [
       { x: sX, y: sY },
       sourceExit,
+      ...innerPoints,
+      targetEntry,
+      { x: tX, y: tY },
     ];
+    const scoreRoute = (points) => {
+      let score = measureRoute(points);
+      for (let index = 1; index < points.length - 1; index += 1) {
+        const point = points[index];
+        if (isInsidePaddedRect(point, sourceBounds) || isInsidePaddedRect(point, targetBounds)) {
+          score += 100000;
+          break;
+        }
+      }
+      return score;
+    };
+    const addCandidate = (name, innerPoints) => {
+      const points = makeRoutePoints(innerPoints);
+      candidates.push({
+        name,
+        points,
+        score: scoreRoute(points),
+      });
+    };
 
     if (sourceIsHorizontal && targetIsHorizontal) {
+      addCandidate('direct-source-y', [
+        { x: sourceExit.x, y: targetEntry.y },
+      ]);
+      addCandidate('direct-target-y', [
+        { x: targetEntry.x, y: sourceExit.y },
+      ]);
       const aboveY = Math.min(sourceBounds.top, targetBounds.top) - routePadding;
       const belowY = Math.max(sourceBounds.bottom, targetBounds.bottom) + routePadding;
-      const aboveRoute = [sourceExit, { x: sourceExit.x, y: aboveY }, { x: targetEntry.x, y: aboveY }, targetEntry];
-      const belowRoute = [sourceExit, { x: sourceExit.x, y: belowY }, { x: targetEntry.x, y: belowY }, targetEntry];
-      const routeY = measureRoute(aboveRoute) <= measureRoute(belowRoute) ? aboveY : belowY;
-      routePoints.push(
-        { x: sourceExit.x, y: routeY },
-        { x: targetEntry.x, y: routeY },
-      );
+      addCandidate('above', [
+        { x: sourceExit.x, y: aboveY },
+        { x: targetEntry.x, y: aboveY },
+      ]);
+      addCandidate('below', [
+        { x: sourceExit.x, y: belowY },
+        { x: targetEntry.x, y: belowY },
+      ]);
     } else if (!sourceIsHorizontal && !targetIsHorizontal) {
+      addCandidate('direct-source-x', [
+        { x: sourceExit.x, y: targetEntry.y },
+      ]);
+      addCandidate('direct-target-x', [
+        { x: targetEntry.x, y: sourceExit.y },
+      ]);
       const leftX = Math.min(sourceBounds.left, targetBounds.left) - routePadding;
       const rightX = Math.max(sourceBounds.right, targetBounds.right) + routePadding;
-      const leftRoute = [sourceExit, { x: leftX, y: sourceExit.y }, { x: leftX, y: targetEntry.y }, targetEntry];
-      const rightRoute = [sourceExit, { x: rightX, y: sourceExit.y }, { x: rightX, y: targetEntry.y }, targetEntry];
-      const routeX = measureRoute(leftRoute) <= measureRoute(rightRoute) ? leftX : rightX;
-      routePoints.push(
-        { x: routeX, y: sourceExit.y },
-        { x: routeX, y: targetEntry.y },
-      );
+      addCandidate('left', [
+        { x: leftX, y: sourceExit.y },
+        { x: leftX, y: targetEntry.y },
+      ]);
+      addCandidate('right', [
+        { x: rightX, y: sourceExit.y },
+        { x: rightX, y: targetEntry.y },
+      ]);
     } else if (sourceIsHorizontal && !targetIsHorizontal) {
+      addCandidate('direct-a', [
+        { x: sourceExit.x, y: targetEntry.y },
+      ]);
+      addCandidate('direct-b', [
+        { x: targetEntry.x, y: sourceExit.y },
+      ]);
       const routeX = sourceVector.x > 0
         ? Math.max(sourceBounds.right, targetBounds.right) + routePadding
         : Math.min(sourceBounds.left, targetBounds.left) - routePadding;
-      routePoints.push({ x: routeX, y: sourceExit.y });
-      routePoints.push({ x: routeX, y: targetEntry.y });
+      addCandidate('detour-x', [
+        { x: routeX, y: sourceExit.y },
+        { x: routeX, y: targetEntry.y },
+      ]);
     } else {
+      addCandidate('direct-a', [
+        { x: sourceExit.x, y: targetEntry.y },
+      ]);
+      addCandidate('direct-b', [
+        { x: targetEntry.x, y: sourceExit.y },
+      ]);
       const routeY = sourceVector.y > 0
         ? Math.max(sourceBounds.bottom, targetBounds.bottom) + routePadding
         : Math.min(sourceBounds.top, targetBounds.top) - routePadding;
-      routePoints.push({ x: sourceExit.x, y: routeY });
-      routePoints.push({ x: targetEntry.x, y: routeY });
+      addCandidate('detour-y', [
+        { x: sourceExit.x, y: routeY },
+        { x: targetEntry.x, y: routeY },
+      ]);
     }
 
-    routePoints.push(targetEntry, { x: tX, y: tY });
+    const routeCandidates = candidates
+      .filter((candidate) => Array.isArray(candidate.points) && candidate.points.length >= 2)
+      .sort((a, b) => a.score - b.score || a.points.length - b.points.length || a.name.localeCompare(b.name));
+    const bestCandidate = routeCandidates[0] || {
+      name: 'fallback',
+      points: makeRoutePoints([]),
+      score: Infinity,
+    };
+    const previousCandidate = this.connectionRouteCache.get(routeKey);
+    const switchMargin = Math.max(8, Math.round(distance * 0.05));
+    let selectedCandidate = bestCandidate;
+    if (previousCandidate) {
+      const cachedCandidate = routeCandidates.find((candidate) => candidate.name === previousCandidate.name);
+      if (cachedCandidate && cachedCandidate.score <= bestCandidate.score + switchMargin) {
+        selectedCandidate = cachedCandidate;
+      }
+    }
+    this.connectionRouteCache.set(routeKey, {
+      name: selectedCandidate.name,
+      score: selectedCandidate.score,
+    });
+
+    const routePoints = selectedCandidate.points;
     const d = this.buildRoundedOrthogonalPath(routePoints, Math.max(10, Math.min(26, Math.round(distance * 0.06))));
     path.setAttribute("d", d);
     this.svgLayer.appendChild(path);
