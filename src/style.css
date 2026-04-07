@@ -436,7 +436,7 @@ button:hover {
 }
 
 #svg-layer {
-  z-index: 5;
+  z-index: 101;
   pointer-events: none;
 }
 
