@@ -474,7 +474,7 @@ class CloudSyncManager {
     }
 
     if (this.inputs.provider) {
-      this.inputs.provider.value = config.provider || 'github';
+      this.inputs.provider.value = config.provider || 'sheets';
     }
     if (this.inputs.owner) {
       this.inputs.owner.value = config.owner || '';
@@ -519,7 +519,7 @@ class CloudSyncManager {
       return;
     }
 
-    const provider = this.inputs.provider?.value || this.config.provider || 'github';
+    const provider = this.inputs.provider?.value || this.config.provider || 'sheets';
     this.overlay.querySelectorAll?.('[data-provider-panel]').forEach((panel) => {
       const isActive = panel.dataset.providerPanel === provider;
       panel.hidden = !isActive;
@@ -528,7 +528,7 @@ class CloudSyncManager {
 
   readConfigFromInputs() {
     return {
-      provider: 'github',
+      provider: this.inputs.provider?.value || this.config.provider || 'sheets',
       owner: sanitizeString(this.inputs.owner?.value),
       repo: sanitizeString(this.inputs.repo?.value),
       branch: sanitizeString(this.inputs.branch?.value, 'master'),
