@@ -658,12 +658,6 @@ class CloudSyncManager {
       .join('\n');
   }
 
-  delay(ms) {
-    return new Promise((resolve) => {
-      window.setTimeout(resolve, ms);
-    });
-  }
-
   async copySyncLogsToClipboard() {
     const text = this.buildSyncLogText();
     try {
@@ -874,7 +868,7 @@ class CloudSyncManager {
     return this.config.provider === 'sheets' ? 'Google Sheet' : 'GitHub';
   }
 
-  async pushSheetSnapshot(snapshot = null, { force = false, verify = false } = {}) {
+  async pushSheetSnapshot(snapshot = null, { force = false } = {}) {
     if (!this.isConfigReady()) {
       this.setStatus('error', '請先完成 Google Sheet 設定');
       this.appendSyncLog('error', 'sheet', 'Google Sheet 同步失敗', '請先完成 Google Sheet 設定');
@@ -922,63 +916,16 @@ class CloudSyncManager {
 
       await postNoCors(requestUrl, payload);
 
-      if (verify) {
-        await this.delay(350);
-
-        const response = await requestJsonp(buildSheetRequestUrl({
-          baseUrl: this.config.sheetWebAppUrl,
-          action: 'state',
-          projectKey: this.config.sheetProjectKey,
-          clientId: this.sheetClientId,
-          secret: this.config.sheetSecret,
-          extraParams: {
-            revision: this.sheetLastRevision || 0,
-          },
-        }));
-
-        if (!response?.document) {
-          throw new Error('Google Sheet 寫入後沒有讀回內容');
-        }
-
-        const nextDocument = normalizeDocument(response.document);
-        const nextRevision = Number.isFinite(response?.revision) ? response.revision : (this.sheetLastRevision + 1);
-        const mergedFingerprint = buildDocumentFingerprint(nextDocument);
-
-        this.sheetBaselineDocument = clone(nextDocument);
-        this.sheetLastRevision = nextRevision;
-        this.state.lastRemoteRevision = nextRevision;
-        this.state.lastFingerprint = mergedFingerprint;
-        this.state.lastSyncedAt = response?.updatedAt || new Date().toISOString();
-        this.state.syncCount = (this.state.syncCount || 0) + 1;
-        this.state.lastError = null;
-        this.saveState();
-
-        const previousPath = store.getCurrentDocumentPath();
-        if (response?.document && !isDeepEqual(currentDocument, nextDocument)) {
-          this.skipNextAutosave = true;
-          store.replaceDocument(nextDocument, { resetHistory: true, saveToHistory: false });
-          if (previousPath.length) {
-            store.restoreNavigation({ path: previousPath, viewportStack: [] });
-          }
-          renderer.renderAll();
-        }
-
-        this.setStatus('ok', 'Google Sheet 同步完成', `Revision ${nextRevision}`);
-        this.appendSyncLog('success', 'sheet', 'Google Sheet 同步完成', `revision=${nextRevision}`, {
-          savedAt: this.state.lastSyncedAt,
-        });
-      } else {
-        this.sheetBaselineDocument = clone(currentDocument);
-        this.state.lastFingerprint = buildDocumentFingerprint(currentDocument);
-        this.state.lastSyncedAt = snapshot?.savedAt || new Date().toISOString();
-        this.state.syncCount = (this.state.syncCount || 0) + 1;
-        this.state.lastError = null;
-        this.saveState();
-        this.setStatus('ok', 'Google Sheet 同步已送出', '等待背景輪詢確認');
-        this.appendSyncLog('info', 'sheet', 'Google Sheet 同步已送出', `revision=${this.sheetLastRevision || 0}`, {
-          savedAt: this.state.lastSyncedAt,
-        });
-      }
+      this.sheetBaselineDocument = clone(currentDocument);
+      this.state.lastFingerprint = buildDocumentFingerprint(currentDocument);
+      this.state.lastSyncedAt = snapshot?.savedAt || new Date().toISOString();
+      this.state.syncCount = (this.state.syncCount || 0) + 1;
+      this.state.lastError = null;
+      this.saveState();
+      this.setStatus('ok', 'Google Sheet 同步已送出', '等待背景輪詢確認');
+      this.appendSyncLog('info', 'sheet', 'Google Sheet 同步已送出', `revision=${this.sheetLastRevision || 0}`, {
+        savedAt: this.state.lastSyncedAt,
+      });
       return true;
     } catch (error) {
       const message = this.getErrorMessage(error);
@@ -1290,7 +1237,7 @@ class CloudSyncManager {
     await this.pushSnapshot(snapshot);
   }
 
-  async syncNow({ force = false, verify = false } = {}) {
+  async syncNow({ force = false } = {}) {
     if (this.syncTimer) {
       window.clearTimeout(this.syncTimer);
       this.syncTimer = null;
@@ -1298,7 +1245,7 @@ class CloudSyncManager {
 
     const snapshot = this.pendingSnapshot || this.createSnapshot();
     this.pendingSnapshot = null;
-    return this.pushSnapshot(snapshot, { force, verify });
+    return this.pushSnapshot(snapshot, { force });
   }
 
   async syncAndVerifyNow({ force = true } = {}) {
@@ -1309,19 +1256,24 @@ class CloudSyncManager {
         sheetWebAppUrl: sanitizeString(this.config.sheetWebAppUrl) || DEFAULT_SHEET_WEB_APP_URL,
         sheetProjectKey: sanitizeString(this.config.sheetProjectKey, 'default'),
         sheetClientName: sanitizeString(this.config.sheetClientName, 'NodeNote'),
-    };
-    this.saveConfig();
-    this.applyStateToUI();
-    this.refreshTransportMode();
-  }
+      };
+      this.saveConfig();
+      this.applyStateToUI();
+      this.refreshTransportMode();
+    }
 
     this.appendSyncLog('info', 'sheet', '手動同步並驗證已觸發');
-    return this.syncNow({ force, verify: true });
+    const synced = await this.syncNow({ force });
+    if (!synced) {
+      return false;
+    }
+
+    return this.verifySheetUpload();
   }
 
-  async pushSnapshot(snapshot, { force = false, verify = false } = {}) {
+  async pushSnapshot(snapshot, { force = false } = {}) {
     if (this.config.provider === 'sheets') {
-      return this.pushSheetSnapshot(snapshot, { force, verify });
+      return this.pushSheetSnapshot(snapshot, { force });
     }
 
     if (!this.isConfigReady()) {
