@@ -3,6 +3,10 @@
  * Captures user input directly and updates the state.
  */
 import { store } from './StateStore.js';
+import {
+  computeMarqueeWorldRect,
+  hitTestNodesInWorldRect,
+} from './core/selectionGeometry.js';
 
 class InputController {
   constructor() {
@@ -166,26 +170,14 @@ class InputController {
       return;
     }
 
-    const { x, y, scale } = store.getTransform();
-    const worldLeft = (left - x) / scale;
-    const worldTop = (top - y) / scale;
-    const worldRight = ((left + width) - x) / scale;
-    const worldBottom = ((top + height) - y) / scale;
-    const minX = Math.min(worldLeft, worldRight);
-    const maxX = Math.max(worldLeft, worldRight);
-    const minY = Math.min(worldTop, worldBottom);
-    const maxY = Math.max(worldTop, worldBottom);
-
-    const hitNodeIds = Object.values(store.state.nodes || {})
-      .filter((node) => {
-        const nodeSize = node.size || { width: 260, height: 260 };
-        const nodeLeft = Number(node.x) || 0;
-        const nodeTop = Number(node.y) || 0;
-        const nodeRight = nodeLeft + (Number(nodeSize.width) || 0);
-        const nodeBottom = nodeTop + (Number(nodeSize.height) || 0);
-        return !(nodeRight < minX || nodeLeft > maxX || nodeBottom < minY || nodeTop > maxY);
-      })
-      .map((node) => node.id);
+    const worldRect = computeMarqueeWorldRect({
+      left,
+      top,
+      width,
+      height,
+      transform: store.getTransform(),
+    });
+    const hitNodeIds = hitTestNodesInWorldRect(store.state.nodes || {}, worldRect);
 
     const nextSelectionIds = [...new Set([
       ...(this.selectionAdditive ? this.selectionBaselineIds : []),

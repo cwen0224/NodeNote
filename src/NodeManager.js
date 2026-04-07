@@ -7,6 +7,7 @@ import { createDefaultFolder } from './core/documentSchema.js';
 import { createNodeId, materializeClipboardPayload } from './core/graphClipboard.js';
 import { resolveNodeSize } from './core/nodeSizing.js';
 import { MAX_FOLDER_DEPTH } from './core/folderTheme.js';
+import { computeNodesBounds } from './core/selectionGeometry.js';
 
 class NodeManager {
   constructor() {
@@ -83,52 +84,7 @@ class NodeManager {
   }
 
   getNodeBounds(nodes = {}, nodeIds = []) {
-    const ids = (Array.isArray(nodeIds) && nodeIds.length > 0)
-      ? nodeIds.filter((id) => nodes[id])
-      : Object.keys(nodes || {});
-
-    if (!ids.length) {
-      return {
-        minX: 0,
-        minY: 0,
-        width: 320,
-        height: 320,
-      };
-    }
-
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-
-    ids.forEach((id) => {
-      const node = nodes[id];
-      if (!node) {
-        return;
-      }
-
-      const size = resolveNodeSize(node);
-      minX = Math.min(minX, Number(node.x) || 0);
-      minY = Math.min(minY, Number(node.y) || 0);
-      maxX = Math.max(maxX, (Number(node.x) || 0) + size.width);
-      maxY = Math.max(maxY, (Number(node.y) || 0) + size.height);
-    });
-
-    if (!Number.isFinite(minX) || !Number.isFinite(minY)) {
-      return {
-        minX: 0,
-        minY: 0,
-        width: 320,
-        height: 320,
-      };
-    }
-
-    return {
-      minX,
-      minY,
-      width: Math.max(1, maxX - minX),
-      height: Math.max(1, maxY - minY),
-    };
+    return computeNodesBounds(nodes, nodeIds, (node) => resolveNodeSize(node));
   }
 
   init() {
