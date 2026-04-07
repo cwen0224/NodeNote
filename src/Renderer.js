@@ -245,7 +245,7 @@ class Renderer {
       this.dragViewportFromMinimapPoint(event.clientX, event.clientY);
     };
 
-    this.minimap.addEventListener('pointerdown', (event) => {
+    const startDrag = (event) => {
       if (event.pointerType === 'mouse' && event.button !== 0) return;
       if (!this.minimapLayout) {
         this.renderMinimap();
@@ -254,11 +254,40 @@ class Renderer {
       this.minimapDragState.active = true;
       this.minimapDragState.pointerId = event.pointerId;
       this.minimap.classList.add('is-dragging');
-      this.minimap.setPointerCapture?.(event.pointerId);
+
+      try {
+        this.minimap.setPointerCapture?.(event.pointerId);
+      } catch (captureError) {
+        // Some browsers/platforms can reject capture on detached or transient pointers.
+      }
+
       event.preventDefault();
       event.stopPropagation();
       updateFromPointer(event);
-    });
+    };
+
+    const handleDragMove = (event) => {
+      if (!this.minimapDragState.active) return;
+      if (this.minimapDragState.pointerId !== event.pointerId) return;
+      event.preventDefault();
+      updateFromPointer(event);
+    };
+
+    const endDrag = (event) => {
+      if (!this.minimapDragState.active) return;
+      if (this.minimapDragState.pointerId !== null && event.pointerId !== this.minimapDragState.pointerId) {
+        return;
+      }
+
+      this.minimapDragState.active = false;
+      this.minimapDragState.pointerId = null;
+      this.minimap.classList.remove('is-dragging');
+      if (this.minimap.hasPointerCapture?.(event.pointerId)) {
+        this.minimap.releasePointerCapture(event.pointerId);
+      }
+    };
+
+    this.minimap.addEventListener('pointerdown', startDrag);
 
     this.minimap.addEventListener('dblclick', (event) => {
       event.preventDefault();
@@ -278,29 +307,12 @@ class Renderer {
       this.zoomViewportFromMinimapWheel(event.clientX, event.clientY, event.deltaY);
     }, { passive: false });
 
-    this.minimap.addEventListener('pointermove', (event) => {
-      if (!this.minimapDragState.active) return;
-      if (this.minimapDragState.pointerId !== event.pointerId) return;
-      event.preventDefault();
-      updateFromPointer(event);
-    });
+    // Window-level listeners act as a fallback so minimap dragging keeps working
+    // even if pointer capture is interrupted by another component.
+    window.addEventListener('pointermove', handleDragMove, { passive: false });
+    window.addEventListener('pointerup', endDrag, { passive: false });
+    window.addEventListener('pointercancel', endDrag, { passive: false });
 
-    const endDrag = (event) => {
-      if (!this.minimapDragState.active) return;
-      if (this.minimapDragState.pointerId !== null && event.pointerId !== this.minimapDragState.pointerId) {
-        return;
-      }
-
-      this.minimapDragState.active = false;
-      this.minimapDragState.pointerId = null;
-      this.minimap.classList.remove('is-dragging');
-      if (this.minimap.hasPointerCapture?.(event.pointerId)) {
-        this.minimap.releasePointerCapture(event.pointerId);
-      }
-    };
-
-    this.minimap.addEventListener('pointerup', endDrag);
-    this.minimap.addEventListener('pointercancel', endDrag);
     this.minimap.addEventListener('lostpointercapture', () => {
       this.minimapDragState.active = false;
       this.minimapDragState.pointerId = null;

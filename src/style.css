@@ -462,10 +462,12 @@ button:hover {
   right: 24px;
   width: 200px;
   height: 150px;
-  z-index: 1000;
+  z-index: 1105;
   overflow: hidden;
   cursor: grab;
   touch-action: none;
+  pointer-events: auto;
+  overscroll-behavior: contain;
   user-select: none;
 }
 
