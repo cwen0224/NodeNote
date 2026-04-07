@@ -8,9 +8,12 @@ import {
   isCollaborativePatchEmpty,
 } from './core/googleSheetCollab.js';
 import {
+  commitGitHubSnapshot,
+  fetchGitHubSnapshot,
+} from './core/cloudGitHubTransport.js';
+import {
   normalizeSnapshotFromText,
   postNoCors,
-  requestJson,
   requestJsonp,
 } from './core/cloudTransport.js';
 import {
@@ -18,16 +21,12 @@ import {
   buildFingerprint,
   cloneValue as clone,
   compactLogText,
-  createClientId,
   createLogId,
-  decodeUtf8Base64,
-  encodeUtf8Base64,
   escapeHtml,
   formatClockStamp,
   formatLogStamp,
   isPlainObject,
   isDeepEqual,
-  normalizeCloudSnapshot,
   normalizeLogLevel,
   normalizeWorkspaceSnapshot,
   readOrCreateClientId,
@@ -1341,22 +1340,22 @@ class CloudSyncManager {
     this.appendSyncLog('info', 'github', '開始同步 GitHub 快照', `path=${this.config.path}`);
 
     try {
-      const remote = await this.getRemoteFile({ allowMissing: true });
-      const payload = JSON.stringify(snapshot, null, 2);
-      const body = {
-        message: `NodeNote autosave ${formatClockStamp(snapshot.savedAt || new Date().toISOString())}`,
-        content: encodeUtf8Base64(payload),
+      const remote = await fetchGitHubSnapshot({
+        owner: this.config.owner,
+        repo: this.config.repo,
+        path: this.config.path,
+        token: this.config.token,
+        allowMissing: true,
+      });
+
+      const response = await commitGitHubSnapshot({
+        owner: this.config.owner,
+        repo: this.config.repo,
+        path: this.config.path,
+        token: this.config.token,
         branch: this.config.branch,
-      };
-
-      if (remote?.sha) {
-        body.sha = remote.sha;
-      }
-
-      const response = await requestJson(this.getEndpointUrl(), {
-        method: 'PUT',
-        headers: this.getHeaders(),
-        body: JSON.stringify(body),
+        snapshot,
+        remoteSha: remote?.sha || null,
       });
 
       this.state.lastFingerprint = fingerprint;
@@ -1410,7 +1409,13 @@ class CloudSyncManager {
     this.appendSyncLog('info', 'github-pull', '開始從 GitHub 拉回快照', `path=${this.config.path}`);
 
     try {
-      const remote = await this.getRemoteFile({ allowMissing: true });
+      const remote = await fetchGitHubSnapshot({
+        owner: this.config.owner,
+        repo: this.config.repo,
+        path: this.config.path,
+        token: this.config.token,
+        allowMissing: true,
+      });
       if (!remote) {
         this.setStatus('error', '雲端沒有找到快照檔，請先按一次立即同步');
         this.appendSyncLog('error', 'github-pull', 'GitHub 拉回失敗', '雲端沒有找到快照檔，請先按一次立即同步');
@@ -1466,39 +1471,6 @@ class CloudSyncManager {
       this.updateStatusBadge();
       this.updateDialogStatus();
     }
-  }
-
-  async getRemoteFile({ allowMissing = false } = {}) {
-    let response = null;
-
-    try {
-      response = await requestJson(this.getEndpointUrl(), {
-        method: 'GET',
-        headers: this.getHeaders(),
-      });
-    } catch (error) {
-      if (allowMissing && error?.status === 404) {
-        return null;
-      }
-      throw error;
-    }
-
-    if (!response) {
-      return null;
-    }
-
-    if (response.truncated) {
-      throw new Error('雲端檔案太大，GitHub API 回傳 truncated');
-    }
-
-    if (typeof response.content !== 'string' || response.encoding !== 'base64') {
-      throw new Error('GitHub 回傳的內容格式不正確');
-    }
-
-    return {
-      sha: typeof response.sha === 'string' ? response.sha : null,
-      text: decodeUtf8Base64(response.content),
-    };
   }
 
   getErrorMessage(error) {
