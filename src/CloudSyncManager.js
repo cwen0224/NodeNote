@@ -49,6 +49,14 @@ function normalizeViewport(viewport) {
   return { x, y, scale };
 }
 
+function normalizeWorkspaceSnapshot(workspace, fallback = {}) {
+  const source = isPlainObject(workspace) ? workspace : fallback;
+  return {
+    navigation: isPlainObject(source.navigation) ? source.navigation : null,
+    viewport: normalizeViewport(source.viewport),
+  };
+}
+
 function encodeUtf8Base64(text) {
   const bytes = new TextEncoder().encode(String(text ?? ''));
   let binary = '';
@@ -208,10 +216,10 @@ function readOrCreateClientId() {
 }
 
 function buildFingerprint(snapshot) {
+  const workspace = normalizeWorkspaceSnapshot(snapshot?.workspace, snapshot);
   return JSON.stringify({
     document: snapshot?.document ?? null,
-    navigation: snapshot?.navigation ?? null,
-    viewport: snapshot?.viewport ?? null,
+    workspace,
   });
 }
 
@@ -221,14 +229,16 @@ function normalizeCloudSnapshot(payload) {
   }
 
   if (isPlainObject(payload.document)) {
+    const workspace = normalizeWorkspaceSnapshot(payload.workspace, payload);
     return {
       schema: typeof payload.schema === 'string' ? payload.schema : 'nodenote.autosave',
       version: typeof payload.version === 'string' ? payload.version : CLOUD_SYNC_VERSION,
       revision: Number.isFinite(payload.revision) ? payload.revision : 0,
       savedAt: typeof payload.savedAt === 'string' ? payload.savedAt : null,
       document: normalizeDocument(payload.document),
-      navigation: isPlainObject(payload.navigation) ? payload.navigation : null,
-      viewport: normalizeViewport(payload.viewport),
+      workspace,
+      navigation: workspace.navigation,
+      viewport: workspace.viewport,
     };
   }
 
@@ -244,6 +254,10 @@ function normalizeCloudSnapshot(payload) {
       revision: 0,
       savedAt: null,
       document: normalizeDocument(payload),
+      workspace: {
+        navigation: null,
+        viewport: null,
+      },
       navigation: null,
       viewport: null,
     };
@@ -1689,12 +1703,16 @@ class CloudSyncManager {
       this.skipNextAutosave = true;
       store.replaceDocument(snapshot.document, { resetHistory: true, saveToHistory: false });
 
-      if (snapshot.navigation) {
-        store.restoreNavigation(snapshot.navigation);
+      const workspace = isPlainObject(snapshot.workspace)
+        ? snapshot.workspace
+        : { navigation: snapshot.navigation, viewport: snapshot.viewport };
+
+      if (workspace.navigation) {
+        store.restoreNavigation(workspace.navigation);
       }
 
-      if (snapshot.viewport) {
-        store.setTransform(snapshot.viewport.x, snapshot.viewport.y, snapshot.viewport.scale);
+      if (workspace.viewport) {
+        store.setTransform(workspace.viewport.x, workspace.viewport.y, workspace.viewport.scale);
       } else {
         renderer.fitGraphToViewport();
       }

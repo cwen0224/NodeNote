@@ -10,6 +10,30 @@ function isPlainObject(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function createWorkspaceSnapshot() {
+  return {
+    navigation: store.getNavigationSnapshot(),
+    viewport: store.getTransform(),
+  };
+}
+
+function restoreWorkspaceSnapshot(snapshot = {}) {
+  const workspace = isPlainObject(snapshot.workspace) ? snapshot.workspace : null;
+  const navigation = workspace?.navigation || snapshot.navigation || null;
+  const viewport = workspace?.viewport || snapshot.viewport || null;
+
+  if (navigation) {
+    store.restoreNavigation(navigation);
+  }
+
+  if (isPlainObject(viewport)) {
+    const x = Number.isFinite(viewport.x) ? viewport.x : 0;
+    const y = Number.isFinite(viewport.y) ? viewport.y : 0;
+    const scale = Number.isFinite(viewport.scale) ? viewport.scale : 1;
+    store.setTransform(x, y, scale);
+  }
+}
+
 class PersistenceManager {
   constructor() {
     this.saveTimer = null;
@@ -89,17 +113,7 @@ class PersistenceManager {
 
     const restoredDocument = normalizeDocument(snapshot.document);
     store.replaceDocument(restoredDocument, { resetHistory: true, saveToHistory: false });
-
-    if (snapshot.navigation) {
-      store.restoreNavigation(snapshot.navigation);
-    }
-
-    if (isPlainObject(snapshot.viewport)) {
-      const x = Number.isFinite(snapshot.viewport.x) ? snapshot.viewport.x : 0;
-      const y = Number.isFinite(snapshot.viewport.y) ? snapshot.viewport.y : 0;
-      const scale = Number.isFinite(snapshot.viewport.scale) ? snapshot.viewport.scale : 1;
-      store.setTransform(x, y, scale);
-    }
+    restoreWorkspaceSnapshot(snapshot);
 
     this.restored = true;
     return true;
@@ -112,8 +126,7 @@ class PersistenceManager {
       revision: this.revision + 1,
       savedAt: new Date().toISOString(),
       document: store.getDocumentSnapshot(),
-      navigation: store.getNavigationSnapshot(),
-      viewport: store.getTransform(),
+      workspace: createWorkspaceSnapshot(),
     };
   }
 
