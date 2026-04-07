@@ -6,26 +6,36 @@ function doGet(e) {
     const params = (e && e.parameter) || {};
     const action = String(params.action || 'state').toLowerCase();
     const projectKey = normalizeProjectKey_(params.projectKey);
+    const callback = String(params.callback || '').trim();
     validateSecret_(params.secret);
 
+    const respond = (payload, statusCode) => {
+      if (callback) {
+        return jsonpResponse_(payload, callback);
+      }
+      return jsonResponse_(payload, statusCode);
+    };
+
     if (action === 'state') {
-      return jsonResponse_(buildProjectState_(projectKey));
+      return respond(buildProjectState_(projectKey));
     }
 
     if (action === 'ping') {
-      return jsonResponse_({
+      return respond({
         ok: true,
         projectKey,
         updatedAt: new Date().toISOString(),
       });
     }
 
-    return jsonResponse_({
+    return respond({
       ok: false,
       error: `Unknown action: ${action}`,
     }, 400);
   } catch (error) {
-    return jsonResponse_(errorResponse_(error), 500);
+    const payload = errorResponse_(error);
+    const callback = String((e && e.parameter && e.parameter.callback) || '').trim();
+    return callback ? jsonpResponse_(payload, callback) : jsonResponse_(payload, 500);
   }
 }
 
@@ -352,6 +362,36 @@ function deleteTableRows_(sheet, projectKey, ids) {
   });
 }
 
+function findRowByProjectKey_(sheet, projectKey) {
+  const rows = readAllRows_(sheet);
+  for (let index = 1; index < rows.length; index += 1) {
+    if (normalizeProjectKey_(rows[index][0]) === projectKey) {
+      return index + 1;
+    }
+  }
+  return 0;
+}
+
+function rowToObject_(sheet, rowIndex) {
+  if (!sheet || !rowIndex || rowIndex < 1) {
+    return {};
+  }
+
+  const lastColumn = Math.max(1, sheet.getLastColumn());
+  const headers = sheet.getRange(1, 1, 1, lastColumn).getValues()[0] || [];
+  const values = sheet.getRange(rowIndex, 1, 1, lastColumn).getValues()[0] || [];
+  const record = {};
+
+  headers.forEach((header, index) => {
+    const key = String(header || '').trim();
+    if (key) {
+      record[key] = values[index];
+    }
+  });
+
+  return record;
+}
+
 function getOrCreateSheet_(spreadsheet, name, headers) {
   let sheet = spreadsheet.getSheetByName(name);
   if (!sheet) {
@@ -445,5 +485,12 @@ function errorResponse_(error) {
 function jsonResponse_(payload, statusCode) {
   const output = ContentService.createTextOutput(JSON.stringify(payload));
   output.setMimeType(ContentService.MimeType.JSON);
+  return output;
+}
+
+function jsonpResponse_(payload, callback) {
+  const safeCallback = String(callback || '').replace(/[^\w.$]/g, '');
+  const output = ContentService.createTextOutput(`${safeCallback}(${JSON.stringify(payload)});`);
+  output.setMimeType(ContentService.MimeType.JAVASCRIPT);
   return output;
 }

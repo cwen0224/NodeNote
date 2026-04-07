@@ -268,6 +268,7 @@ class CloudSyncManager {
     this.syncTimer = null;
     this.pollTimer = null;
     this.syncInFlight = false;
+    this.sheetPollInFlight = false;
     this.pendingSnapshot = null;
     this.skipNextAutosave = false;
     this.initialized = false;
@@ -848,6 +849,75 @@ class CloudSyncManager {
       .join('\n');
   }
 
+  delay(ms) {
+    return new Promise((resolve) => {
+      window.setTimeout(resolve, ms);
+    });
+  }
+
+  requestSheetJsonp(action = 'state', extraParams = {}, { timeoutMs = 15000 } = {}) {
+    return new Promise((resolve, reject) => {
+      const callbackName = `__nodenoteSheetJsonp_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+      const cleanup = () => {
+        if (timeoutId) {
+          window.clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+        if (script?.parentNode) {
+          script.parentNode.removeChild(script);
+        }
+        try {
+          delete window[callbackName];
+        } catch {
+          window[callbackName] = undefined;
+        }
+      };
+
+      let timeoutId = null;
+      const script = document.createElement('script');
+
+      window[callbackName] = (payload) => {
+        cleanup();
+        if (payload && payload.ok === false) {
+          reject(new Error(payload.error || 'Google Sheet JSONP 請求失敗'));
+          return;
+        }
+        resolve(payload);
+      };
+
+      script.async = true;
+      script.src = this.getSheetRequestUrl(action, {
+        ...extraParams,
+        callback: callbackName,
+      });
+      script.onerror = () => {
+        cleanup();
+        reject(new Error('Google Sheet JSONP 請求失敗'));
+      };
+
+      timeoutId = window.setTimeout(() => {
+        cleanup();
+        reject(new Error('Google Sheet JSONP 請求逾時'));
+      }, timeoutMs);
+
+      document.head.appendChild(script);
+    });
+  }
+
+  async postSheetCommitNoCors(payload) {
+    const response = await fetch(this.getSheetRequestUrl('commit'), {
+      method: 'POST',
+      mode: 'no-cors',
+      credentials: 'omit',
+      headers: {
+        'Content-Type': 'text/plain;charset=UTF-8',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    return Boolean(response);
+  }
+
   async copySyncLogsToClipboard() {
     const text = this.buildSyncLogText();
     try {
@@ -1017,7 +1087,7 @@ class CloudSyncManager {
     }
 
     this.pollTimer = window.setInterval(() => {
-      if (document.hidden || this.syncInFlight) {
+      if (document.hidden || this.syncInFlight || this.sheetPollInFlight) {
         return;
       }
       this.pollSheetNow().catch((error) => {
@@ -1026,7 +1096,7 @@ class CloudSyncManager {
     }, interval);
 
     queueMicrotask(() => {
-      if (this.config.provider === 'sheets' && this.isConfigReady()) {
+      if (this.config.provider === 'sheets' && this.isConfigReady() && !this.sheetPollInFlight) {
         this.pollSheetNow().catch((error) => {
           console.warn('Google Sheet initial poll failed', error);
         });
@@ -1149,16 +1219,18 @@ class CloudSyncManager {
         patch,
       };
 
-      const response = await this.requestJson(this.getSheetRequestUrl('commit'), {
-        method: 'POST',
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
+      await this.postSheetCommitNoCors(payload);
+      await this.delay(350);
+
+      const response = await this.requestSheetJsonp('state', {
+        revision: this.sheetLastRevision || 0,
       });
 
-      const nextDocument = response?.document ? normalizeDocument(response.document) : currentDocument;
+      if (!response?.document) {
+        throw new Error('Google Sheet 寫入後沒有讀回內容');
+      }
+
+      const nextDocument = normalizeDocument(response.document);
       const nextRevision = Number.isFinite(response?.revision) ? response.revision : (this.sheetLastRevision + 1);
       const mergedFingerprint = buildDocumentFingerprint(nextDocument);
 
@@ -1217,13 +1289,8 @@ class CloudSyncManager {
     this.appendSyncLog('info', 'sheet-verify', '開始驗證 Google Sheet 寫入');
 
     try {
-      const response = await this.requestJson(this.getSheetRequestUrl('state', {
+      const response = await this.requestSheetJsonp('state', {
         revision: this.sheetLastRevision || 0,
-      }), {
-        method: 'GET',
-        headers: {
-          Accept: 'application/json',
-        },
       });
 
       if (!response?.document) {
@@ -1265,16 +1332,16 @@ class CloudSyncManager {
       return false;
     }
 
+    if (this.sheetPollInFlight) {
+      return false;
+    }
+
+    this.sheetPollInFlight = true;
     this.updateStatusBadge('Sheet polling...');
 
     try {
-      const response = await this.requestJson(this.getSheetRequestUrl('state', {
+      const response = await this.requestSheetJsonp('state', {
         revision: this.sheetLastRevision || 0,
-      }), {
-        method: 'GET',
-        headers: {
-          Accept: 'application/json',
-        },
       });
 
       if (!response?.document) {
@@ -1338,6 +1405,8 @@ class CloudSyncManager {
         status: error?.status || null,
       });
       return false;
+    } finally {
+      this.sheetPollInFlight = false;
     }
   }
 
@@ -1358,12 +1427,7 @@ class CloudSyncManager {
     this.appendSyncLog('info', 'sheet-pull', '開始從 Google Sheet 拉回內容');
 
     try {
-      const response = await this.requestJson(this.getSheetRequestUrl('state'), {
-        method: 'GET',
-        headers: {
-          Accept: 'application/json',
-        },
-      });
+      const response = await this.requestSheetJsonp('state');
 
       if (!response?.document) {
         this.setStatus('error', 'Google Sheet 沒有找到內容，請先完成一次同步');
