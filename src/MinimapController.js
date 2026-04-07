@@ -261,11 +261,15 @@ class MinimapController {
     const viewportHeight = this.viewport?.clientHeight ?? window.innerHeight;
     const worldLeft = -x / scale;
     const worldTop = -y / scale;
+    const worldRight = worldLeft + (viewportWidth / scale);
+    const worldBottom = worldTop + (viewportHeight / scale);
 
     const left = currentLayout.offsetX + (worldLeft - currentLayout.bounds.minX) * currentLayout.scale;
     const top = currentLayout.offsetY + (worldTop - currentLayout.bounds.minY) * currentLayout.scale;
-    const width = Math.max(18, (viewportWidth / scale) * currentLayout.scale);
-    const height = Math.max(18, (viewportHeight / scale) * currentLayout.scale);
+    const right = currentLayout.offsetX + (worldRight - currentLayout.bounds.minX) * currentLayout.scale;
+    const bottom = currentLayout.offsetY + (worldBottom - currentLayout.bounds.minY) * currentLayout.scale;
+    const width = Math.max(8, right - left);
+    const height = Math.max(8, bottom - top);
 
     this.minimapViewport.style.left = `${left}px`;
     this.minimapViewport.style.top = `${top}px`;
