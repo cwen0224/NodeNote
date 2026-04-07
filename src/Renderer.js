@@ -8,6 +8,19 @@ import { nodeManager } from './NodeManager.js';
 import { connectionManager } from './ConnectionManager.js';
 import { resolveNodeSize } from './core/nodeSizing.js';
 import { MAX_FOLDER_DEPTH, getFolderTheme, folderThemeToCssVars } from './core/folderTheme.js';
+import {
+  computeContentBounds,
+  computeGraphBounds,
+  computeMinimapLayout,
+  computeViewportWorldRect,
+  projectMinimapPointToWorld,
+  projectViewportRectToMinimap,
+  projectWorldPointToMinimap,
+} from './core/minimapGeometry.js';
+import {
+  buildRoundedOrthogonalPath as buildRoundedOrthogonalPathFromPoints,
+  selectOrthogonalRoute,
+} from './core/connectionGeometry.js';
 
 class Renderer {
   constructor() {
@@ -702,260 +715,29 @@ class Renderer {
     });
   }
 
-  compressOrthogonalPoints(points = []) {
-    const filtered = [];
-
-    points.forEach((point) => {
-      if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
-        return;
-      }
-
-      const previous = filtered[filtered.length - 1];
-      if (previous && previous.x === point.x && previous.y === point.y) {
-        return;
-      }
-
-      filtered.push({ x: point.x, y: point.y });
-    });
-
-    if (filtered.length < 3) {
-      return filtered;
-    }
-
-    const compacted = [filtered[0]];
-    for (let index = 1; index < filtered.length - 1; index += 1) {
-      const prev = compacted[compacted.length - 1];
-      const current = filtered[index];
-      const next = filtered[index + 1];
-      const sameX = prev.x === current.x && current.x === next.x;
-      const sameY = prev.y === current.y && current.y === next.y;
-      if (sameX || sameY) {
-        continue;
-      }
-      compacted.push(current);
-    }
-
-    compacted.push(filtered[filtered.length - 1]);
-    return compacted;
-  }
-
   buildRoundedOrthogonalPath(points = [], radius = 18) {
-    const compacted = this.compressOrthogonalPoints(points);
-    if (compacted.length < 2) {
-      return '';
-    }
-
-    const parts = [`M ${compacted[0].x} ${compacted[0].y}`];
-
-    for (let index = 1; index < compacted.length - 1; index += 1) {
-      const prev = compacted[index - 1];
-      const current = compacted[index];
-      const next = compacted[index + 1];
-
-      const dirIn = {
-        x: Math.sign(current.x - prev.x),
-        y: Math.sign(current.y - prev.y),
-      };
-      const dirOut = {
-        x: Math.sign(next.x - current.x),
-        y: Math.sign(next.y - current.y),
-      };
-
-      const isCorner = dirIn.x !== dirOut.x || dirIn.y !== dirOut.y;
-      if (!isCorner) {
-        parts.push(`L ${current.x} ${current.y}`);
-        continue;
-      }
-
-      const lenIn = Math.hypot(current.x - prev.x, current.y - prev.y);
-      const lenOut = Math.hypot(next.x - current.x, next.y - current.y);
-      const cornerRadius = Math.max(6, Math.min(radius, lenIn / 2, lenOut / 2));
-      const tangentIn = {
-        x: current.x - (dirIn.x * cornerRadius),
-        y: current.y - (dirIn.y * cornerRadius),
-      };
-      const tangentOut = {
-        x: current.x + (dirOut.x * cornerRadius),
-        y: current.y + (dirOut.y * cornerRadius),
-      };
-      const cross = (dirIn.x * dirOut.y) - (dirIn.y * dirOut.x);
-      const sweepFlag = cross > 0 ? 1 : 0;
-
-      parts.push(`L ${tangentIn.x} ${tangentIn.y}`);
-      parts.push(`A ${cornerRadius} ${cornerRadius} 0 0 ${sweepFlag} ${tangentOut.x} ${tangentOut.y}`);
-    }
-
-    const last = compacted[compacted.length - 1];
-    parts.push(`L ${last.x} ${last.y}`);
-    return parts.join(' ');
+    return buildRoundedOrthogonalPathFromPoints(points, radius);
   }
 
   drawOrthogonalPath(sX, sY, tX, tY, key, sourceId, targetId, sourcePortSide, targetPortSide, sourceRect = null, targetRect = null) {
     const labelText = String(key ?? '').trim();
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
     path.setAttribute("class", "connection-path");
-
-    const getPortDirectionVector = (side) => {
-      switch (side) {
-        case 'top':
-          return { x: 0, y: -1 };
-        case 'bottom':
-          return { x: 0, y: 1 };
-        case 'left':
-          return { x: -1, y: 0 };
-        case 'right':
-        default:
-          return { x: 1, y: 0 };
-      }
-    };
-
-    const sourceVector = getPortDirectionVector(sourcePortSide);
-    const targetVector = getPortDirectionVector(targetPortSide);
-    const distance = Math.max(1, Math.hypot(tX - sX, tY - sY));
-    const exitDistance = Math.max(18, Math.min(56, distance * 0.09));
-    const routePadding = Math.max(14, Math.min(24, Math.round(distance * 0.04)));
-    const sourceIsHorizontal = sourceVector.x !== 0;
-    const targetIsHorizontal = targetVector.x !== 0;
-    const sourceBounds = sourceRect || { left: sX, right: sX, top: sY, bottom: sY };
-    const targetBounds = targetRect || { left: tX, right: tX, top: tY, bottom: tY };
-    const sourceExit = {
-      x: sX + (sourceVector.x * exitDistance),
-      y: sY + (sourceVector.y * exitDistance),
-    };
-    const targetEntry = {
-      x: tX + (targetVector.x * exitDistance),
-      y: tY + (targetVector.y * exitDistance),
-    };
-
-    const measureRoute = (points = []) => points.reduce((total, point, index) => {
-      if (index === 0) {
-        return 0;
-      }
-      const previous = points[index - 1];
-      return total + Math.hypot(point.x - previous.x, point.y - previous.y);
-    }, 0);
-
     const routeKey = `${sourceId}|${sourcePortSide}|${targetId}|${targetPortSide}|${labelText}`;
-    const candidates = [];
-    const isInsidePaddedRect = (point, rect) => point.x >= (rect.left - routePadding)
-      && point.x <= (rect.right + routePadding)
-      && point.y >= (rect.top - routePadding)
-      && point.y <= (rect.bottom + routePadding);
-    const makeRoutePoints = (innerPoints = []) => [
-      { x: sX, y: sY },
-      sourceExit,
-      ...innerPoints,
-      targetEntry,
-      { x: tX, y: tY },
-    ];
-    const scoreRoute = (points) => {
-      let score = measureRoute(points);
-      for (let index = 1; index < points.length - 1; index += 1) {
-        const point = points[index];
-        if (isInsidePaddedRect(point, sourceBounds) || isInsidePaddedRect(point, targetBounds)) {
-          score += 100000;
-          break;
-        }
-      }
-      return score;
-    };
-    const addCandidate = (name, innerPoints) => {
-      const points = makeRoutePoints(innerPoints);
-      candidates.push({
-        name,
-        points,
-        score: scoreRoute(points),
-      });
-    };
-
-    if (sourceIsHorizontal && targetIsHorizontal) {
-      addCandidate('direct-source-y', [
-        { x: sourceExit.x, y: targetEntry.y },
-      ]);
-      addCandidate('direct-target-y', [
-        { x: targetEntry.x, y: sourceExit.y },
-      ]);
-      const aboveY = Math.min(sourceBounds.top, targetBounds.top) - routePadding;
-      const belowY = Math.max(sourceBounds.bottom, targetBounds.bottom) + routePadding;
-      addCandidate('above', [
-        { x: sourceExit.x, y: aboveY },
-        { x: targetEntry.x, y: aboveY },
-      ]);
-      addCandidate('below', [
-        { x: sourceExit.x, y: belowY },
-        { x: targetEntry.x, y: belowY },
-      ]);
-    } else if (!sourceIsHorizontal && !targetIsHorizontal) {
-      addCandidate('direct-source-x', [
-        { x: sourceExit.x, y: targetEntry.y },
-      ]);
-      addCandidate('direct-target-x', [
-        { x: targetEntry.x, y: sourceExit.y },
-      ]);
-      const leftX = Math.min(sourceBounds.left, targetBounds.left) - routePadding;
-      const rightX = Math.max(sourceBounds.right, targetBounds.right) + routePadding;
-      addCandidate('left', [
-        { x: leftX, y: sourceExit.y },
-        { x: leftX, y: targetEntry.y },
-      ]);
-      addCandidate('right', [
-        { x: rightX, y: sourceExit.y },
-        { x: rightX, y: targetEntry.y },
-      ]);
-    } else if (sourceIsHorizontal && !targetIsHorizontal) {
-      addCandidate('direct-a', [
-        { x: sourceExit.x, y: targetEntry.y },
-      ]);
-      addCandidate('direct-b', [
-        { x: targetEntry.x, y: sourceExit.y },
-      ]);
-      const routeX = sourceVector.x > 0
-        ? Math.max(sourceBounds.right, targetBounds.right) + routePadding
-        : Math.min(sourceBounds.left, targetBounds.left) - routePadding;
-      addCandidate('detour-x', [
-        { x: routeX, y: sourceExit.y },
-        { x: routeX, y: targetEntry.y },
-      ]);
-    } else {
-      addCandidate('direct-a', [
-        { x: sourceExit.x, y: targetEntry.y },
-      ]);
-      addCandidate('direct-b', [
-        { x: targetEntry.x, y: sourceExit.y },
-      ]);
-      const routeY = sourceVector.y > 0
-        ? Math.max(sourceBounds.bottom, targetBounds.bottom) + routePadding
-        : Math.min(sourceBounds.top, targetBounds.top) - routePadding;
-      addCandidate('detour-y', [
-        { x: sourceExit.x, y: routeY },
-        { x: targetEntry.x, y: routeY },
-      ]);
-    }
-
-    const routeCandidates = candidates
-      .filter((candidate) => Array.isArray(candidate.points) && candidate.points.length >= 2)
-      .sort((a, b) => a.score - b.score || a.points.length - b.points.length || a.name.localeCompare(b.name));
-    const bestCandidate = routeCandidates[0] || {
-      name: 'fallback',
-      points: makeRoutePoints([]),
-      score: Infinity,
-    };
-    const previousCandidate = this.connectionRouteCache.get(routeKey);
-    const switchMargin = Math.max(8, Math.round(distance * 0.05));
-    let selectedCandidate = bestCandidate;
-    if (previousCandidate) {
-      const cachedCandidate = routeCandidates.find((candidate) => candidate.name === previousCandidate.name);
-      if (cachedCandidate && cachedCandidate.score <= bestCandidate.score + switchMargin) {
-        selectedCandidate = cachedCandidate;
-      }
-    }
-    this.connectionRouteCache.set(routeKey, {
-      name: selectedCandidate.name,
-      score: selectedCandidate.score,
+    const route = selectOrthogonalRoute({
+      sX,
+      sY,
+      tX,
+      tY,
+      sourcePortSide,
+      targetPortSide,
+      sourceBounds: sourceRect,
+      targetBounds: targetRect,
+      previousCandidate: this.connectionRouteCache.get(routeKey),
     });
+    this.connectionRouteCache.set(routeKey, route.selectedCandidate);
 
-    const routePoints = selectedCandidate.points;
-    const d = this.buildRoundedOrthogonalPath(routePoints, Math.max(10, Math.min(26, Math.round(distance * 0.06))));
+    const d = buildRoundedOrthogonalPathFromPoints(route.routePoints, Math.max(10, Math.min(26, Math.round(route.distance * 0.06))));
     path.setAttribute("d", d);
     this.svgLayer.appendChild(path);
 
@@ -1145,133 +927,51 @@ class Renderer {
   }
 
   getGraphBounds() {
-    const nodes = Object.values(store.state.nodes);
-    const viewportRect = this.getViewportWorldRect();
-
-    if (!nodes.length) {
-      const worldWidth = Math.max(1200, viewportRect.width * 1.5);
-      const worldHeight = Math.max(900, viewportRect.height * 1.5);
-      return {
-        minX: viewportRect.minX - worldWidth * 0.25,
-        minY: viewportRect.minY - worldHeight * 0.25,
-        width: worldWidth,
-        height: worldHeight,
-      };
-    }
-
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-
-    nodes.forEach((node) => {
-      const size = this.getNodeWorldSize(node);
-      minX = Math.min(minX, node.x);
-      minY = Math.min(minY, node.y);
-      maxX = Math.max(maxX, node.x + size.width);
-      maxY = Math.max(maxY, node.y + size.height);
+    return computeGraphBounds({
+      nodes: Object.values(store.state.nodes),
+      measureNodeSize: (node) => this.getNodeWorldSize(node),
+      viewportRect: this.getViewportWorldRect(),
+      padding: 160,
+      viewportPadding: 160,
     });
-
-    const padding = 160;
-    const viewportPadding = 160;
-    const combinedMinX = Math.min(minX - padding, viewportRect.minX - viewportPadding);
-    const combinedMinY = Math.min(minY - padding, viewportRect.minY - viewportPadding);
-    const combinedMaxX = Math.max(maxX + padding, viewportRect.minX + viewportRect.width + viewportPadding);
-    const combinedMaxY = Math.max(maxY + padding, viewportRect.minY + viewportRect.height + viewportPadding);
-
-    return {
-      minX: combinedMinX,
-      minY: combinedMinY,
-      width: combinedMaxX - combinedMinX,
-      height: combinedMaxY - combinedMinY,
-    };
   }
 
   getContentBounds(padding = 160) {
-    const nodes = Object.values(store.state.nodes);
-
-    if (!nodes.length) {
-      return {
-        minX: -600,
-        minY: -450,
-        width: 1200,
-        height: 900,
-      };
-    }
-
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-
-    nodes.forEach((node) => {
-      const size = this.getNodeWorldSize(node);
-      minX = Math.min(minX, node.x);
-      minY = Math.min(minY, node.y);
-      maxX = Math.max(maxX, node.x + size.width);
-      maxY = Math.max(maxY, node.y + size.height);
+    return computeContentBounds({
+      nodes: Object.values(store.state.nodes),
+      measureNodeSize: (node) => this.getNodeWorldSize(node),
+      padding,
     });
-
-    if (!Number.isFinite(minX) || !Number.isFinite(minY)) {
-      return {
-        minX: -600,
-        minY: -450,
-        width: 1200,
-        height: 900,
-      };
-    }
-
-    return {
-      minX: minX - padding,
-      minY: minY - padding,
-      width: Math.max(1, (maxX - minX) + (padding * 2)),
-      height: Math.max(1, (maxY - minY) + (padding * 2)),
-    };
   }
 
   getViewportWorldRect() {
     const { x, y, scale } = store.getTransform();
     const viewportWidth = this.viewport?.clientWidth ?? window.innerWidth;
     const viewportHeight = this.viewport?.clientHeight ?? window.innerHeight;
-    const effectiveScale = Math.max(scale, 0.0001);
 
-    return {
-      minX: -x / effectiveScale,
-      minY: -y / effectiveScale,
-      width: viewportWidth / effectiveScale,
-      height: viewportHeight / effectiveScale,
-    };
+    return computeViewportWorldRect({
+      x,
+      y,
+      scale,
+      viewportWidth,
+      viewportHeight,
+    });
   }
 
   computeMinimapLayout() {
     if (!this.minimap) return null;
 
     const minimapRect = this.minimap.getBoundingClientRect();
-    const bounds = this.getGraphBounds();
-    const containerWidth = Math.max(1, minimapRect.width);
-    const containerHeight = Math.max(1, minimapRect.height);
-    const innerWidth = Math.max(1, containerWidth - this.minimapPadding * 2);
-    const innerHeight = Math.max(1, containerHeight - this.minimapPadding * 2);
-    const graphWidth = Math.max(1, bounds.width);
-    const graphHeight = Math.max(1, bounds.height);
-    const scale = Math.min(innerWidth / graphWidth, innerHeight / graphHeight);
-    const scaledWidth = graphWidth * scale;
-    const scaledHeight = graphHeight * scale;
-    const offsetX = (containerWidth - scaledWidth) / 2;
-    const offsetY = (containerHeight - scaledHeight) / 2;
+    const layout = computeMinimapLayout({
+      containerWidth: minimapRect.width,
+      containerHeight: minimapRect.height,
+      bounds: this.getGraphBounds(),
+      padding: this.minimapPadding,
+    });
 
-    this.minimapLayout = {
-      bounds,
-      scale,
-      offsetX,
-      offsetY,
-      containerWidth,
-      containerHeight,
-      graphWidth,
-      graphHeight,
-    };
+    this.minimapLayout = layout;
 
-    return this.minimapLayout;
+    return layout;
   }
 
   renderMinimap() {
@@ -1291,8 +991,9 @@ class Renderer {
         nodeEl.classList.add('is-entry');
       }
 
-      const left = layout.offsetX + (node.x - layout.bounds.minX) * layout.scale;
-      const top = layout.offsetY + (node.y - layout.bounds.minY) * layout.scale;
+      const projected = projectWorldPointToMinimap({ x: node.x, y: node.y }, layout);
+      const left = projected?.left ?? 0;
+      const top = projected?.top ?? 0;
       const width = Math.max(4, size.width * layout.scale);
       const height = Math.max(4, size.height * layout.scale);
 
@@ -1316,18 +1017,27 @@ class Renderer {
     const { x, y, scale } = store.getTransform();
     const viewportWidth = this.viewport?.clientWidth ?? window.innerWidth;
     const viewportHeight = this.viewport?.clientHeight ?? window.innerHeight;
-    const worldLeft = -x / scale;
-    const worldTop = -y / scale;
+    const viewportRect = computeViewportWorldRect({
+      x,
+      y,
+      scale,
+      viewportWidth,
+      viewportHeight,
+    });
+    const projected = projectViewportRectToMinimap({
+      viewportRect,
+      layout: currentLayout,
+      minSize: 18,
+    });
 
-    const left = currentLayout.offsetX + (worldLeft - currentLayout.bounds.minX) * currentLayout.scale;
-    const top = currentLayout.offsetY + (worldTop - currentLayout.bounds.minY) * currentLayout.scale;
-    const width = Math.max(18, (viewportWidth / scale) * currentLayout.scale);
-    const height = Math.max(18, (viewportHeight / scale) * currentLayout.scale);
+    if (!projected) {
+      return;
+    }
 
-    this.minimapViewport.style.left = `${left}px`;
-    this.minimapViewport.style.top = `${top}px`;
-    this.minimapViewport.style.width = `${width}px`;
-    this.minimapViewport.style.height = `${height}px`;
+    this.minimapViewport.style.left = `${projected.left}px`;
+    this.minimapViewport.style.top = `${projected.top}px`;
+    this.minimapViewport.style.width = `${projected.width}px`;
+    this.minimapViewport.style.height = `${projected.height}px`;
   }
 
   getMinimapWorldPoint(clientX, clientY) {
@@ -1335,21 +1045,13 @@ class Renderer {
     if (!layout || !this.minimap) return null;
 
     const minimapRect = this.minimap.getBoundingClientRect();
-    const localX = clientX - minimapRect.left;
-    const localY = clientY - minimapRect.top;
-    const clampedX = Math.min(minimapRect.width - this.minimapPadding, Math.max(this.minimapPadding, localX));
-    const clampedY = Math.min(minimapRect.height - this.minimapPadding, Math.max(this.minimapPadding, localY));
-
-    return {
-      layout,
+    return projectMinimapPointToWorld({
+      clientX,
+      clientY,
       minimapRect,
-      localX,
-      localY,
-      clampedX,
-      clampedY,
-      worldX: layout.bounds.minX + (clampedX - layout.offsetX) / layout.scale,
-      worldY: layout.bounds.minY + (clampedY - layout.offsetY) / layout.scale,
-    };
+      layout,
+      padding: this.minimapPadding,
+    });
   }
 
   dragViewportFromMinimapPoint(clientX, clientY) {
