@@ -15,6 +15,8 @@ class MinimapController {
       pointerId: null,
     };
     this.minimapRaf = null;
+    this.syncRaf = null;
+    this.lastViewportSignature = '';
     this.boundWindowResize = null;
     this.boundTransformUpdate = null;
     this.boundStateUpdate = null;
@@ -60,6 +62,7 @@ class MinimapController {
 
     this.setupEvents();
     this.render();
+    this.startViewportSyncLoop();
     this.initialized = true;
   }
 
@@ -148,6 +151,27 @@ class MinimapController {
       this.minimapRaf = null;
       this.render();
     });
+  }
+
+  startViewportSyncLoop() {
+    if (this.syncRaf) return;
+
+    const tick = () => {
+      if (!this.minimap) {
+        this.syncRaf = null;
+        return;
+      }
+
+      const signature = this.getViewportSignature();
+      if (signature !== this.lastViewportSignature) {
+        this.lastViewportSignature = signature;
+        this.updateViewport();
+      }
+
+      this.syncRaf = window.requestAnimationFrame(tick);
+    };
+
+    this.syncRaf = window.requestAnimationFrame(tick);
   }
 
   getGraphBounds() {
@@ -248,6 +272,7 @@ class MinimapController {
 
     this.minimapContent.appendChild(fragment);
     this.updateViewport(layout);
+    this.lastViewportSignature = this.getViewportSignature();
   }
 
   updateViewport(layout = null) {
@@ -257,8 +282,9 @@ class MinimapController {
     if (!currentLayout) return;
 
     const { x, y, scale } = store.getTransform();
-    const viewportWidth = this.viewport?.clientWidth ?? window.innerWidth;
-    const viewportHeight = this.viewport?.clientHeight ?? window.innerHeight;
+    const viewportRect = this.viewport?.getBoundingClientRect?.();
+    const viewportWidth = viewportRect?.width ?? this.viewport?.clientWidth ?? window.innerWidth;
+    const viewportHeight = viewportRect?.height ?? this.viewport?.clientHeight ?? window.innerHeight;
     const worldLeft = -x / scale;
     const worldTop = -y / scale;
     const worldRight = worldLeft + (viewportWidth / scale);
@@ -268,13 +294,35 @@ class MinimapController {
     const top = currentLayout.offsetY + (worldTop - currentLayout.bounds.minY) * currentLayout.scale;
     const right = currentLayout.offsetX + (worldRight - currentLayout.bounds.minX) * currentLayout.scale;
     const bottom = currentLayout.offsetY + (worldBottom - currentLayout.bounds.minY) * currentLayout.scale;
-    const width = Math.max(8, right - left);
-    const height = Math.max(8, bottom - top);
+    const width = Math.max(4, right - left);
+    const height = Math.max(4, bottom - top);
 
     this.minimapViewport.style.left = `${left}px`;
     this.minimapViewport.style.top = `${top}px`;
     this.minimapViewport.style.width = `${width}px`;
     this.minimapViewport.style.height = `${height}px`;
+  }
+
+  getViewportSignature() {
+    const { x, y, scale } = store.getTransform();
+    const viewportRect = this.viewport?.getBoundingClientRect?.();
+    const viewportWidth = viewportRect?.width ?? this.viewport?.clientWidth ?? window.innerWidth;
+    const viewportHeight = viewportRect?.height ?? this.viewport?.clientHeight ?? window.innerHeight;
+    const layout = this.minimapLayout;
+    const bounds = layout?.bounds;
+
+    return [
+      Math.round(x * 1000) / 1000,
+      Math.round(y * 1000) / 1000,
+      Math.round(scale * 1000) / 1000,
+      Math.round(viewportWidth * 10) / 10,
+      Math.round(viewportHeight * 10) / 10,
+      Math.round(layout?.scale ? layout.scale * 100000 : 0),
+      Math.round(bounds?.minX ?? 0),
+      Math.round(bounds?.minY ?? 0),
+      Math.round(bounds?.width ?? 0),
+      Math.round(bounds?.height ?? 0),
+    ].join('|');
   }
 
   getPoint(clientX, clientY) {
