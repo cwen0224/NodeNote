@@ -8,6 +8,8 @@ class InputController {
   constructor() {
     this.isPanning = false;
     this.isSelecting = false;
+    this.touchPointers = new Map();
+    this.touchGesture = null;
     this.startX = 0;
     this.startY = 0;
     this.selectionStartX = 0;
@@ -31,6 +33,194 @@ class InputController {
     this.setupEvents();
   }
 
+  isBackgroundSurface(target) {
+    return Boolean(target) && (
+      target.id === 'viewport'
+      || target.id === 'grid-bg'
+      || target.id === 'svg-layer'
+      || target.id === 'canvas'
+    );
+  }
+
+  screenToWorld(clientX, clientY, transform = store.getTransform()) {
+    const scale = Number.isFinite(transform?.scale) && transform.scale !== 0 ? transform.scale : 1;
+    return {
+      x: (clientX - (Number.isFinite(transform?.x) ? transform.x : 0)) / scale,
+      y: (clientY - (Number.isFinite(transform?.y) ? transform.y : 0)) / scale,
+    };
+  }
+
+  distanceBetweenPoints(a, b) {
+    return Math.hypot((a?.x || 0) - (b?.x || 0), (a?.y || 0) - (b?.y || 0));
+  }
+
+  midpointBetweenPoints(a, b) {
+    return {
+      x: ((a?.x || 0) + (b?.x || 0)) / 2,
+      y: ((a?.y || 0) + (b?.y || 0)) / 2,
+    };
+  }
+
+  startTouchPan(pointerId, clientX, clientY) {
+    this.touchGesture = {
+      type: 'pan',
+      pointerId,
+      startX: clientX,
+      startY: clientY,
+      transform: store.getTransform(),
+    };
+  }
+
+  startTouchPinch() {
+    if (this.touchPointers.size < 2) {
+      return;
+    }
+
+    const pointerEntries = [...this.touchPointers.entries()];
+    const [firstId, firstPoint] = pointerEntries[0];
+    const [secondId, secondPoint] = pointerEntries[1];
+    const distance = this.distanceBetweenPoints(firstPoint, secondPoint);
+    if (distance < 1) {
+      return;
+    }
+
+    const transform = store.getTransform();
+    const midpoint = this.midpointBetweenPoints(firstPoint, secondPoint);
+    this.touchGesture = {
+      type: 'pinch',
+      pointerIds: [firstId, secondId],
+      startDistance: distance,
+      startMidpoint: midpoint,
+      transform,
+      worldPoint: this.screenToWorld(midpoint.x, midpoint.y, transform),
+    };
+  }
+
+  updateTouchPan(pointerId, clientX, clientY) {
+    if (!this.touchGesture || this.touchGesture.type !== 'pan' || this.touchGesture.pointerId !== pointerId) {
+      return;
+    }
+
+    const dx = clientX - this.touchGesture.startX;
+    const dy = clientY - this.touchGesture.startY;
+    const { x, y, scale } = this.touchGesture.transform;
+    store.setTransform(x + dx, y + dy, scale);
+  }
+
+  updateTouchPinch() {
+    if (!this.touchGesture || this.touchGesture.type !== 'pinch') {
+      return;
+    }
+
+    const [firstId, secondId] = this.touchGesture.pointerIds;
+    const firstPoint = this.touchPointers.get(firstId);
+    const secondPoint = this.touchPointers.get(secondId);
+    if (!firstPoint || !secondPoint) {
+      return;
+    }
+
+    const currentDistance = this.distanceBetweenPoints(firstPoint, secondPoint);
+    if (currentDistance < 1) {
+      return;
+    }
+
+    const midpoint = this.midpointBetweenPoints(firstPoint, secondPoint);
+    const startScale = Number.isFinite(this.touchGesture.transform?.scale) ? this.touchGesture.transform.scale : 1;
+    let newScale = startScale * (currentDistance / this.touchGesture.startDistance);
+    newScale = Math.max(this.minScale, Math.min(this.maxScale, newScale));
+
+    const newX = midpoint.x - (this.touchGesture.worldPoint.x * newScale);
+    const newY = midpoint.y - (this.touchGesture.worldPoint.y * newScale);
+    store.setTransform(newX, newY, newScale);
+  }
+
+  updateTouchGestureFromPointers() {
+    if (this.touchPointers.size >= 2) {
+      this.startTouchPinch();
+      return;
+    }
+
+    if (this.touchPointers.size === 1) {
+      const [pointerId, point] = this.touchPointers.entries().next().value;
+      this.startTouchPan(pointerId, point.x, point.y);
+      return;
+    }
+
+    this.touchGesture = null;
+  }
+
+  registerTouchPointer(event) {
+    this.touchPointers.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+    });
+    store.setLastPointer(event.clientX, event.clientY);
+  }
+
+  handleTouchPointerDown(event) {
+    if (event.pointerType === 'mouse' || !this.isBackgroundSurface(event.target)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    this.registerTouchPointer(event);
+
+    if (this.touchPointers.size === 1) {
+      store.clearSelection();
+      this.startTouchPan(event.pointerId, event.clientX, event.clientY);
+      return;
+    }
+
+    this.startTouchPinch();
+  }
+
+  handleTouchPointerMove(event) {
+    if (event.pointerType === 'mouse' || !this.touchPointers.has(event.pointerId)) {
+      return;
+    }
+
+    this.touchPointers.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+    });
+    store.setLastPointer(event.clientX, event.clientY);
+    event.preventDefault();
+
+    if (this.touchGesture?.type === 'pan') {
+      this.updateTouchPan(event.pointerId, event.clientX, event.clientY);
+      return;
+    }
+
+    if (this.touchGesture?.type === 'pinch') {
+      this.updateTouchPinch();
+    }
+  }
+
+  handleTouchPointerEnd(event) {
+    if (event.pointerType === 'mouse') {
+      return;
+    }
+
+    if (!this.touchPointers.has(event.pointerId)) {
+      return;
+    }
+
+    event.preventDefault();
+    this.touchPointers.delete(event.pointerId);
+
+    if (this.touchGesture?.type === 'pan' && this.touchGesture.pointerId === event.pointerId) {
+      this.touchGesture = null;
+    }
+
+    if (this.touchGesture?.type === 'pinch' && this.touchGesture.pointerIds.includes(event.pointerId)) {
+      this.touchGesture = null;
+    }
+
+    this.updateTouchGestureFromPointers();
+  }
+
   setupEvents() {
     // Track spacebar globally
     window.addEventListener('keydown', e => {
@@ -44,10 +234,15 @@ class InputController {
       e.preventDefault();
     });
 
+    this.viewport.addEventListener('pointerdown', (e) => this.handleTouchPointerDown(e));
+    window.addEventListener('pointermove', (e) => this.handleTouchPointerMove(e), { passive: false });
+    window.addEventListener('pointerup', (e) => this.handleTouchPointerEnd(e), { passive: false });
+    window.addEventListener('pointercancel', (e) => this.handleTouchPointerEnd(e), { passive: false });
+
     // Panning logic (Right mouse button, Middle mouse button, or Left click on background)
     this.viewport.addEventListener('mousedown', e => {
       // Allow left click panning if clicking on background (viewport layer)
-      const isBackgroundClick = e.target.id === 'viewport' || e.target.id === 'grid-bg' || e.target.id === 'svg-layer';
+      const isBackgroundClick = this.isBackgroundSurface(e.target);
       const isLeftClickPan = e.button === 0 && (this.spacePressed || isBackgroundClick);
       const isSelectionMarquee = e.button === 0 && e.shiftKey && isBackgroundClick && !this.spacePressed;
 
