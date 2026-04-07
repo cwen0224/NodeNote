@@ -4,6 +4,7 @@
  */
 import { store } from './StateStore.js';
 import { getPortSide } from './core/connectionData.js';
+import { connectionNamingDialog } from './ConnectionNamingDialog.js';
 
 class ConnectionManager {
   constructor() {
@@ -104,59 +105,22 @@ class ConnectionManager {
   }
 
   showNamingPopup(sourceId, targetId, x, y, sourcePortSide, targetPortSide, options = {}) {
-    const popup = document.createElement('div');
-    popup.id = 'naming-popup';
-    popup.className = 'glass-panel';
-    popup.style.left = `${x}px`;
-    popup.style.top = `${y}px`;
     const initialKey = String(options.initialKey ?? '').trim();
     const mode = options.mode || 'create';
-
-    let historyHtml = Array.from(this.historyNames).map(name => 
-      `<div class="history-item">${name}</div>`
-    ).join('');
-
-    popup.innerHTML = `
-      <div style="font-size:0.8rem; margin-bottom:4px; opacity:0.7;">連線名稱 (Key)</div>
-      <input type="text" id="naming-input" placeholder="例如: next, trigger..." autofocus>
-      <div class="history-list">${historyHtml}</div>
-    `;
-
-    document.body.appendChild(popup);
-    const input = popup.querySelector('#naming-input');
-    input.value = initialKey;
-    input.focus();
-    input.select();
-    
-    const confirm = (name) => {
-      if (name) {
+    connectionNamingDialog.open({
+      x,
+      y,
+      initialKey,
+      historyNames: Array.from(this.historyNames),
+      onConfirm: (name) => {
         if (mode === 'rename' && initialKey) {
           this.renameConnectionKey(sourceId, initialKey, name);
         } else {
           this.addConnection(sourceId, targetId, name, sourcePortSide, targetPortSide);
         }
         this.historyNames.add(name);
-      }
-      popup.remove();
-    };
-
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') confirm(input.value);
-      if (e.key === 'Escape') popup.remove();
+      },
     });
-
-    popup.querySelectorAll('.history-item').forEach(item => {
-      item.onclick = () => confirm(item.innerText);
-    });
-
-    // Close if clicked outside
-    const closePopup = (e) => {
-      if (!popup.contains(e.target)) {
-        popup.remove();
-        document.removeEventListener('mousedown', closePopup);
-      }
-    };
-    setTimeout(() => document.addEventListener('mousedown', closePopup), 10);
   }
 
   addConnection(sourceId, targetId, key, sourcePortSide, targetPortSide) {
