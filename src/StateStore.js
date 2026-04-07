@@ -7,12 +7,12 @@
 
 import {
   buildEdgesFromDocument,
-  buildFolderDocumentView,
   cloneDocument,
   createDefaultDocument,
   normalizeDocument,
   ROOT_FOLDER_ID,
 } from './core/documentSchema.js';
+import { buildFolderDocumentView } from './core/documentView.js';
 import { createDefaultSession } from './core/sessionSchema.js';
 import { MAX_FOLDER_DEPTH } from './core/folderTheme.js';
 

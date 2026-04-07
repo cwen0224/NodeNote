@@ -1,4 +1,5 @@
-import { normalizeDocument, createDefaultDocument, applyImportedDocumentLayout } from './documentSchema.js';
+import { normalizeDocument, createDefaultDocument } from './documentSchema.js';
+import { applyImportedDocumentLayout } from './documentLayout.js';
 import { normalizeClipboardPayload, GRAPH_FRAGMENT_SCHEMA } from './graphClipboard.js';
 
 function clone(value) {
