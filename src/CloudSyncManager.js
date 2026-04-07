@@ -8,6 +8,12 @@ import {
   isCollaborativePatchEmpty,
 } from './core/googleSheetCollab.js';
 import {
+  normalizeSnapshotFromText,
+  postNoCors,
+  requestJson,
+  requestJsonp,
+} from './core/cloudTransport.js';
+import {
   buildDocumentFingerprint,
   buildFingerprint,
   cloneValue as clone,
@@ -648,69 +654,6 @@ class CloudSyncManager {
     });
   }
 
-  requestSheetJsonp(action = 'state', extraParams = {}, { timeoutMs = 15000 } = {}) {
-    return new Promise((resolve, reject) => {
-      const callbackName = `__nodenoteSheetJsonp_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-      const cleanup = () => {
-        if (timeoutId) {
-          window.clearTimeout(timeoutId);
-          timeoutId = null;
-        }
-        if (script?.parentNode) {
-          script.parentNode.removeChild(script);
-        }
-        try {
-          delete window[callbackName];
-        } catch {
-          window[callbackName] = undefined;
-        }
-      };
-
-      let timeoutId = null;
-      const script = document.createElement('script');
-
-      window[callbackName] = (payload) => {
-        cleanup();
-        if (payload && payload.ok === false) {
-          reject(new Error(payload.error || 'Google Sheet JSONP 請求失敗'));
-          return;
-        }
-        resolve(payload);
-      };
-
-      script.async = true;
-      script.src = this.getSheetRequestUrl(action, {
-        ...extraParams,
-        callback: callbackName,
-      });
-      script.onerror = () => {
-        cleanup();
-        reject(new Error('Google Sheet JSONP 請求失敗'));
-      };
-
-      timeoutId = window.setTimeout(() => {
-        cleanup();
-        reject(new Error('Google Sheet JSONP 請求逾時'));
-      }, timeoutMs);
-
-      document.head.appendChild(script);
-    });
-  }
-
-  async postSheetCommitNoCors(payload) {
-    const response = await fetch(this.getSheetRequestUrl('commit'), {
-      method: 'POST',
-      mode: 'no-cors',
-      credentials: 'omit',
-      headers: {
-        'Content-Type': 'text/plain;charset=UTF-8',
-      },
-      body: JSON.stringify(payload),
-    });
-
-    return Boolean(response);
-  }
-
   async copySyncLogsToClipboard() {
     const text = this.buildSyncLogText();
     try {
@@ -1012,12 +955,12 @@ class CloudSyncManager {
         patch,
       };
 
-      await this.postSheetCommitNoCors(payload);
+      await postNoCors(this.getSheetRequestUrl('commit'), payload);
       await this.delay(350);
 
-      const response = await this.requestSheetJsonp('state', {
+      const response = await requestJsonp(this.getSheetRequestUrl('state', {
         revision: this.sheetLastRevision || 0,
-      });
+      }));
 
       if (!response?.document) {
         throw new Error('Google Sheet 寫入後沒有讀回內容');
@@ -1082,9 +1025,9 @@ class CloudSyncManager {
     this.appendSyncLog('info', 'sheet-verify', '開始驗證 Google Sheet 寫入');
 
     try {
-      const response = await this.requestSheetJsonp('state', {
+      const response = await requestJsonp(this.getSheetRequestUrl('state', {
         revision: this.sheetLastRevision || 0,
-      });
+      }));
 
       if (!response?.document) {
         throw new Error('驗證失敗：讀回不到 Google Sheet 內容');
@@ -1133,9 +1076,9 @@ class CloudSyncManager {
     this.updateStatusBadge('Sheet polling...');
 
     try {
-      const response = await this.requestSheetJsonp('state', {
+      const response = await requestJsonp(this.getSheetRequestUrl('state', {
         revision: this.sheetLastRevision || 0,
-      });
+      }));
 
       if (!response?.document) {
         return false;
@@ -1220,7 +1163,7 @@ class CloudSyncManager {
     this.appendSyncLog('info', 'sheet-pull', '開始從 Google Sheet 拉回內容');
 
     try {
-      const response = await this.requestSheetJsonp('state');
+      const response = await requestJsonp(this.getSheetRequestUrl('state'));
 
       if (!response?.document) {
         this.setStatus('error', 'Google Sheet 沒有找到內容，請先完成一次同步');
@@ -1410,7 +1353,7 @@ class CloudSyncManager {
         body.sha = remote.sha;
       }
 
-      const response = await this.requestJson(this.getEndpointUrl(), {
+      const response = await requestJson(this.getEndpointUrl(), {
         method: 'PUT',
         headers: this.getHeaders(),
         body: JSON.stringify(body),
@@ -1474,7 +1417,7 @@ class CloudSyncManager {
         return false;
       }
 
-      const snapshot = this.normalizeSnapshotFromText(remote.text);
+      const snapshot = normalizeSnapshotFromText(remote.text);
       if (!snapshot) {
         throw new Error('雲端檔案不是有效的 NodeNote 快照');
       }
@@ -1525,23 +1468,11 @@ class CloudSyncManager {
     }
   }
 
-  normalizeSnapshotFromText(text) {
-    if (typeof text !== 'string' || !text.trim()) {
-      return null;
-    }
-
-    try {
-      return normalizeCloudSnapshot(JSON.parse(text));
-    } catch {
-      return null;
-    }
-  }
-
   async getRemoteFile({ allowMissing = false } = {}) {
     let response = null;
 
     try {
-      response = await this.requestJson(this.getEndpointUrl(), {
+      response = await requestJson(this.getEndpointUrl(), {
         method: 'GET',
         headers: this.getHeaders(),
       });
@@ -1568,38 +1499,6 @@ class CloudSyncManager {
       sha: typeof response.sha === 'string' ? response.sha : null,
       text: decodeUtf8Base64(response.content),
     };
-  }
-
-  async requestJson(url, options = {}) {
-    const response = await fetch(url, options);
-    const text = await response.text();
-    let parsed = null;
-
-    if (text) {
-      try {
-        parsed = JSON.parse(text);
-      } catch {
-        parsed = null;
-      }
-    }
-
-    if (!response.ok) {
-      const message = parsed?.message || response.statusText || `HTTP ${response.status}`;
-      const error = new Error(message);
-      error.status = response.status;
-      error.response = parsed;
-      throw error;
-    }
-
-    if (parsed && parsed.ok === false) {
-      const message = parsed.error || parsed.message || 'Request failed';
-      const error = new Error(message);
-      error.status = response.status || 500;
-      error.response = parsed;
-      throw error;
-    }
-
-    return parsed;
   }
 
   getErrorMessage(error) {
