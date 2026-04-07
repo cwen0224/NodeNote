@@ -48,7 +48,7 @@ export async function requestJson(url, options = {}) {
   return parsed;
 }
 
-export function requestJsonp(url, { timeoutMs = 15000 } = {}) {
+export function requestJsonp(url, { timeoutMs = 15000, callbackParam = 'callback' } = {}) {
   return new Promise((resolve, reject) => {
     const callbackName = buildJsonpCallbackName();
     let timeoutId = null;
@@ -79,7 +79,16 @@ export function requestJsonp(url, { timeoutMs = 15000 } = {}) {
     };
 
     script.async = true;
-    script.src = url;
+    let src = String(url || '');
+    try {
+      const parsedUrl = new URL(src, window.location.href);
+      parsedUrl.searchParams.set(callbackParam, callbackName);
+      src = parsedUrl.toString();
+    } catch {
+      const joiner = src.includes('?') ? '&' : '?';
+      src = `${src}${joiner}${encodeURIComponent(callbackParam)}=${encodeURIComponent(callbackName)}`;
+    }
+    script.src = src;
     script.onerror = () => {
       cleanup();
       reject(new Error('Google Sheet JSONP 請求失敗'));
