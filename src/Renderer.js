@@ -736,18 +736,12 @@ class Renderer {
     const sourceVector = getPortDirectionVector(sourcePortSide);
     const targetVector = getPortDirectionVector(targetPortSide);
     const distance = Math.max(1, Math.hypot(tX - sX, tY - sY));
-    const exitDistance = Math.max(36, Math.min(120, distance * 0.18));
-    const elbowDistance = Math.max(56, Math.min(180, distance * 0.28));
+    const exitDistance = Math.max(20, Math.min(64, distance * 0.1));
+    const routePadding = Math.max(18, Math.min(32, Math.round(distance * 0.05)));
     const sourceIsHorizontal = sourceVector.x !== 0;
     const targetIsHorizontal = targetVector.x !== 0;
-    const sourceCenterX = sourceRect?.centerX ?? sX;
-    const sourceCenterY = sourceRect?.centerY ?? sY;
-    const targetCenterX = targetRect?.centerX ?? tX;
-    const targetCenterY = targetRect?.centerY ?? tY;
-    const aboveBoth = Math.min(sourceRect?.top ?? sY, targetRect?.top ?? tY) - elbowDistance;
-    const belowBoth = Math.max(sourceRect?.bottom ?? sY, targetRect?.bottom ?? tY) + elbowDistance;
-    const leftOfBoth = Math.min(sourceRect?.left ?? sX, targetRect?.left ?? tX) - elbowDistance;
-    const rightOfBoth = Math.max(sourceRect?.right ?? sX, targetRect?.right ?? tX) + elbowDistance;
+    const sourceBounds = sourceRect || { left: sX, right: sX, top: sY, bottom: sY };
+    const targetBounds = targetRect || { left: tX, right: tX, top: tY, bottom: tY };
     const sourceExit = {
       x: sX + (sourceVector.x * exitDistance),
       y: sY + (sourceVector.y * exitDistance),
@@ -757,29 +751,49 @@ class Renderer {
       y: tY + (targetVector.y * exitDistance),
     };
 
+    const measureRoute = (points = []) => points.reduce((total, point, index) => {
+      if (index === 0) {
+        return 0;
+      }
+      const previous = points[index - 1];
+      return total + Math.hypot(point.x - previous.x, point.y - previous.y);
+    }, 0);
+
     const routePoints = [
       { x: sX, y: sY },
       sourceExit,
     ];
 
     if (sourceIsHorizontal && targetIsHorizontal) {
-      const routeY = targetCenterY >= sourceCenterY ? belowBoth : aboveBoth;
+      const aboveY = Math.min(sourceBounds.top, targetBounds.top) - routePadding;
+      const belowY = Math.max(sourceBounds.bottom, targetBounds.bottom) + routePadding;
+      const aboveRoute = [sourceExit, { x: sourceExit.x, y: aboveY }, { x: targetEntry.x, y: aboveY }, targetEntry];
+      const belowRoute = [sourceExit, { x: sourceExit.x, y: belowY }, { x: targetEntry.x, y: belowY }, targetEntry];
+      const routeY = measureRoute(aboveRoute) <= measureRoute(belowRoute) ? aboveY : belowY;
       routePoints.push(
         { x: sourceExit.x, y: routeY },
         { x: targetEntry.x, y: routeY },
       );
     } else if (!sourceIsHorizontal && !targetIsHorizontal) {
-      const routeX = targetCenterX >= sourceCenterX ? rightOfBoth : leftOfBoth;
+      const leftX = Math.min(sourceBounds.left, targetBounds.left) - routePadding;
+      const rightX = Math.max(sourceBounds.right, targetBounds.right) + routePadding;
+      const leftRoute = [sourceExit, { x: leftX, y: sourceExit.y }, { x: leftX, y: targetEntry.y }, targetEntry];
+      const rightRoute = [sourceExit, { x: rightX, y: sourceExit.y }, { x: rightX, y: targetEntry.y }, targetEntry];
+      const routeX = measureRoute(leftRoute) <= measureRoute(rightRoute) ? leftX : rightX;
       routePoints.push(
         { x: routeX, y: sourceExit.y },
         { x: routeX, y: targetEntry.y },
       );
     } else if (sourceIsHorizontal && !targetIsHorizontal) {
-      const routeX = sourceVector.x > 0 ? rightOfBoth : leftOfBoth;
+      const routeX = sourceVector.x > 0
+        ? Math.max(sourceBounds.right, targetBounds.right) + routePadding
+        : Math.min(sourceBounds.left, targetBounds.left) - routePadding;
       routePoints.push({ x: routeX, y: sourceExit.y });
       routePoints.push({ x: routeX, y: targetEntry.y });
     } else {
-      const routeY = sourceVector.y > 0 ? belowBoth : aboveBoth;
+      const routeY = sourceVector.y > 0
+        ? Math.max(sourceBounds.bottom, targetBounds.bottom) + routePadding
+        : Math.min(sourceBounds.top, targetBounds.top) - routePadding;
       routePoints.push({ x: sourceExit.x, y: routeY });
       routePoints.push({ x: targetEntry.x, y: routeY });
     }
