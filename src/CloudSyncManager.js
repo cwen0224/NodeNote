@@ -17,6 +17,13 @@ import {
   requestJsonp,
 } from './core/cloudTransport.js';
 import {
+  buildSheetCommitPayload,
+  buildSheetRequestUrl,
+  DEFAULT_SHEET_POLL_MS,
+  resolveSheetClientName,
+  resolveSheetPollIntervalMs,
+} from './core/cloudSheetTransport.js';
+import {
   buildDocumentFingerprint,
   buildFingerprint,
   cloneValue as clone,
@@ -40,7 +47,6 @@ const DEFAULT_SYNC_PATH = 'project-state.json';
 const CLOUD_SYNC_VERSION = '1.0.0';
 const AUTO_SYNC_DEBOUNCE_MS = 2800;
 const SHEET_AUTO_SYNC_DEBOUNCE_MS = 1200;
-const DEFAULT_SHEET_POLL_MS = 2000;
 const SHEET_CLIENT_STORAGE_KEY = 'nodenote.sheet.client-id.v1';
 const DEFAULT_SHEET_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwoztDsaKOldxW3HxJ_DTnaem58yCqKeQk-6kbqXj-E9LZ9dGuGhZUOF_JZY6HNejQC/exec';
 const LEGACY_SHEET_WEB_APP_URLS = new Set([
@@ -816,7 +822,7 @@ class CloudSyncManager {
       return;
     }
 
-    const interval = this.getSheetPollIntervalMs();
+    const interval = resolveSheetPollIntervalMs(this.config, DEFAULT_SHEET_POLL_MS);
     if (!Number.isFinite(interval) || interval <= 0) {
       return;
     }
@@ -846,72 +852,12 @@ class CloudSyncManager {
     }
   }
 
-  getSheetPollIntervalMs() {
-    const raw = Number(this.config.sheetPollIntervalMs);
-    return Number.isFinite(raw) ? Math.max(1000, Math.floor(raw)) : DEFAULT_SHEET_POLL_MS;
-  }
-
-  getSheetClientName() {
-    const explicit = sanitizeString(this.config.sheetClientName);
-    if (explicit) {
-      return explicit;
-    }
-
-    return `NodeNote-${this.sheetClientId.slice(-4)}`;
-  }
-
   getProviderLabel() {
     return this.config.provider === 'sheets' ? 'Sync' : 'Backup';
   }
 
   getProviderTitleLabel() {
     return this.config.provider === 'sheets' ? 'Google Sheet' : 'GitHub';
-  }
-
-  getSheetRequestUrl(action = 'state', extraParams = {}) {
-    const base = sanitizeString(this.config.sheetWebAppUrl);
-    if (!base) {
-      return '';
-    }
-
-    let url;
-    try {
-      url = new URL(base);
-    } catch {
-      return base;
-    }
-
-    url.searchParams.set('action', action);
-    url.searchParams.set('projectKey', sanitizeString(this.config.sheetProjectKey, 'default'));
-    url.searchParams.set('clientId', this.sheetClientId);
-    const secret = sanitizeString(this.config.sheetSecret);
-    if (secret) {
-      url.searchParams.set('secret', secret);
-    }
-    Object.entries(extraParams || {}).forEach(([key, value]) => {
-      if (typeof value !== 'undefined' && value !== null && String(value).length > 0) {
-        url.searchParams.set(key, String(value));
-      }
-    });
-    return url.toString();
-  }
-
-  createSheetPayloadFromSnapshot(snapshot = null) {
-    const document = snapshot?.document ? snapshot.document : store.getDocumentSnapshot();
-    const baseline = this.sheetBaselineDocument || createDefaultDocument();
-    const patch = createCollaborativePatch(baseline, document);
-    return {
-      action: 'commit',
-      schema: 'nodenote.sheet.cocollab',
-      version: CLOUD_SYNC_VERSION,
-      projectKey: sanitizeString(this.config.sheetProjectKey, 'default'),
-      clientId: this.sheetClientId,
-      clientName: this.getSheetClientName(),
-      secret: sanitizeString(this.config.sheetSecret),
-      baseRevision: this.sheetLastRevision || 0,
-      savedAt: new Date().toISOString(),
-      patch,
-    };
   }
 
   async pushSheetSnapshot(snapshot = null, { force = false } = {}) {
@@ -941,24 +887,35 @@ class CloudSyncManager {
     this.appendSyncLog('info', 'sheet', '開始同步 Google Sheet 共編內容', `revision=${this.sheetLastRevision || 0}`);
 
     try {
-      const payload = {
-        action: 'commit',
-        schema: 'nodenote.sheet.cocollab',
-        version: CLOUD_SYNC_VERSION,
-        projectKey: sanitizeString(this.config.sheetProjectKey, 'default'),
+      const payload = buildSheetCommitPayload({
+        patch,
+        projectKey: this.config.sheetProjectKey,
         clientId: this.sheetClientId,
-        clientName: this.getSheetClientName(),
-        secret: sanitizeString(this.config.sheetSecret),
+        clientName: resolveSheetClientName(this.config, `NodeNote-${this.sheetClientId.slice(-4)}`),
+        secret: this.config.sheetSecret,
         baseRevision: this.sheetLastRevision || 0,
         savedAt: snapshot?.savedAt || new Date().toISOString(),
-        patch,
-      };
+        version: CLOUD_SYNC_VERSION,
+      });
 
-      await postNoCors(this.getSheetRequestUrl('commit'), payload);
+      await postNoCors(buildSheetRequestUrl({
+        baseUrl: this.config.sheetWebAppUrl,
+        action: 'commit',
+        projectKey: this.config.sheetProjectKey,
+        clientId: this.sheetClientId,
+        secret: this.config.sheetSecret,
+      }), payload);
       await this.delay(350);
 
-      const response = await requestJsonp(this.getSheetRequestUrl('state', {
-        revision: this.sheetLastRevision || 0,
+      const response = await requestJsonp(buildSheetRequestUrl({
+        baseUrl: this.config.sheetWebAppUrl,
+        action: 'state',
+        projectKey: this.config.sheetProjectKey,
+        clientId: this.sheetClientId,
+        secret: this.config.sheetSecret,
+        extraParams: {
+          revision: this.sheetLastRevision || 0,
+        },
       }));
 
       if (!response?.document) {
@@ -1024,8 +981,15 @@ class CloudSyncManager {
     this.appendSyncLog('info', 'sheet-verify', '開始驗證 Google Sheet 寫入');
 
     try {
-      const response = await requestJsonp(this.getSheetRequestUrl('state', {
-        revision: this.sheetLastRevision || 0,
+      const response = await requestJsonp(buildSheetRequestUrl({
+        baseUrl: this.config.sheetWebAppUrl,
+        action: 'state',
+        projectKey: this.config.sheetProjectKey,
+        clientId: this.sheetClientId,
+        secret: this.config.sheetSecret,
+        extraParams: {
+          revision: this.sheetLastRevision || 0,
+        },
       }));
 
       if (!response?.document) {
@@ -1075,8 +1039,15 @@ class CloudSyncManager {
     this.updateStatusBadge('Sheet polling...');
 
     try {
-      const response = await requestJsonp(this.getSheetRequestUrl('state', {
-        revision: this.sheetLastRevision || 0,
+      const response = await requestJsonp(buildSheetRequestUrl({
+        baseUrl: this.config.sheetWebAppUrl,
+        action: 'state',
+        projectKey: this.config.sheetProjectKey,
+        clientId: this.sheetClientId,
+        secret: this.config.sheetSecret,
+        extraParams: {
+          revision: this.sheetLastRevision || 0,
+        },
       }));
 
       if (!response?.document) {
@@ -1162,7 +1133,13 @@ class CloudSyncManager {
     this.appendSyncLog('info', 'sheet-pull', '開始從 Google Sheet 拉回內容');
 
     try {
-      const response = await requestJsonp(this.getSheetRequestUrl('state'));
+      const response = await requestJsonp(buildSheetRequestUrl({
+        baseUrl: this.config.sheetWebAppUrl,
+        action: 'state',
+        projectKey: this.config.sheetProjectKey,
+        clientId: this.sheetClientId,
+        secret: this.config.sheetSecret,
+      }));
 
       if (!response?.document) {
         this.setStatus('error', 'Google Sheet 沒有找到內容，請先完成一次同步');
