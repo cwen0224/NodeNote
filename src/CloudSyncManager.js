@@ -43,6 +43,7 @@ import {
   cloneValue as clone,
   escapeHtml,
   formatClockStamp,
+  formatLogStamp,
   isPlainObject,
   isDeepEqual,
   normalizeWorkspaceSnapshot,
