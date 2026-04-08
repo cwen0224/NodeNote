@@ -38,10 +38,6 @@ import {
   buildSyncLogSummaryText,
 } from './core/cloudSyncLogView.js';
 import {
-  resolveCloudSyncBadgePresentation,
-  resolveCloudSyncDialogText,
-} from './core/cloudSyncPresentation.js';
-import {
   resolveCloudSyncFreshness,
 } from './core/cloudSyncFreshness.js';
 import {
@@ -50,6 +46,10 @@ import {
 import {
   resolveCloudSyncStateChange,
 } from './core/cloudSyncStatus.js';
+import {
+  applyCloudSyncBadgeView,
+  applyCloudSyncDialogView,
+} from './core/cloudSyncStatusView.js';
 import {
   buildDocumentFingerprint,
   buildFingerprint,
@@ -636,12 +636,7 @@ class CloudSyncManager {
   }
 
   updateStatusBadge(message = '', detail = '') {
-    if (!this.statusBadge) {
-      return;
-    }
-
-    this.statusBadge.classList.remove('is-idle', 'is-syncing', 'is-error', 'is-off');
-    const presentation = resolveCloudSyncBadgePresentation({
+    applyCloudSyncBadgeView(this.statusBadge, {
       provider: this.config.provider,
       isConfigReady: this.isConfigReady(),
       syncInFlight: this.syncInFlight,
@@ -650,17 +645,10 @@ class CloudSyncManager {
       message,
       detail,
     });
-    this.statusBadge.classList.add(presentation.className);
-    this.statusBadge.textContent = presentation.text;
-    this.statusBadge.title = presentation.title;
   }
 
   updateDialogStatus(message = '', detail = '') {
-    if (!this.statusText) {
-      return;
-    }
-
-    this.statusText.textContent = resolveCloudSyncDialogText({
+    applyCloudSyncDialogView(this.statusText, {
       provider: this.config.provider,
       isConfigReady: this.isConfigReady(),
       syncInFlight: this.syncInFlight,
