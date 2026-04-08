@@ -42,6 +42,9 @@ import {
   resolveCloudSyncDialogText,
 } from './core/cloudSyncPresentation.js';
 import {
+  resolveCloudSyncFreshness,
+} from './core/cloudSyncFreshness.js';
+import {
   resolveCloudSyncErrorMessage,
 } from './core/cloudSyncError.js';
 import {
@@ -951,6 +954,41 @@ class CloudSyncManager {
       if (remoteRevision <= (this.sheetLastRevision || 0)) {
         this.updateStatusBadge();
         this.updateDialogStatus();
+        return true;
+      }
+
+      const localSavedAt = persistenceManager.getStoredSnapshot()?.savedAt || this.state.lastSyncedAt || null;
+      const freshness = resolveCloudSyncFreshness({
+        localSavedAt,
+        remoteSavedAt: updatedAt,
+      });
+
+      if (!freshness.shouldApplyRemote) {
+        this.sheetLastRevision = remoteRevision;
+        this.sheetBaselineDocument = clone(remoteDocument);
+        applyCloudSyncStatePatch(this.state, {
+          lastRemoteRevision: remoteRevision,
+          lastSyncedAt: updatedAt || new Date().toISOString(),
+          clearLastError: true,
+        });
+        this.saveState();
+        this.setStatus(
+          'idle',
+          '本機內容較新，保留本機版本',
+          localSavedAt
+            ? `本機 ${localSavedAt} / 雲端 ${updatedAt || 'unknown'}`
+            : `雲端 ${updatedAt || 'unknown'}`
+        );
+        this.appendSyncLog(
+          'info',
+          'sheet-poll',
+          'Google Sheet 輪詢保留本機版本',
+          `local=${localSavedAt || 'unknown'} remote=${updatedAt || 'unknown'}`,
+          {
+            revision: remoteRevision,
+            winner: freshness.winner,
+          }
+        );
         return true;
       }
 
