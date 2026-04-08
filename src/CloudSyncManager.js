@@ -1083,6 +1083,40 @@ class CloudSyncManager {
         return false;
       }
 
+      const localSavedAt = persistenceManager.getStoredSnapshot()?.savedAt || this.state.lastSyncedAt || null;
+      const freshness = resolveCloudSyncFreshness({
+        localSavedAt,
+        remoteSavedAt: updatedAt,
+      });
+
+      if (!freshness.shouldApplyRemote) {
+        this.sheetBaselineDocument = clone(remoteDocument);
+        this.sheetLastRevision = remoteRevision;
+        applyCloudSyncStatePatch(this.state, {
+          lastRemoteRevision: this.sheetLastRevision,
+          clearLastError: true,
+        });
+        this.saveState();
+        this.setStatus(
+          'idle',
+          '本機內容較新，保留本機版本',
+          localSavedAt
+            ? `本機 ${localSavedAt} / 雲端 ${updatedAt || 'unknown'}`
+            : `雲端 ${updatedAt || 'unknown'}`
+        );
+        this.appendSyncLog(
+          'info',
+          'sheet-pull',
+          'Google Sheet 拉回保留本機版本',
+          `local=${localSavedAt || 'unknown'} remote=${updatedAt || 'unknown'}`,
+          {
+            revision: remoteRevision,
+            winner: freshness.winner,
+          }
+        );
+        return true;
+      }
+
       const previousPath = store.getCurrentDocumentPath();
       this.skipNextAutosave = true;
       store.replaceDocument(mergedDocument, { resetHistory: true, saveToHistory: false });
@@ -1338,6 +1372,32 @@ class CloudSyncManager {
       const snapshot = normalizeSnapshotFromText(remote.text);
       if (!snapshot) {
         throw new Error('雲端檔案不是有效的 NodeNote 快照');
+      }
+
+      const localSavedAt = persistenceManager.getStoredSnapshot()?.savedAt || this.state.lastSyncedAt || null;
+      const freshness = resolveCloudSyncFreshness({
+        localSavedAt,
+        remoteSavedAt: snapshot.savedAt,
+      });
+
+      if (!freshness.shouldApplyRemote) {
+        this.setStatus(
+          'idle',
+          '本機內容較新，保留本機版本',
+          localSavedAt
+            ? `本機 ${localSavedAt} / 雲端 ${snapshot.savedAt || 'unknown'}`
+            : `雲端 ${snapshot.savedAt || 'unknown'}`
+        );
+        this.appendSyncLog(
+          'info',
+          'github-pull',
+          'GitHub 拉回保留本機版本',
+          `local=${localSavedAt || 'unknown'} remote=${snapshot.savedAt || 'unknown'}`,
+          {
+            winner: freshness.winner,
+          }
+        );
+        return true;
       }
 
       this.skipNextAutosave = true;
