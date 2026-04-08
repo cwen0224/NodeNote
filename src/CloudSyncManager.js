@@ -29,17 +29,18 @@ import {
 } from './core/cloudSheetState.js';
 import { applyCloudSyncStatePatch } from './core/cloudSyncState.js';
 import {
+  buildSyncLogText,
+  createSyncLogEntry,
+  normalizeSyncLogEntry,
+} from './core/cloudSyncLog.js';
+import {
   buildDocumentFingerprint,
   buildFingerprint,
   cloneValue as clone,
-  compactLogText,
-  createLogId,
   escapeHtml,
   formatClockStamp,
-  formatLogStamp,
   isPlainObject,
   isDeepEqual,
-  normalizeLogLevel,
   normalizeWorkspaceSnapshot,
   readOrCreateClientId,
   sanitizeText as sanitizeString,
@@ -539,7 +540,7 @@ class CloudSyncManager {
       }
 
       return parsed
-        .map((entry) => this.normalizeLogEntry(entry))
+        .map((entry) => normalizeSyncLogEntry(entry))
         .filter(Boolean)
         .slice(0, MAX_SYNC_LOG_ENTRIES);
     } catch {
@@ -555,38 +556,13 @@ class CloudSyncManager {
     }
   }
 
-  normalizeLogEntry(entry) {
-    if (!isPlainObject(entry)) {
-      return null;
-    }
-
-    const at = typeof entry.at === 'string' ? entry.at : new Date().toISOString();
-    const level = normalizeLogLevel(entry.level);
-    const action = sanitizeString(entry.action, 'sync');
-    const message = sanitizeString(entry.message, '同步日誌');
-    const detail = compactLogText(entry.detail ?? entry.summary ?? entry.note ?? '');
-    const context = isPlainObject(entry.context) ? entry.context : {};
-
-    return {
-      id: sanitizeString(entry.id, createLogId()),
-      at,
+  appendSyncLog(level, action, message, detail = '', context = {}) {
+    const entry = createSyncLogEntry({
       level,
       action,
       message,
       detail,
       context,
-    };
-  }
-
-  appendSyncLog(level, action, message, detail = '', context = {}) {
-    const entry = this.normalizeLogEntry({
-      id: createLogId(),
-      at: new Date().toISOString(),
-      level,
-      action,
-      message,
-      detail,
-      context: isPlainObject(context) ? context : {},
     });
 
     if (!entry) {
@@ -640,27 +616,7 @@ class CloudSyncManager {
   }
 
   buildSyncLogText() {
-    if (!this.logEntries.length) {
-      return 'NodeNote 本機同步日誌目前是空的。';
-    }
-
-    return this.logEntries
-      .map((entry) => {
-        const parts = [
-          `[${formatLogStamp(entry.at)}]`,
-          entry.level.toUpperCase(),
-          entry.action,
-          entry.message,
-        ];
-        if (entry.detail) {
-          parts.push(`- ${entry.detail}`);
-        }
-        if (entry.context && Object.keys(entry.context).length > 0) {
-          parts.push(`context=${compactLogText(entry.context, 180)}`);
-        }
-        return parts.join(' ');
-      })
-      .join('\n');
+    return buildSyncLogText(this.logEntries);
   }
 
   async copySyncLogsToClipboard() {
