@@ -44,6 +44,7 @@ import {
   escapeHtml,
   formatClockStamp,
   formatLogStamp,
+  compactLogText,
   isPlainObject,
   isDeepEqual,
   normalizeWorkspaceSnapshot,
