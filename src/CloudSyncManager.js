@@ -34,6 +34,10 @@ import {
   normalizeSyncLogEntry,
 } from './core/cloudSyncLog.js';
 import {
+  resolveCloudSyncBadgePresentation,
+  resolveCloudSyncDialogText,
+} from './core/cloudSyncPresentation.js';
+import {
   buildDocumentFingerprint,
   buildFingerprint,
   cloneValue as clone,
@@ -44,7 +48,6 @@ import {
   normalizeWorkspaceSnapshot,
   readOrCreateClientId,
   sanitizeText as sanitizeString,
-  withLogHint,
 } from './core/cloudSyncUtils.js';
 
 const CONFIG_STORAGE_KEY = 'nodenote.cloudsync.config.v1';
@@ -657,47 +660,19 @@ class CloudSyncManager {
       return;
     }
 
-    const label = this.getProviderLabel();
     this.statusBadge.classList.remove('is-idle', 'is-syncing', 'is-error', 'is-off');
-    if (!this.isConfigReady()) {
-      this.statusBadge.classList.add('is-off');
-      this.statusBadge.textContent = `${label}: off`;
-      this.statusBadge.title = withLogHint(this.config.provider === 'sheets'
-        ? 'Google Sheet 同步未就緒'
-        : 'GitHub 備份未就緒');
-      return;
-    }
-
-    if (this.syncInFlight) {
-      this.statusBadge.classList.add('is-syncing');
-      this.statusBadge.textContent = `${label}: sync`;
-      this.statusBadge.title = withLogHint(this.config.provider === 'sheets'
-        ? 'Google Sheet 同步中'
-        : 'GitHub 備份同步中');
-      return;
-    }
-
-    if (this.state.lastError) {
-      this.statusBadge.classList.add('is-error');
-      this.statusBadge.textContent = `${label}: error`;
-      this.statusBadge.title = withLogHint(this.state.lastError);
-      return;
-    }
-
-    this.statusBadge.classList.add('is-idle');
-    if (this.state.lastSyncedAt) {
-      const stamp = formatClockStamp(this.state.lastSyncedAt);
-      this.statusBadge.textContent = `${label}: ${stamp}`;
-      this.statusBadge.title = withLogHint(detail || message || (this.config.provider === 'sheets'
-        ? `上次 Google Sheet 同步 ${stamp}`
-        : `上次 GitHub 備份 ${stamp}`));
-      return;
-    }
-
-    this.statusBadge.textContent = `${label}: ready`;
-    this.statusBadge.title = withLogHint(detail || message || (this.config.provider === 'sheets'
-      ? 'Google Sheet 同步已就緒'
-      : 'GitHub 備份已就緒'));
+    const presentation = resolveCloudSyncBadgePresentation({
+      provider: this.config.provider,
+      isConfigReady: this.isConfigReady(),
+      syncInFlight: this.syncInFlight,
+      lastError: this.state.lastError,
+      lastSyncedAt: this.state.lastSyncedAt,
+      message,
+      detail,
+    });
+    this.statusBadge.classList.add(presentation.className);
+    this.statusBadge.textContent = presentation.text;
+    this.statusBadge.title = presentation.title;
   }
 
   updateDialogStatus(message = '', detail = '') {
@@ -705,34 +680,16 @@ class CloudSyncManager {
       return;
     }
 
-    let text = '尚未設定同步。';
-    if (!this.isConfigReady()) {
-      text = this.config.provider === 'sheets'
-        ? '請填入 Google Sheet Web App URL / Project Key。'
-        : '請填入 GitHub Owner / Repository / Branch / Path / Token。';
-    } else if (this.syncInFlight) {
-      text = this.config.provider === 'sheets'
-        ? '正在同步 Google Sheet 內容...'
-        : '正在同步 GitHub 快照...';
-    } else if (this.state.lastError) {
-      text = `錯誤：${this.state.lastError}`;
-    } else if (this.state.lastSyncedAt) {
-      text = this.config.provider === 'sheets'
-        ? `上次 Google Sheet 同步：${formatClockStamp(this.state.lastSyncedAt)}`
-        : `上次同步：${formatClockStamp(this.state.lastSyncedAt)}`;
-    } else {
-      text = this.config.provider === 'sheets'
-        ? '已就緒，會輪詢 Google Sheet 並同步本機修改。'
-        : '已就緒，等下一次 autosave 就會同步。';
-    }
-
-    if (message && kindLabel(message) === 'error') {
-      text = detail ? `${message}：${detail}` : message;
-    } else if (message && this.syncInFlight) {
-      text = message;
-    }
-
-    this.statusText.textContent = text;
+    this.statusText.textContent = resolveCloudSyncDialogText({
+      provider: this.config.provider,
+      isConfigReady: this.isConfigReady(),
+      syncInFlight: this.syncInFlight,
+      lastError: this.state.lastError,
+      lastSyncedAt: this.state.lastSyncedAt,
+      message,
+      detail,
+      isMessageError: kindLabel(message) === 'error',
+    });
   }
 
   openDialog() {
