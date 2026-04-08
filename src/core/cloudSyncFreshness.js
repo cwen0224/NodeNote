@@ -54,9 +54,9 @@ export function resolveCloudSyncFreshness({
   result.deltaMs = deltaMs;
 
   if (Math.abs(deltaMs) <= Math.max(0, Number(toleranceMs) || 0)) {
-    result.winner = 'tie';
-    result.shouldApplyRemote = true;
-    result.reason = 'within-tolerance';
+    result.winner = deltaMs > 0 ? 'remote' : 'local';
+    result.shouldApplyRemote = false;
+    result.reason = deltaMs > 0 ? 'remote-within-tolerance' : 'local-within-tolerance';
     return result;
   }
 
