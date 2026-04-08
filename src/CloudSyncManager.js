@@ -27,7 +27,7 @@ import {
   mergeSheetRemoteDocument,
   normalizeSheetResponse,
 } from './core/cloudSheetState.js';
-import { applyCloudSyncStatePatch } from './core/cloudSyncState.js';
+import { commitCloudSyncStatePatch } from './core/cloudSyncStateCommit.js';
 import {
   buildSyncLogText,
   createSyncLogEntry,
@@ -532,8 +532,7 @@ class CloudSyncManager {
   }
 
   setStatus(kind, message, detail = '') {
-    applyCloudSyncStatePatch(this.state, resolveCloudSyncStateChange({ kind, message, detail }));
-    this.saveState();
+    commitCloudSyncStatePatch(this, resolveCloudSyncStateChange({ kind, message, detail }));
     this.refreshStatusViews(message, detail);
   }
 
@@ -770,13 +769,12 @@ class CloudSyncManager {
     const patch = createCollaborativePatch(baselineDocument, currentDocument);
     if (isCollaborativePatchEmpty(patch)) {
       const fingerprint = buildDocumentFingerprint(currentDocument);
-      applyCloudSyncStatePatch(
-        this.state,
+      commitCloudSyncStatePatch(
+        this,
         buildCloudSyncSuccessPatch({
           fingerprint,
         })
       );
-      this.saveState();
       this.updateStatusBadge('Sheet content unchanged');
       this.updateDialogStatus('Google Sheet 內容沒有變化。');
       this.appendSyncLog('info', 'sheet', 'Google Sheet 內容沒有變化', `revision=${this.sheetLastRevision || 0}`);
@@ -811,15 +809,14 @@ class CloudSyncManager {
       await postNoCors(requestUrl, payload);
 
       this.sheetBaselineDocument = clone(currentDocument);
-      applyCloudSyncStatePatch(
-        this.state,
+      commitCloudSyncStatePatch(
+        this,
         buildCloudSyncSuccessPatch({
           fingerprint: buildDocumentFingerprint(currentDocument),
           syncedAt: snapshot?.savedAt || new Date().toISOString(),
           syncCountDelta: 1,
         })
       );
-      this.saveState();
       this.setStatus('ok', 'Google Sheet 同步已送出', '等待背景輪詢確認');
       this.appendSyncLog('info', 'sheet', 'Google Sheet 同步已送出', `revision=${this.sheetLastRevision || 0}`, {
         savedAt: this.state.lastSyncedAt,
@@ -827,8 +824,7 @@ class CloudSyncManager {
       return true;
     } catch (error) {
       const message = this.getErrorMessage(error);
-      applyCloudSyncStatePatch(this.state, buildCloudSyncErrorPatch(message));
-      this.saveState();
+      commitCloudSyncStatePatch(this, buildCloudSyncErrorPatch(message));
       this.setStatus('error', message);
       this.appendSyncLog('error', 'sheet', 'Google Sheet 同步失敗', message, {
         status: error?.status || null,
@@ -882,15 +878,14 @@ class CloudSyncManager {
 
       this.sheetBaselineDocument = clone(remoteDocument);
       this.sheetLastRevision = remoteRevision;
-      applyCloudSyncStatePatch(
-        this.state,
+      commitCloudSyncStatePatch(
+        this,
         buildCloudSyncSuccessPatch({
           fingerprint: buildDocumentFingerprint(remoteDocument),
           syncedAt: updatedAt || new Date().toISOString(),
           remoteRevision: this.sheetLastRevision,
         })
       );
-      this.saveState();
       this.setStatus('ok', 'Google Sheet 驗證成功', `Revision ${this.sheetLastRevision || 0}`);
       this.appendSyncLog('success', 'sheet-verify', 'Google Sheet 驗證成功', `revision=${this.sheetLastRevision || 0}`, {
         savedAt: this.state.lastSyncedAt,
@@ -898,8 +893,7 @@ class CloudSyncManager {
       return true;
     } catch (error) {
       const message = this.getErrorMessage(error);
-      applyCloudSyncStatePatch(this.state, buildCloudSyncErrorPatch(message));
-      this.saveState();
+      commitCloudSyncStatePatch(this, buildCloudSyncErrorPatch(message));
       this.setStatus('error', message);
       this.appendSyncLog('error', 'sheet-verify', 'Google Sheet 驗證失敗', message, {
         status: error?.status || null,
@@ -958,14 +952,13 @@ class CloudSyncManager {
       if (!freshness.shouldApplyRemote) {
         this.sheetLastRevision = remoteRevision;
         this.sheetBaselineDocument = clone(remoteDocument);
-        applyCloudSyncStatePatch(
-          this.state,
+        commitCloudSyncStatePatch(
+          this,
           buildCloudSyncSuccessPatch({
             remoteRevision,
             syncedAt: updatedAt || new Date().toISOString(),
           })
         );
-        this.saveState();
         this.setStatus(
           'idle',
           '本機內容較新，保留本機版本',
@@ -987,14 +980,13 @@ class CloudSyncManager {
       }
 
       this.sheetLastRevision = remoteRevision;
-      applyCloudSyncStatePatch(
-        this.state,
+      commitCloudSyncStatePatch(
+        this,
         buildCloudSyncSuccessPatch({
           remoteRevision,
           syncedAt: updatedAt || new Date().toISOString(),
         })
       );
-      this.saveState();
 
       const currentDocument = store.getDocumentSnapshot();
       const previousPath = store.getCurrentDocumentPath();
@@ -1008,8 +1000,8 @@ class CloudSyncManager {
       }
 
       this.sheetBaselineDocument = clone(remoteDocument);
-      applyCloudSyncStatePatch(
-        this.state,
+      commitCloudSyncStatePatch(
+        this,
         buildCloudSyncSuccessPatch({
           fingerprint: buildDocumentFingerprint(mergedDocument),
         })
@@ -1031,8 +1023,7 @@ class CloudSyncManager {
       return true;
     } catch (error) {
       const message = this.getErrorMessage(error);
-      applyCloudSyncStatePatch(this.state, buildCloudSyncErrorPatch(message));
-      this.saveState();
+      commitCloudSyncStatePatch(this, buildCloudSyncErrorPatch(message));
       this.setStatus('error', message);
       this.appendSyncLog('error', 'sheet-poll', 'Google Sheet 輪詢失敗', message, {
         status: error?.status || null,
@@ -1089,13 +1080,12 @@ class CloudSyncManager {
       if (!freshness.shouldApplyRemote) {
         this.sheetBaselineDocument = clone(remoteDocument);
         this.sheetLastRevision = remoteRevision;
-        applyCloudSyncStatePatch(
-          this.state,
+        commitCloudSyncStatePatch(
+          this,
           buildCloudSyncSuccessPatch({
             remoteRevision: this.sheetLastRevision,
           })
         );
-        this.saveState();
         this.setStatus(
           'idle',
           '本機內容較新，保留本機版本',
@@ -1126,15 +1116,14 @@ class CloudSyncManager {
 
       this.sheetBaselineDocument = clone(remoteDocument);
       this.sheetLastRevision = remoteRevision;
-      applyCloudSyncStatePatch(
-        this.state,
+      commitCloudSyncStatePatch(
+        this,
         buildCloudSyncSuccessPatch({
           remoteRevision: this.sheetLastRevision,
           fingerprint: buildDocumentFingerprint(mergedDocument),
           syncedAt: updatedAt || new Date().toISOString(),
         })
       );
-      this.saveState();
       this.setStatus('ok', 'Google Sheet 拉回完成', `Revision ${this.sheetLastRevision || 0}`);
       this.appendSyncLog('success', 'sheet-pull', 'Google Sheet 拉回完成', `revision=${this.sheetLastRevision || 0}`, {
         savedAt: this.state.lastSyncedAt,
@@ -1142,8 +1131,7 @@ class CloudSyncManager {
       return true;
     } catch (error) {
       const message = this.getErrorMessage(error);
-      applyCloudSyncStatePatch(this.state, buildCloudSyncErrorPatch(message));
-      this.saveState();
+      commitCloudSyncStatePatch(this, buildCloudSyncErrorPatch(message));
       this.setStatus('error', message);
       this.appendSyncLog('error', 'sheet-pull', 'Google Sheet 拉回失敗', message, {
         status: error?.status || null,
@@ -1300,8 +1288,8 @@ class CloudSyncManager {
         remoteSha: remote?.sha || null,
       });
 
-      applyCloudSyncStatePatch(
-        this.state,
+      commitCloudSyncStatePatch(
+        this,
         buildCloudSyncSuccessPatch({
           fingerprint,
           remoteSha: response?.content?.sha || remote?.sha || null,
@@ -1309,7 +1297,6 @@ class CloudSyncManager {
           syncCountDelta: 1,
         })
       );
-      this.saveState();
       this.setStatus('ok', '雲端同步完成', `上次同步 ${formatClockStamp(this.state.lastSyncedAt)}`);
       this.appendSyncLog('success', 'github', 'GitHub 同步完成', `path=${this.config.path}`, {
         sha: this.state.lastRemoteSha || null,
@@ -1317,8 +1304,7 @@ class CloudSyncManager {
       return true;
     } catch (error) {
       const message = this.getErrorMessage(error);
-      applyCloudSyncStatePatch(this.state, buildCloudSyncErrorPatch(message));
-      this.saveState();
+      commitCloudSyncStatePatch(this, buildCloudSyncErrorPatch(message));
       this.setStatus('error', message);
       this.appendSyncLog('error', 'github', 'GitHub 同步失敗', message, {
         status: error?.status || null,
@@ -1419,15 +1405,14 @@ class CloudSyncManager {
       renderer.renderAll();
 
       const fingerprint = buildFingerprint(snapshot);
-      applyCloudSyncStatePatch(
-        this.state,
+      commitCloudSyncStatePatch(
+        this,
         buildCloudSyncSuccessPatch({
           fingerprint,
           remoteSha: remote.sha || null,
           syncedAt: snapshot.savedAt || new Date().toISOString(),
         })
       );
-      this.saveState();
       this.setStatus('ok', '雲端拉回完成', `上次同步 ${formatClockStamp(this.state.lastSyncedAt)}`);
       this.appendSyncLog('success', 'github-pull', 'GitHub 拉回完成', `path=${this.config.path}`, {
         sha: this.state.lastRemoteSha || null,
@@ -1435,8 +1420,7 @@ class CloudSyncManager {
       return true;
     } catch (error) {
       const message = this.getErrorMessage(error);
-      applyCloudSyncStatePatch(this.state, buildCloudSyncErrorPatch(message));
-      this.saveState();
+      commitCloudSyncStatePatch(this, buildCloudSyncErrorPatch(message));
       this.setStatus('error', message);
       this.appendSyncLog('error', 'github-pull', 'GitHub 拉回失敗', message, {
         status: error?.status || null,
