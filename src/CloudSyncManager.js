@@ -1,7 +1,7 @@
 import { renderer } from './Renderer.js';
 import { persistenceManager } from './PersistenceManager.js';
 import { store } from './StateStore.js';
-import { createDefaultDocument, normalizeDocument } from './core/documentSchema.js';
+import { createDefaultDocument } from './core/documentSchema.js';
 import {
   applyCollaborativePatch,
   createCollaborativePatch,
@@ -23,6 +23,10 @@ import {
   resolveSheetClientName,
   resolveSheetPollIntervalMs,
 } from './core/cloudSheetTransport.js';
+import {
+  mergeSheetRemoteDocument,
+  normalizeSheetResponse,
+} from './core/cloudSheetState.js';
 import {
   buildDocumentFingerprint,
   buildFingerprint,
@@ -969,21 +973,24 @@ class CloudSyncManager {
         },
       }));
 
-      if (!response?.document) {
+      const { remoteDocument, remoteRevision, updatedAt } = normalizeSheetResponse(response, {
+        fallbackRevision: this.sheetLastRevision || 0,
+      });
+
+      if (!remoteDocument) {
         throw new Error('驗證失敗：讀回不到 Google Sheet 內容');
       }
 
-      const remoteDocument = normalizeDocument(response.document);
       const localDocument = store.getDocumentSnapshot();
       if (!isDeepEqual(remoteDocument, localDocument)) {
         throw new Error('驗證失敗：Sheet 讀回內容與本機不同步');
       }
 
       this.sheetBaselineDocument = clone(remoteDocument);
-      this.sheetLastRevision = Number.isFinite(response.revision) ? response.revision : this.sheetLastRevision;
+      this.sheetLastRevision = remoteRevision;
       this.state.lastRemoteRevision = this.sheetLastRevision;
       this.state.lastFingerprint = buildDocumentFingerprint(remoteDocument);
-      this.state.lastSyncedAt = response?.updatedAt || new Date().toISOString();
+      this.state.lastSyncedAt = updatedAt || new Date().toISOString();
       this.state.lastError = null;
       this.saveState();
       this.setStatus('ok', 'Google Sheet 驗證成功', `Revision ${this.sheetLastRevision || 0}`);
@@ -1027,31 +1034,30 @@ class CloudSyncManager {
         },
       }));
 
-      if (!response?.document) {
+      const { remoteDocument, remoteRevision, updatedAt, localPatch, mergedDocument, hasLocalChanges } =
+        mergeSheetRemoteDocument({
+          response,
+          baselineDocument: this.sheetBaselineDocument || createDefaultDocument(),
+          currentDocument: store.getDocumentSnapshot(),
+        });
+
+      if (!remoteDocument) {
         return false;
       }
 
-      const remoteRevision = Number.isFinite(response.revision) ? response.revision : 0;
       if (remoteRevision <= (this.sheetLastRevision || 0)) {
         this.updateStatusBadge();
         this.updateDialogStatus();
         return true;
       }
 
-      const remoteDocument = normalizeDocument(response.document);
-      const currentDocument = store.getDocumentSnapshot();
-      const baselineDocument = this.sheetBaselineDocument || createDefaultDocument();
-      const localPatch = createCollaborativePatch(baselineDocument, currentDocument);
-      const mergedDocument = isCollaborativePatchEmpty(localPatch)
-        ? remoteDocument
-        : applyCollaborativePatch(remoteDocument, localPatch);
-
       this.sheetLastRevision = remoteRevision;
       this.state.lastRemoteRevision = remoteRevision;
-      this.state.lastSyncedAt = response?.updatedAt || new Date().toISOString();
+      this.state.lastSyncedAt = updatedAt || new Date().toISOString();
       this.state.lastError = null;
       this.saveState();
 
+      const currentDocument = store.getDocumentSnapshot();
       const previousPath = store.getCurrentDocumentPath();
       if (!isDeepEqual(currentDocument, mergedDocument)) {
         this.skipNextAutosave = true;
@@ -1069,7 +1075,7 @@ class CloudSyncManager {
         savedAt: this.state.lastSyncedAt,
       });
 
-      if (!isCollaborativePatchEmpty(localPatch) && this.config.autoSync) {
+      if (hasLocalChanges && this.config.autoSync) {
         this.queueSync({
           schema: 'nodenote.sheet.cocollab',
           version: CLOUD_SYNC_VERSION,
@@ -1118,19 +1124,17 @@ class CloudSyncManager {
         secret: this.config.sheetSecret,
       }));
 
-      if (!response?.document) {
+      const { remoteDocument, remoteRevision, updatedAt, mergedDocument } = mergeSheetRemoteDocument({
+        response,
+        baselineDocument: this.sheetBaselineDocument || createDefaultDocument(),
+        currentDocument: store.getDocumentSnapshot(),
+      });
+
+      if (!remoteDocument) {
         this.setStatus('error', 'Google Sheet 沒有找到內容，請先完成一次同步');
         this.appendSyncLog('error', 'sheet-pull', 'Google Sheet 拉回失敗', 'Google Sheet 沒有找到內容，請先完成一次同步');
         return false;
       }
-
-      const remoteDocument = normalizeDocument(response.document);
-      const currentDocument = store.getDocumentSnapshot();
-      const baselineDocument = this.sheetBaselineDocument || createDefaultDocument();
-      const localPatch = createCollaborativePatch(baselineDocument, currentDocument);
-      const mergedDocument = isCollaborativePatchEmpty(localPatch)
-        ? remoteDocument
-        : applyCollaborativePatch(remoteDocument, localPatch);
 
       const previousPath = store.getCurrentDocumentPath();
       this.skipNextAutosave = true;
@@ -1141,10 +1145,10 @@ class CloudSyncManager {
       renderer.renderAll();
 
       this.sheetBaselineDocument = clone(remoteDocument);
-      this.sheetLastRevision = Number.isFinite(response.revision) ? response.revision : this.sheetLastRevision;
+      this.sheetLastRevision = remoteRevision;
       this.state.lastRemoteRevision = this.sheetLastRevision;
       this.state.lastFingerprint = buildDocumentFingerprint(mergedDocument);
-      this.state.lastSyncedAt = response?.updatedAt || new Date().toISOString();
+      this.state.lastSyncedAt = updatedAt || new Date().toISOString();
       this.state.lastError = null;
       this.saveState();
       this.setStatus('ok', 'Google Sheet 拉回完成', `Revision ${this.sheetLastRevision || 0}`);

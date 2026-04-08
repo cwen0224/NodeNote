@@ -40,6 +40,11 @@
   - Move pointer gestures and keyboard shortcuts toward a command dispatch layer.
   - Avoid having `InputController.js` directly own both gesture state and document state changes.
 
+- Split sync submit from verification
+  - Status: todo
+  - Separate the fast button-driven `syncNow()` path from the diagnostic `syncAndVerifyNow()` path.
+  - Keep user-initiated sync lightweight, and move readback / verification into an explicit diagnostic action.
+
 - Retire compatibility view after migration
   - Status: todo
   - Keep `state` compatibility only until old call sites are migrated.
