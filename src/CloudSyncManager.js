@@ -34,6 +34,10 @@ import {
   normalizeSyncLogEntry,
 } from './core/cloudSyncLog.js';
 import {
+  buildSyncLogListHtml,
+  buildSyncLogSummaryText,
+} from './core/cloudSyncLogView.js';
+import {
   resolveCloudSyncBadgePresentation,
   resolveCloudSyncDialogText,
 } from './core/cloudSyncPresentation.js';
@@ -43,8 +47,6 @@ import {
   cloneValue as clone,
   escapeHtml,
   formatClockStamp,
-  formatLogStamp,
-  compactLogText,
   isPlainObject,
   isDeepEqual,
   normalizeWorkspaceSnapshot,
@@ -582,42 +584,14 @@ class CloudSyncManager {
 
   renderSyncLogs() {
     if (this.logSummary) {
-      const count = this.logEntries.length;
-      const latest = this.logEntries[0];
-      this.logSummary.textContent = count > 0
-        ? `${count} 筆，最新 ${formatLogStamp(latest?.at)} ${compactLogText(latest?.message, 48)}`
-        : '尚未記錄任何同步日誌。';
+      this.logSummary.textContent = buildSyncLogSummaryText(this.logEntries);
     }
 
     if (!this.logList) {
       return;
     }
 
-    if (!this.logEntries.length) {
-      this.logList.innerHTML = '<div class="cloud-sync-log-empty">目前沒有本機同步日誌。</div>';
-      return;
-    }
-
-    this.logList.innerHTML = this.logEntries
-      .map((entry) => {
-        const detail = entry.detail ? `<div class="cloud-sync-log-detail">${escapeHtml(entry.detail)}</div>` : '';
-        const context = entry.context && Object.keys(entry.context).length > 0
-          ? `<div class="cloud-sync-log-context">${escapeHtml(compactLogText(entry.context, 160))}</div>`
-          : '';
-        return `
-          <article class="cloud-sync-log-item is-${escapeHtml(entry.level)}">
-            <div class="cloud-sync-log-top">
-              <span class="cloud-sync-log-time">${escapeHtml(formatLogStamp(entry.at))}</span>
-              <span class="cloud-sync-log-level">${escapeHtml(entry.level.toUpperCase())}</span>
-              <span class="cloud-sync-log-action">${escapeHtml(entry.action)}</span>
-            </div>
-            <div class="cloud-sync-log-message">${escapeHtml(entry.message)}</div>
-            ${detail}
-            ${context}
-          </article>
-        `;
-      })
-      .join('');
+    this.logList.innerHTML = buildSyncLogListHtml(this.logEntries);
   }
 
   buildSyncLogText() {
