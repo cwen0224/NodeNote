@@ -48,6 +48,9 @@ import {
   resolveCloudSyncErrorMessage,
 } from './core/cloudSyncError.js';
 import {
+  resolveCloudSyncStateChange,
+} from './core/cloudSyncStatus.js';
+import {
   buildDocumentFingerprint,
   buildFingerprint,
   cloneValue as clone,
@@ -525,17 +528,12 @@ class CloudSyncManager {
   }
 
   setStatus(kind, message, detail = '') {
-    this.state.status = kind;
-    this.state.lastError = kind === 'error' ? message : null;
-    if (kind !== 'error' && detail) {
-      this.state.lastError = null;
-    }
-
-    if (kind === 'ok') {
-      this.state.lastSyncedAt = new Date().toISOString();
-    }
-
+    applyCloudSyncStatePatch(this.state, resolveCloudSyncStateChange({ kind, message, detail }));
     this.saveState();
+    this.refreshStatusViews(message, detail);
+  }
+
+  refreshStatusViews(message = '', detail = '') {
     this.updateStatusBadge(message, detail);
     this.updateDialogStatus(message, detail);
   }
