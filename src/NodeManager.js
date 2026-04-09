@@ -12,6 +12,7 @@ import {
   createUniqueParamKey,
   deepClone,
   getNodeLabel,
+  isDumiNodeId,
   isPlainObject,
 } from './core/connectionData.js';
 
@@ -752,6 +753,9 @@ class NodeManager {
   updateNodeContent(id, content) {
     const entity = store.getEntityById?.(id);
     if (entity) {
+      if (isDumiNodeId(entity.id)) {
+        return false;
+      }
       entity.content = content;
       if (entity.type === 'folder') {
         entity.summary = content;

@@ -1,4 +1,5 @@
 import { NODE_MAX_SIDE, NODE_MIN_SIDE, resolveNodeSize } from './nodeSizing.js';
+import { isDumiNodeId } from './connectionData.js';
 
 export const GRAPH_FRAGMENT_SCHEMA = 'nodenote.graph.fragment';
 export const GRAPH_DOCUMENT_SCHEMA = 'nodenote.graph.document';
@@ -79,6 +80,9 @@ export function normalizeNodeMap(inputNodes = {}) {
     node.id = nodeId;
     node.x = position.x;
     node.y = position.y;
+    if (isDumiNodeId(nodeId)) {
+      node.content = '';
+    }
     if (!isPlainObject(node.params)) {
       node.params = {};
     }

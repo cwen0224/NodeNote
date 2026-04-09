@@ -1,4 +1,5 @@
 import { resolveNodeSize } from './nodeSizing.js';
+import { isDumiNodeId } from './connectionData.js';
 
 export const DOCUMENT_SCHEMA_VERSION = '2.0.0';
 export const ROOT_FOLDER_ID = 'folder_root';
@@ -217,7 +218,7 @@ function normalizeNodeRecord(node = {}, folderId = ROOT_FOLDER_ID) {
   next.title = normalizeString(next.title, '');
   next.x = normalizeNumber(next.x, 0);
   next.y = normalizeNumber(next.y, 0);
-  next.content = normalizeString(next.content, '');
+  next.content = isDumiNodeId(next.id) ? '' : normalizeString(next.content, '');
   next.params = isPlainObject(next.params) ? next.params : {};
   next.assets = normalizeAssetList(next.assets);
   next.tags = Array.isArray(next.tags) ? clone(next.tags) : [];

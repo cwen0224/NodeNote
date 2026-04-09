@@ -21,7 +21,7 @@ import {
   buildRoundedOrthogonalPath as buildRoundedOrthogonalPathFromPoints,
   selectOrthogonalRoute,
 } from './core/connectionGeometry.js';
-import { resolveConnectionPortSides } from './core/connectionData.js';
+import { isDumiNodeId, resolveConnectionPortSides } from './core/connectionData.js';
 
 class Renderer {
   constructor() {
@@ -506,10 +506,11 @@ class Renderer {
   createNodeElement(node) {
     const div = document.createElement('div');
     const isFolderNode = node.type === 'folder';
+    const isDumiNode = isDumiNodeId(node?.id);
     const nodeLabel = this.getNodeLabel(node) || node.id;
     const folderTheme = isFolderNode ? getFolderTheme(node.depth ?? (store.getCurrentDepth?.() ?? 0)) : null;
 
-    div.className = `node glass-panel${isFolderNode ? ' is-folder' : ''}`;
+    div.className = `node glass-panel${isFolderNode ? ' is-folder' : ''}${isDumiNode ? ' is-dumi' : ''}`;
     div.dataset.id = node.id;
     div.dataset.type = node.type || 'note';
     if (isFolderNode && folderTheme) {
@@ -538,6 +539,20 @@ class Renderer {
         <div class="port left"></div>
         <div class="port right"></div>
       `;
+    } else if (isDumiNode) {
+      div.innerHTML = `
+        <div class="node-header">
+          <span class="node-id" title="${this.escapeHtml(nodeLabel)}">${this.escapeHtml(nodeLabel)}</span>
+          <div class="node-header-actions">
+            <button class="node-rename-btn" type="button" aria-label="編輯名稱">Aa</button>
+          </div>
+        </div>
+        <button class="node-delete-btn" type="button" aria-label="刪除節點">×</button>
+        <div class="port top"></div>
+        <div class="port bottom"></div>
+        <div class="port left"></div>
+        <div class="port right"></div>
+      `;
     } else {
       div.innerHTML = `
         <div class="node-header">
@@ -560,7 +575,7 @@ class Renderer {
     const content = div.querySelector('.node-content');
     const titleEl = div.querySelector('.node-id');
     if (content) {
-      content.textContent = node.content ?? '';
+      content.textContent = isDumiNode ? '' : (node.content ?? '');
     }
     this.applyNodeSizing(div, node);
 
@@ -578,7 +593,7 @@ class Renderer {
     };
 
     const focusContent = () => {
-      if (!content || isFolderNode) {
+      if (!content || isFolderNode || isDumiNode) {
         return;
       }
 
@@ -595,7 +610,7 @@ class Renderer {
       selection?.addRange(range);
     };
 
-    if (content && !isFolderNode) {
+    if (content && !isFolderNode && !isDumiNode) {
       content.addEventListener('wheel', (e) => {
         const canScrollY = content.scrollHeight > content.clientHeight + 1;
         if (!canScrollY) {

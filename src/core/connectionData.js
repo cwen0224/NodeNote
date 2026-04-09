@@ -6,6 +6,10 @@ export function deepClone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+export function isDumiNodeId(id) {
+  return typeof id === 'string' && id.startsWith('dumi_');
+}
+
 export function getNodeLabel(node) {
   if (!node || typeof node !== 'object') {
     return '';

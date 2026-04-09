@@ -1,3 +1,5 @@
+import { isDumiNodeId } from './connectionData.js';
+
 export const NODE_MIN_SIDE = 260;
 export const NODE_MAX_SIDE = 448;
 export const NODE_FOLDER_MIN_SIDE = 320;
@@ -25,7 +27,21 @@ function getNodeContent(node = {}) {
     return '';
   }
 
+  if (isDumiNodeId(node.id)) {
+    return '';
+  }
+
   return typeof node.content === 'string' ? node.content : '';
+}
+
+function getDumiNodeText(node = {}) {
+  if (!isPlainObject(node)) {
+    return '';
+  }
+
+  return [node.title, node.id]
+    .map((value) => (typeof value === 'string' ? value.trim() : ''))
+    .find((value) => value.length > 0) || '';
 }
 
 function getFolderNodeText(node = {}) {
@@ -103,7 +119,8 @@ export function estimateNodeSquareSize(content = '', {
 
 export function resolveNodeSize(node = {}, options = {}) {
   const isFolder = isPlainObject(node) && node.type === 'folder';
-  const content = isFolder ? getFolderNodeText(node) : getNodeContent(node);
+  const isDumi = isDumiNodeId(node?.id);
+  const content = isFolder ? getFolderNodeText(node) : (isDumi ? getDumiNodeText(node) : getNodeContent(node));
   const minSide = options.minSide ?? (isFolder ? NODE_FOLDER_MIN_SIDE : NODE_MIN_SIDE);
   const maxSide = options.maxSide ?? (isFolder ? NODE_FOLDER_MAX_SIDE : NODE_MAX_SIDE);
   if (content.length > 0) {
