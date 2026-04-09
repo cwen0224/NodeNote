@@ -130,6 +130,7 @@ class CloudSyncManager {
     this.sheetPollInFlight = false;
     this.pendingSnapshot = null;
     this.skipNextAutosave = false;
+    this.sheetHydrationState = 'ready';
     this.initialized = false;
     this.boundAutosave = this.handleAutosave.bind(this);
     this.sheetClientId = readOrCreateClientId();
@@ -161,9 +162,12 @@ class CloudSyncManager {
       );
 
     if (shouldAutoRestore) {
+      this.sheetHydrationState = 'pending';
       queueMicrotask(() => {
         this.pullNow({ skipConfirm: true, silentOnMissing: true });
       });
+    } else if (this.config.provider === 'sheets' && this.isConfigReady()) {
+      this.sheetHydrationState = 'ready';
     }
     this.initialized = true;
   }
@@ -802,7 +806,19 @@ class CloudSyncManager {
       return false;
     }
 
+    if (this.sheetHydrationState === 'pending') {
+      this.setStatus('idle', '等待 Google Sheet 初始內容');
+      this.appendSyncLog('info', 'sheet', '暫停同步', '等待 Google Sheet 初始內容完成');
+      return false;
+    }
+
     const currentDocument = snapshot?.document ? snapshot.document : store.getDocumentSnapshot();
+    if (isEffectivelyEmptyDocument(currentDocument)) {
+      this.setStatus('idle', '空白內容暫不同步');
+      this.appendSyncLog('info', 'sheet', '略過空白同步', '空白內容不會覆蓋 Google Sheet');
+      return false;
+    }
+
     const baselineDocument = this.sheetBaselineDocument || createDefaultDocument();
     const patch = createCollaborativePatch(baselineDocument, currentDocument);
     if (isCollaborativePatchEmpty(patch)) {
@@ -960,6 +976,10 @@ class CloudSyncManager {
       return false;
     }
 
+    if (this.sheetHydrationState === 'pending') {
+      return false;
+    }
+
     this.sheetPollInFlight = true;
     this.updateStatusBadge('Sheet polling...');
 
@@ -1114,6 +1134,7 @@ class CloudSyncManager {
       });
 
       if (!remoteDocument) {
+        this.sheetHydrationState = 'missing';
         if (silentOnMissing) {
           this.setStatus('idle', 'Google Sheet 尚未有內容');
           this.appendSyncLog('info', 'sheet-pull', 'Google Sheet 尚無內容', '保留目前工作區');
@@ -1226,6 +1247,19 @@ class CloudSyncManager {
     if (!this.config.autoSync || !this.isConfigReady()) {
       this.updateStatusBadge();
       return;
+    }
+
+    if (this.config.provider === 'sheets') {
+      if (this.sheetHydrationState === 'pending') {
+        this.updateStatusBadge('Sheet hydrate...');
+        this.updateDialogStatus('正在等待 Google Sheet 初始內容...');
+        return;
+      }
+
+      if (isEffectivelyEmptyDocument(snapshot.document)) {
+        this.updateStatusBadge('Sheet idle');
+        return;
+      }
     }
 
     const fingerprint = this.config.provider === 'sheets'
@@ -1419,12 +1453,13 @@ class CloudSyncManager {
       }
 
       const localSavedAt = persistenceManager.getStoredSnapshot()?.savedAt || this.state.lastSyncedAt || null;
+      const bootstrapHydration = this.sheetHydrationState === 'pending';
       const freshness = resolveCloudSyncFreshness({
         localSavedAt,
         remoteSavedAt: snapshot.savedAt,
       });
 
-      if (!freshness.shouldApplyRemote) {
+      if (!bootstrapHydration && !freshness.shouldApplyRemote) {
         this.setStatus(
           'idle',
           '本機內容較新，保留本機版本',
@@ -1462,6 +1497,7 @@ class CloudSyncManager {
       }
 
       renderer.renderAll();
+      this.sheetHydrationState = 'ready';
 
       const fingerprint = buildFingerprint(snapshot);
       finishCloudSyncSuccess(this, {
