@@ -30,6 +30,11 @@ class NodeManager {
     this.dragOffset = { x: 0, y: 0 };
     this.dragPointerId = null;
     this.contentTimeout = null;
+    this.touchTapState = {
+      lastTapAt: 0,
+      lastTapNodeId: null,
+      timer: null,
+    };
   }
 
   getNodeBounds(nodes = {}, nodeIds = []) {
@@ -299,6 +304,44 @@ class NodeManager {
       merged = this.tryMergeDraggedDumiOnRelease(releaseEvent, draggedNodeId);
     }
 
+    const isTouchRelease = isTouchLikePointer(releaseEvent);
+    if (isTouchRelease && !merged && typeof draggedNodeId === 'string' && this.dragStartPointer && Number.isFinite(releaseEvent?.clientX) && Number.isFinite(releaseEvent?.clientY)) {
+      const { scale } = store.getTransform();
+      const releasePoint = {
+        x: releaseEvent.clientX / scale,
+        y: releaseEvent.clientY / scale,
+      };
+      const movedDistance = Math.hypot(
+        releasePoint.x - this.dragStartPointer.x,
+        releasePoint.y - this.dragStartPointer.y,
+      );
+      if (movedDistance <= 16) {
+        const now = performance.now();
+        const isDoubleTap = this.touchTapState.lastTapNodeId === draggedNodeId && (now - this.touchTapState.lastTapAt) <= 360;
+        if (this.touchTapState.timer) {
+          window.clearTimeout(this.touchTapState.timer);
+          this.touchTapState.timer = null;
+        }
+        if (isDoubleTap) {
+          this.touchTapState.lastTapAt = 0;
+          this.touchTapState.lastTapNodeId = null;
+          this.activateTouchNodeEdit(draggedNodeId);
+        } else {
+          this.touchTapState.lastTapAt = now;
+          this.touchTapState.lastTapNodeId = draggedNodeId;
+          this.touchTapState.timer = window.setTimeout(() => {
+            if (this.touchTapState.lastTapNodeId === draggedNodeId) {
+              this.touchTapState.lastTapAt = 0;
+              this.touchTapState.lastTapNodeId = null;
+            }
+            this.touchTapState.timer = null;
+          }, 420);
+        }
+      } else {
+        this.resetTouchTapState();
+      }
+    }
+
     this.isDraggingNode = false;
     this.dragSelectionIds.forEach((id) => {
       const nodeEl = document.querySelector(`.node[data-id="${id}"]`);
@@ -314,6 +357,48 @@ class NodeManager {
     }
 
     return merged;
+  }
+
+  activateTouchNodeEdit(nodeId) {
+    if (typeof nodeId !== 'string' || !nodeId) {
+      return false;
+    }
+
+    const nodeEl = document.querySelector(`.node[data-id="${nodeId}"]`);
+    if (!nodeEl) {
+      return false;
+    }
+
+    const contentEl = nodeEl.querySelector?.('.node-content');
+    if (contentEl && !nodeEl.classList.contains('is-folder') && !nodeEl.classList.contains('is-dumi')) {
+      contentEl.dispatchEvent(new MouseEvent('dblclick', {
+        bubbles: true,
+        cancelable: true,
+        view: window,
+      }));
+      return true;
+    }
+
+    const titleEl = nodeEl.querySelector?.('.node-id');
+    if (titleEl) {
+      titleEl.dispatchEvent(new MouseEvent('dblclick', {
+        bubbles: true,
+        cancelable: true,
+        view: window,
+      }));
+      return true;
+    }
+
+    return false;
+  }
+
+  resetTouchTapState() {
+    if (this.touchTapState.timer) {
+      window.clearTimeout(this.touchTapState.timer);
+    }
+    this.touchTapState.lastTapAt = 0;
+    this.touchTapState.lastTapNodeId = null;
+    this.touchTapState.timer = null;
   }
 
   getNodeElementAtPoint(clientX, clientY, excludedIds = []) {

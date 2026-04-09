@@ -615,6 +615,10 @@ button:hover {
   border-radius: 8px;
   overflow: visible;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .node.is-selected {
@@ -644,7 +648,6 @@ button:hover {
   border: 1px solid rgba(88, 166, 255, 0.46);
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.03), 0 12px 26px rgba(0, 0, 0, 0.42);
   gap: 0;
-  user-select: none;
 }
 
 .node.is-dumi .dumi-node-face {
@@ -663,7 +666,6 @@ button:hover {
   font-weight: 700;
   letter-spacing: 0.01em;
   cursor: grab;
-  user-select: none;
   pointer-events: none;
 }
 
@@ -718,6 +720,8 @@ button:hover {
   line-height: 1;
   opacity: 0.88;
   transition: transform 0.14s ease, background 0.14s ease, color 0.14s ease, opacity 0.14s ease;
+  touch-action: none;
+  -webkit-touch-callout: none;
 }
 
 .node-folder-open-btn:hover,
@@ -767,6 +771,10 @@ button:hover {
 
 .node-title-editable {
   cursor: text;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .node-title-editable:hover {
@@ -789,11 +797,15 @@ button:hover {
   scrollbar-gutter: stable;
   scrollbar-width: thin;
   scrollbar-color: rgba(148, 163, 184, 0.42) rgba(255, 255, 255, 0.04);
+  touch-action: none;
 }
 
 .node-content[contenteditable="false"] {
   user-select: none;
   cursor: grab;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
 }
 
 .node.is-scrollable .node-content[contenteditable="false"] {
@@ -803,6 +815,9 @@ button:hover {
 .node-content[contenteditable="true"] {
   user-select: text;
   cursor: text;
+  touch-action: manipulation;
+  -webkit-user-select: text;
+  -webkit-touch-callout: default;
 }
 
 .node-content::-webkit-scrollbar {
@@ -860,6 +875,8 @@ button:hover {
   line-height: 1;
   opacity: 0.72;
   transition: transform 0.14s ease, background 0.14s ease, color 0.14s ease, opacity 0.14s ease;
+  touch-action: none;
+  -webkit-touch-callout: none;
 }
 
 .node-edit-btn:hover,
@@ -902,6 +919,8 @@ button:hover {
   transform-origin: center;
   transition: transform 0.14s ease, filter 0.14s ease, opacity 0.14s ease, background 0.14s ease;
   box-shadow: 0 4px 12px rgba(248, 113, 113, 0.14);
+  touch-action: none;
+  -webkit-touch-callout: none;
 }
 
 .node-delete-btn:hover {
@@ -1036,6 +1055,8 @@ button:hover {
   filter: blur(0.2px) saturate(0.95);
   transform: scale(0.4);
   pointer-events: none;
+  touch-action: none;
+  -webkit-touch-callout: none;
 }
 
 .port::before {
