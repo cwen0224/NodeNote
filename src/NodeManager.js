@@ -658,6 +658,14 @@ class NodeManager {
       return false;
     }
 
+    const deletedEntities = new Map();
+    uniqueIds.forEach((id) => {
+      const entity = store.getEntityById?.(id) || currentDocument.nodes[id] || currentDocument.folders?.[id];
+      if (entity) {
+        deletedEntities.set(id, deepClone(entity));
+      }
+    });
+
     uniqueIds.forEach((id) => {
       const entity = store.getEntityById?.(id) || currentDocument.nodes[id];
       if (entity?.type === 'folder') {
@@ -681,6 +689,23 @@ class NodeManager {
       Object.entries(node.params).forEach(([key, linkValue]) => {
         const targetId = typeof linkValue === 'string' ? linkValue : linkValue?.targetId;
         if (uniqueIds.includes(targetId)) {
+          if (node && !uniqueIds.includes(node.id)) {
+            const deletedTarget = deletedEntities.get(targetId);
+            const deletedSize = resolveNodeSize(deletedTarget);
+            const orphanedTargetCenter = {
+              x: (deletedTarget?.x || 0) + (deletedSize.width / 2),
+              y: (deletedTarget?.y || 0) + (deletedSize.height / 2),
+            };
+            node.params[key] = {
+              ...(isPlainObject(linkValue) ? linkValue : {}),
+              targetId: null,
+              orphanedTargetId: targetId,
+              orphanedTargetCenter,
+              orphanedTargetLabel: getNodeLabel(deletedTarget),
+            };
+            changed = true;
+            return;
+          }
           delete node.params[key];
           changed = true;
         }

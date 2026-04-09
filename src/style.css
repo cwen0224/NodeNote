@@ -1123,6 +1123,32 @@ button:hover {
   stroke: rgba(88, 166, 255, 0.42);
 }
 
+.connection-reconnect-port {
+  cursor: crosshair;
+  pointer-events: auto;
+}
+
+.connection-reconnect-port-hit {
+  fill: transparent;
+  stroke: transparent;
+}
+
+.connection-reconnect-port-dot {
+  fill: rgba(96, 165, 250, 0.96);
+  stroke: rgba(15, 23, 42, 0.34);
+  stroke-width: 0.75;
+}
+
+.connection-label-group.is-orphaned .connection-label-box {
+  fill: rgba(30, 41, 59, 0.9);
+  stroke: rgba(96, 165, 250, 0.72);
+  stroke-dasharray: 4 3;
+}
+
+.connection-label-group.is-orphaned .connection-label {
+  fill: rgba(219, 234, 254, 0.98);
+}
+
 .temp-path {
   stroke: var(--text-muted);
   stroke-dasharray: 5, 5;

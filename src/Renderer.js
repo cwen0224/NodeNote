@@ -703,20 +703,40 @@ class Renderer {
         const sourcePortSide = typeof linkValue === 'string' ? 'right' : linkValue?.sourcePort || 'right';
         const targetPortSide = typeof linkValue === 'string' ? 'left' : linkValue?.targetPort || 'left';
         const targetNode = store.state.nodes[targetId];
-        if (targetNode) {
-          const sourceRect = this.getNodeWorldRect(sourceNode.id);
-          const targetRect = this.getNodeWorldRect(targetNode.id);
-          const resolvedSides = resolveConnectionPortSides(sourceRect, targetRect, sourcePortSide, targetPortSide);
-          const effectiveSourceSide = resolvedSides.sourcePortSide;
-          const effectiveTargetSide = resolvedSides.targetPortSide;
-          const sourcePoint = this.getPortWorldPoint(sourceNode.id, effectiveSourceSide) || this.getNodeCenterWorldPoint(sourceNode);
-          const targetPoint = this.getPortWorldPoint(targetNode.id, effectiveTargetSide) || this.getNodeCenterWorldPoint(targetNode);
-          const sX = sourcePoint.x;
-          const sY = sourcePoint.y;
-          const tX = targetPoint.x;
-          const tY = targetPoint.y;
-          this.drawOrthogonalPath(sX, sY, tX, tY, key, sourceNode.id, targetNode.id, effectiveSourceSide, effectiveTargetSide, sourceRect, targetRect);
-        }
+        const sourceRect = this.getNodeWorldRect(sourceNode.id);
+        const targetRect = targetNode ? this.getNodeWorldRect(targetNode.id) : null;
+        const resolvedSides = resolveConnectionPortSides(sourceRect, targetRect, sourcePortSide, targetPortSide);
+        const effectiveSourceSide = resolvedSides.sourcePortSide;
+        const effectiveTargetSide = resolvedSides.targetPortSide;
+        const sourcePoint = this.getPortWorldPoint(sourceNode.id, effectiveSourceSide) || this.getNodeCenterWorldPoint(sourceNode);
+        const targetPoint = targetNode
+          ? (this.getPortWorldPoint(targetNode.id, effectiveTargetSide) || this.getNodeCenterWorldPoint(targetNode))
+          : (linkValue && typeof linkValue === 'object' && linkValue.orphanedTargetCenter && typeof linkValue.orphanedTargetCenter === 'object'
+            ? {
+              x: Number(linkValue.orphanedTargetCenter.x) || sourcePoint.x,
+              y: Number(linkValue.orphanedTargetCenter.y) || sourcePoint.y,
+            }
+            : {
+              x: sourcePoint.x + 160,
+              y: sourcePoint.y,
+            });
+        const sX = sourcePoint.x;
+        const sY = sourcePoint.y;
+        const tX = targetPoint.x;
+        const tY = targetPoint.y;
+        this.drawOrthogonalPath(
+          sX,
+          sY,
+          tX,
+          tY,
+          key,
+          sourceNode.id,
+          targetNode ? targetNode.id : null,
+          effectiveSourceSide,
+          effectiveTargetSide,
+          sourceRect,
+          targetRect
+        );
       });
     });
   }
@@ -770,6 +790,11 @@ class Renderer {
 
     const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
     group.setAttribute("class", "connection-label-group");
+    group.dataset.sourceId = sourceId || '';
+    group.dataset.connectionKey = key || '';
+    if (!targetId) {
+      group.classList.add('is-orphaned');
+    }
 
     const midX = labelPoint.x;
     const midY = labelPoint.y;
@@ -795,8 +820,8 @@ class Renderer {
     text.setAttribute("class", "connection-label");
     text.textContent = labelText;
 
-      const deleteBtn = document.createElementNS("http://www.w3.org/2000/svg", "g");
-      deleteBtn.setAttribute("class", "connection-delete-btn");
+    const deleteBtn = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    deleteBtn.setAttribute("class", "connection-delete-btn");
     deleteBtn.setAttribute("role", "button");
     deleteBtn.setAttribute("tabindex", "0");
     deleteBtn.setAttribute("aria-label", `刪除連線 ${labelText}`);
@@ -828,7 +853,32 @@ class Renderer {
       deleteText.setAttribute("class", "connection-delete-btn-text");
       deleteText.textContent = "×";
 
-      deleteBtn.append(hitCircle, deleteCircle, deleteText);
+    deleteBtn.append(hitCircle, deleteCircle, deleteText);
+
+    let reconnectPort = null;
+    if (!targetId) {
+      reconnectPort = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      reconnectPort.setAttribute("class", "port connection-reconnect-port right");
+      reconnectPort.setAttribute("role", "button");
+      reconnectPort.setAttribute("tabindex", "0");
+      reconnectPort.setAttribute("aria-label", `重新接線 ${labelText}`);
+      reconnectPort.setAttribute("transform", `translate(${labelLeft + labelWidth}, ${midY})`);
+
+      const reconnectHit = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      reconnectHit.setAttribute("cx", "0");
+      reconnectHit.setAttribute("cy", "0");
+      reconnectHit.setAttribute("r", "14");
+      reconnectHit.setAttribute("class", "connection-reconnect-port-hit");
+
+      const reconnectDot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      reconnectDot.setAttribute("cx", "0");
+      reconnectDot.setAttribute("cy", "0");
+      reconnectDot.setAttribute("r", "6");
+      reconnectDot.setAttribute("class", "connection-reconnect-port-dot");
+
+      reconnectPort.append(reconnectHit, reconnectDot);
+    }
+
       group.addEventListener('dblclick', (event) => {
         event.stopPropagation();
         connectionManager.showNamingPopup(
@@ -855,10 +905,19 @@ class Renderer {
           connectionManager.deleteConnectionByKey(sourceId, key);
         }
       });
+      if (reconnectPort) {
+        reconnectPort.addEventListener('pointerdown', (event) => {
+          event.stopPropagation();
+        });
+      }
 
     rect.setAttribute("pointer-events", "none");
     text.setAttribute("pointer-events", "none");
-    group.append(rect, text, deleteBtn);
+    if (reconnectPort) {
+      group.append(rect, text, reconnectPort, deleteBtn);
+    } else {
+      group.append(rect, text, deleteBtn);
+    }
     this.svgLayer.appendChild(group);
   }
 

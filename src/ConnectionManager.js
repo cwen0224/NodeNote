@@ -13,6 +13,7 @@ class ConnectionManager {
     this.isDrawing = false;
     this.sourceNodeId = null;
     this.sourcePortEl = null;
+    this.reconnectSource = null;
     this.tempPath = null;
     this.svgLayer = null;
     this.historyNames = new Set(['next', 'on_click', 'trigger', 'success', 'fail']);
@@ -92,9 +93,21 @@ class ConnectionManager {
       this.isDrawing = false;
       return;
     }
+    const labelGroup = portEl.closest?.('.connection-label-group');
+    const reconnectSourceId = labelGroup?.dataset?.sourceId || '';
+    const reconnectKey = labelGroup?.dataset?.connectionKey || '';
+    const isReconnectPort = Boolean(reconnectSourceId && reconnectKey && portEl.classList.contains('connection-reconnect-port'));
     const nodeEl = portEl.closest('.node');
-    this.sourceNodeId = nodeEl.dataset.id;
+    this.sourceNodeId = isReconnectPort ? reconnectSourceId : nodeEl?.dataset?.id;
     this.sourcePortEl = portEl;
+    this.reconnectSource = isReconnectPort ? (() => {
+      const currentValue = store.state.nodes?.[reconnectSourceId]?.params?.[reconnectKey];
+      return {
+        sourceId: reconnectSourceId,
+        key: reconnectKey,
+        sourcePortSide: typeof currentValue === 'string' ? 'right' : (currentValue?.sourcePort || 'right'),
+      };
+    })() : null;
     store.setLastActiveNode(this.sourceNodeId);
     if (isTouchLikePointer(e)) {
       this.drawPointerId = e.pointerId;
@@ -142,25 +155,36 @@ class ConnectionManager {
     if (targetNodeEl && targetNodeEl.dataset.id !== this.sourceNodeId) {
       store.setLastActiveNode(targetNodeEl.dataset.id);
       const targetPortSide = this.resolveTargetPortSide(targetNodeEl, targetPortEl, e.clientX, e.clientY);
-      const sourcePortSide = getPortSide(this.sourcePortEl);
+      const sourcePortSide = this.reconnectSource?.sourcePortSide || getPortSide(this.sourcePortEl);
       const resolvedSides = resolveConnectionPortSides(
         this.sourcePortEl?.closest?.('.node')?.getBoundingClientRect?.(),
         targetNodeEl?.getBoundingClientRect?.(),
         sourcePortSide,
         targetPortSide
       );
-      this.showNamingPopup(
-        this.sourceNodeId,
-        targetNodeEl.dataset.id,
-        e.clientX,
-        e.clientY,
-        resolvedSides.sourcePortSide,
-        resolvedSides.targetPortSide
-      );
+      if (this.reconnectSource) {
+        this.reconnectConnectionByKey(
+          this.reconnectSource.sourceId,
+          this.reconnectSource.key,
+          targetNodeEl.dataset.id,
+          resolvedSides.sourcePortSide,
+          resolvedSides.targetPortSide
+        );
+      } else {
+        this.showNamingPopup(
+          this.sourceNodeId,
+          targetNodeEl.dataset.id,
+          e.clientX,
+          e.clientY,
+          resolvedSides.sourcePortSide,
+          resolvedSides.targetPortSide
+        );
+      }
     }
     this.drawPointerId = null;
     this.sourceNodeId = null;
     this.sourcePortEl = null;
+    this.reconnectSource = null;
   }
 
   cancelDrawing() {
@@ -172,6 +196,7 @@ class ConnectionManager {
     this.drawPointerId = null;
     this.sourceNodeId = null;
     this.sourcePortEl = null;
+    this.reconnectSource = null;
   }
 
   showNamingPopup(sourceId, targetId, x, y, sourcePortSide, targetPortSide, options = {}) {
@@ -205,6 +230,28 @@ class ConnectionManager {
       store.emit('connections:updated');
       store.saveHistory();
     }
+  }
+
+  reconnectConnectionByKey(sourceId, key, targetId, sourcePortSide, targetPortSide) {
+    const node = store.state.nodes[sourceId];
+    if (!node || !node.params || !Object.prototype.hasOwnProperty.call(node.params, key)) {
+      return false;
+    }
+
+    const currentValue = node.params[key];
+    node.params[key] = {
+      ...(typeof currentValue === 'object' && currentValue ? currentValue : {}),
+      targetId,
+      sourcePort: sourcePortSide || currentValue?.sourcePort || 'right',
+      targetPort: targetPortSide || currentValue?.targetPort || 'left',
+    };
+    delete node.params[key].orphanedTargetId;
+    delete node.params[key].orphanedTargetCenter;
+    delete node.params[key].orphanedTargetLabel;
+
+    store.emit('connections:updated');
+    store.saveHistory();
+    return true;
   }
 
   renameConnectionKey(sourceId, oldKey, newKey) {
