@@ -66,6 +66,7 @@ class NodeManager {
     this.nodeLayer.addEventListener('mousedown', (e) => {
       const nodeEl = e.target.closest('.node');
       if (!nodeEl) return;
+      if (e.target.closest('.orphan-connection-node')) return;
       if (e.target.closest('.port')) return;
       if (e.target.closest('.node-edit-btn')) return;
       if (e.target.closest('.node-folder-open-btn')) return;
@@ -243,6 +244,7 @@ class NodeManager {
   handleTouchNodePointerDown(e) {
     const nodeEl = e.target.closest('.node');
     if (!nodeEl) return;
+    if (e.target.closest('.orphan-connection-node')) return;
     if (e.target.closest('.port')) return;
     if (e.target.closest('.node-edit-btn')) return;
     if (e.target.closest('.node-folder-open-btn')) return;

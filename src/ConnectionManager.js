@@ -96,9 +96,14 @@ class ConnectionManager {
       return;
     }
     const labelGroup = portEl.closest?.('.connection-label-group');
-    const reconnectSourceId = labelGroup?.dataset?.sourceId || '';
-    const reconnectKey = labelGroup?.dataset?.connectionKey || '';
-    const isReconnectPort = Boolean(reconnectSourceId && reconnectKey && portEl.classList.contains('connection-reconnect-port'));
+    const orphanNodeEl = portEl.closest?.('.orphan-connection-node');
+    const reconnectSourceId = labelGroup?.dataset?.sourceId || orphanNodeEl?.dataset?.orphanSourceId || '';
+    const reconnectKey = labelGroup?.dataset?.connectionKey || orphanNodeEl?.dataset?.orphanConnectionKey || '';
+    const isReconnectPort = Boolean(
+      reconnectSourceId &&
+      reconnectKey &&
+      (portEl.classList.contains('connection-reconnect-port') || portEl.classList.contains('connection-orphan-port'))
+    );
     const nodeEl = portEl.closest('.node');
     this.sourceNodeId = isReconnectPort ? reconnectSourceId : nodeEl?.dataset?.id;
     this.sourcePortEl = portEl;
@@ -107,7 +112,9 @@ class ConnectionManager {
       return {
         sourceId: reconnectSourceId,
         key: reconnectKey,
-        sourcePortSide: typeof currentValue === 'string' ? 'right' : (currentValue?.sourcePort || 'right'),
+        sourcePortSide: typeof currentValue === 'string'
+          ? 'right'
+          : (currentValue?.sourcePort || orphanNodeEl?.dataset?.orphanSourcePortSide || 'right'),
       };
     })() : null;
     store.setLastActiveNode(this.sourceNodeId);

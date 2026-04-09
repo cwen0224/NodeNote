@@ -52,6 +52,7 @@ class Renderer {
     this.visibilityCheckRaf = null;
     this.pendingVisibilityCheck = false;
     this.connectionRouteCache = new Map();
+    this.pendingOrphanConnections = [];
 
     this.setupMinimapEvents();
 
@@ -693,6 +694,7 @@ class Renderer {
   renderConnections() {
     if (!this.svgLayer) return;
     this.svgLayer.innerHTML = '';
+    this.pendingOrphanConnections = [];
     
     // Draw all active connections from nodes.params
     Object.values(store.state.nodes).forEach(sourceNode => {
@@ -739,6 +741,8 @@ class Renderer {
         );
       });
     });
+
+    this.renderOrphanConnectionNodes();
   }
 
   buildRoundedOrthogonalPath(points = [], radius = 18) {
@@ -788,13 +792,25 @@ class Renderer {
       // If SVG measurement fails, fall back to the geometric midpoint.
     }
 
+    if (!targetId) {
+      this.pendingOrphanConnections.push({
+        sourceId,
+        key,
+        labelText,
+        x: tX,
+        y: tY,
+        sourcePortSide: sourcePortSide || 'right',
+        targetPortSide: targetPortSide || 'left',
+        sourceRect,
+        targetRect,
+      });
+      return;
+    }
+
     const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
     group.setAttribute("class", "connection-label-group");
     group.dataset.sourceId = sourceId || '';
     group.dataset.connectionKey = key || '';
-    if (!targetId) {
-      group.classList.add('is-orphaned');
-    }
 
     const midX = labelPoint.x;
     const midY = labelPoint.y;
@@ -825,118 +841,175 @@ class Renderer {
     deleteBtn.setAttribute("role", "button");
     deleteBtn.setAttribute("tabindex", "0");
     deleteBtn.setAttribute("aria-label", `刪除連線 ${labelText}`);
-      deleteBtn.setAttribute("transform", `translate(${labelLeft + labelWidth}, ${labelTop})`);
+    deleteBtn.setAttribute("transform", `translate(${labelLeft + labelWidth}, ${labelTop})`);
 
-      const setDeleteHover = (isHovered) => {
-        deleteBtn.classList.toggle("is-hovered", isHovered);
-        deleteCircle.setAttribute("r", isHovered ? "11" : "8");
-        deleteText.setAttribute("font-size", isHovered ? "13" : "11");
-      };
+    const setDeleteHover = (isHovered) => {
+      deleteBtn.classList.toggle("is-hovered", isHovered);
+      deleteCircle.setAttribute("r", isHovered ? "11" : "8");
+      deleteText.setAttribute("font-size", isHovered ? "13" : "11");
+    };
 
-      const hitCircle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      hitCircle.setAttribute("cx", "0");
-      hitCircle.setAttribute("cy", "0");
-      hitCircle.setAttribute("r", "17");
-      hitCircle.setAttribute("class", "connection-delete-btn-hit");
+    const hitCircle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    hitCircle.setAttribute("cx", "0");
+    hitCircle.setAttribute("cy", "0");
+    hitCircle.setAttribute("r", "17");
+    hitCircle.setAttribute("class", "connection-delete-btn-hit");
 
-      const deleteCircle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      deleteCircle.setAttribute("cx", "0");
-      deleteCircle.setAttribute("cy", "0");
-      deleteCircle.setAttribute("r", "8");
-      deleteCircle.setAttribute("class", "connection-delete-btn-box");
+    const deleteCircle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    deleteCircle.setAttribute("cx", "0");
+    deleteCircle.setAttribute("cy", "0");
+    deleteCircle.setAttribute("r", "8");
+    deleteCircle.setAttribute("class", "connection-delete-btn-box");
 
     const deleteText = document.createElementNS("http://www.w3.org/2000/svg", "text");
     deleteText.setAttribute("x", "0");
     deleteText.setAttribute("y", "0.75");
     deleteText.setAttribute("text-anchor", "middle");
-      deleteText.setAttribute("dominant-baseline", "middle");
-      deleteText.setAttribute("class", "connection-delete-btn-text");
-      deleteText.textContent = "×";
+    deleteText.setAttribute("dominant-baseline", "middle");
+    deleteText.setAttribute("class", "connection-delete-btn-text");
+    deleteText.textContent = "×";
 
     deleteBtn.append(hitCircle, deleteCircle, deleteText);
 
-    let reconnectPort = null;
-    if (!targetId) {
-      reconnectPort = document.createElementNS("http://www.w3.org/2000/svg", "g");
-      reconnectPort.setAttribute("class", "port connection-reconnect-port right");
-      reconnectPort.setAttribute("role", "button");
-      reconnectPort.setAttribute("tabindex", "0");
-      reconnectPort.setAttribute("aria-label", `重新接線 ${labelText}`);
-      reconnectPort.setAttribute("transform", `translate(${labelLeft + labelWidth}, ${midY})`);
-
-      const reconnectHit = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      reconnectHit.setAttribute("cx", "0");
-      reconnectHit.setAttribute("cy", "0");
-      reconnectHit.setAttribute("r", "14");
-      reconnectHit.setAttribute("class", "connection-reconnect-port-hit");
-
-      const reconnectDot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      reconnectDot.setAttribute("cx", "0");
-      reconnectDot.setAttribute("cy", "0");
-      reconnectDot.setAttribute("r", "6");
-      reconnectDot.setAttribute("class", "connection-reconnect-port-dot");
-
-      reconnectPort.append(reconnectHit, reconnectDot);
-    }
-
-      group.addEventListener('dblclick', (event) => {
-        event.stopPropagation();
-        connectionManager.showNamingPopup(
-          sourceId,
-          targetId,
-          event.clientX,
-          event.clientY,
-          sourcePortSide,
-          targetPortSide,
-          { mode: 'rename', initialKey: labelText }
-        );
-      });
-      if (reconnectPort) {
-        group.addEventListener('pointerdown', (event) => {
-          if (event.button !== undefined && event.button !== 0) {
-            return;
-          }
-
-          if (event.target?.closest?.('.connection-delete-btn')) {
-            return;
-          }
-
-          event.preventDefault();
-          event.stopPropagation();
-          connectionManager.startDrawing({
-            target: reconnectPort,
-            clientX: event.clientX,
-            clientY: event.clientY,
-            pointerId: event.pointerId,
-            pointerType: event.pointerType,
-            preventDefault: () => event.preventDefault(),
-            stopPropagation: () => event.stopPropagation(),
-          });
-        });
-      }
-      deleteBtn.addEventListener('pointerenter', () => setDeleteHover(true));
-      deleteBtn.addEventListener('pointerleave', () => setDeleteHover(false));
-      deleteBtn.addEventListener('focus', () => setDeleteHover(true));
-      deleteBtn.addEventListener('blur', () => setDeleteHover(false));
-      deleteBtn.addEventListener('click', (event) => {
-        event.stopPropagation();
+    group.addEventListener('dblclick', (event) => {
+      event.stopPropagation();
+      connectionManager.showNamingPopup(
+        sourceId,
+        targetId,
+        event.clientX,
+        event.clientY,
+        sourcePortSide,
+        targetPortSide,
+        { mode: 'rename', initialKey: labelText }
+      );
+    });
+    deleteBtn.addEventListener('pointerenter', () => setDeleteHover(true));
+    deleteBtn.addEventListener('pointerleave', () => setDeleteHover(false));
+    deleteBtn.addEventListener('focus', () => setDeleteHover(true));
+    deleteBtn.addEventListener('blur', () => setDeleteHover(false));
+    deleteBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      connectionManager.deleteConnectionByKey(sourceId, key);
+    });
+    deleteBtn.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
         connectionManager.deleteConnectionByKey(sourceId, key);
-      });
-      deleteBtn.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          connectionManager.deleteConnectionByKey(sourceId, key);
-        }
-      });
+      }
+    });
 
     rect.setAttribute("pointer-events", "none");
     text.setAttribute("pointer-events", "none");
-    if (reconnectPort) {
-      group.append(rect, text, reconnectPort, deleteBtn);
-    } else {
-      group.append(rect, text, deleteBtn);
-    }
+    group.append(rect, text, deleteBtn);
     this.svgLayer.appendChild(group);
+  }
+
+  renderOrphanConnectionNodes() {
+    if (!this.nodeLayer) return;
+
+    this.nodeLayer.querySelectorAll('.orphan-connection-node').forEach((el) => el.remove());
+    if (!this.pendingOrphanConnections.length) {
+      return;
+    }
+
+    this.pendingOrphanConnections.forEach((entry) => {
+      const nodeEl = document.createElement('div');
+      nodeEl.className = 'node glass-panel orphan-connection-node is-orphaned';
+      nodeEl.dataset.orphanSourceId = entry.sourceId || '';
+      nodeEl.dataset.orphanConnectionKey = entry.key || '';
+      nodeEl.dataset.orphanSourcePortSide = entry.sourcePortSide || 'right';
+      nodeEl.dataset.orphanTargetPortSide = entry.targetPortSide || 'left';
+      nodeEl.style.left = `${Math.round(entry.x - 96)}px`;
+      nodeEl.style.top = `${Math.round(entry.y - 58)}px`;
+      nodeEl.innerHTML = `
+        <div class="node-header">
+          <span class="node-id" title="${this.escapeHtml(entry.labelText)}">${this.escapeHtml(entry.labelText)}</span>
+          <div class="node-header-actions">
+            <button class="node-rename-btn" type="button" aria-label="重新命名">Aa</button>
+            <button class="node-delete-btn" type="button" aria-label="刪除連線">×</button>
+          </div>
+        </div>
+        <div class="node-content" contenteditable="false" spellcheck="false">${this.escapeHtml(entry.labelText)}</div>
+        <div class="port right connection-orphan-port"></div>
+      `;
+
+      const portEl = nodeEl.querySelector('.connection-orphan-port');
+      const titleEl = nodeEl.querySelector('.node-id');
+      const contentEl = nodeEl.querySelector('.node-content');
+      const renameBtn = nodeEl.querySelector('.node-rename-btn');
+      const deleteBtn = nodeEl.querySelector('.node-delete-btn');
+
+      titleEl?.addEventListener('dblclick', (event) => {
+        event.stopPropagation();
+        connectionManager.showNamingPopup(
+          entry.sourceId,
+          null,
+          event.clientX,
+          event.clientY,
+          entry.sourcePortSide,
+          entry.targetPortSide,
+          { mode: 'rename', initialKey: entry.labelText }
+        );
+      });
+
+      contentEl?.addEventListener('dblclick', (event) => {
+        event.stopPropagation();
+        connectionManager.showNamingPopup(
+          entry.sourceId,
+          null,
+          event.clientX,
+          event.clientY,
+          entry.sourcePortSide,
+          entry.targetPortSide,
+          { mode: 'rename', initialKey: entry.labelText }
+        );
+      });
+
+      const triggerReconnect = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!portEl) {
+          return;
+        }
+        connectionManager.startDrawing({
+          target: portEl,
+          clientX: event.clientX,
+          clientY: event.clientY,
+          pointerId: event.pointerId,
+          pointerType: event.pointerType,
+          preventDefault: () => event.preventDefault(),
+          stopPropagation: () => event.stopPropagation(),
+        });
+      };
+
+      nodeEl.addEventListener('pointerdown', (event) => {
+        if (event.target?.closest?.('.node-delete-btn')) {
+          return;
+        }
+        triggerReconnect(event);
+      });
+
+      renameBtn?.addEventListener('mousedown', (event) => event.stopPropagation());
+      renameBtn?.addEventListener('click', (event) => {
+        event.stopPropagation();
+        connectionManager.showNamingPopup(
+          entry.sourceId,
+          null,
+          event.clientX,
+          event.clientY,
+          entry.sourcePortSide,
+          entry.targetPortSide,
+          { mode: 'rename', initialKey: entry.labelText }
+        );
+      });
+      deleteBtn?.addEventListener('mousedown', (event) => event.stopPropagation());
+      deleteBtn?.addEventListener('click', (event) => {
+        event.stopPropagation();
+        connectionManager.deleteConnectionByKey(entry.sourceId, entry.key);
+      });
+
+      this.nodeLayer.appendChild(nodeEl);
+    });
   }
 
   appendConnectionDirectionTrail(path, route) {
