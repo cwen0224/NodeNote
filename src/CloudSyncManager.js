@@ -349,6 +349,8 @@ class CloudSyncManager {
         this.pullNow();
       } else if (action === 'copy-diagnostic') {
         this.copyDiagnosticReportToClipboard();
+      } else if (action === 'download-diagnostic') {
+        this.downloadDiagnosticReport();
       } else if (action === 'copy-logs') {
         this.copySyncLogsToClipboard();
       } else if (action === 'clear-logs') {
@@ -1038,6 +1040,7 @@ class CloudSyncManager {
           </div>
           <div class="cloud-sync-log-actions">
             <button type="button" data-cloud-action="copy-diagnostic">複製診斷</button>
+            <button type="button" data-cloud-action="download-diagnostic">下載診斷檔</button>
             <button type="button" data-cloud-action="copy-logs">複製日誌</button>
             <button type="button" data-cloud-action="clear-logs">清空日誌</button>
           </div>
@@ -1275,6 +1278,11 @@ class CloudSyncManager {
   }
 
   buildDiagnosticReport() {
+    const buildVersion = sanitizeString(
+      document.getElementById('diag-version')?.textContent
+      || document.getElementById('build-badge')?.textContent
+      || ''
+    );
     const projectCatalog = Array.isArray(this.sheetProjectCatalog)
       ? this.sheetProjectCatalog.map((project) => ({
         projectKey: project?.projectKey || '',
@@ -1300,6 +1308,7 @@ class CloudSyncManager {
 
     return JSON.stringify({
       generatedAt: new Date().toISOString(),
+      buildVersion,
       href: typeof window !== 'undefined' ? window.location.href : '',
       userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
       config: {
@@ -1329,6 +1338,30 @@ class CloudSyncManager {
       },
       logs: recentLogs,
     }, null, 2);
+  }
+
+  downloadTextFile(filename, text, mimeType = 'application/json;charset=utf-8') {
+    const safeName = sanitizeString(filename, 'diagnostic.json') || 'diagnostic.json';
+    const blob = new Blob([text], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = safeName;
+    anchor.rel = 'noopener';
+    anchor.style.display = 'none';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  downloadDiagnosticReport() {
+    const text = this.buildDiagnosticReport();
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const projectPart = sanitizeString(this.projectSelectedProjectKey || this.config.sheetProjectKey || 'project', 'project') || 'project';
+    this.downloadTextFile(`nodenote-diagnostic-${projectPart}-${stamp}.json`, text);
+    this.setStatus('idle', '診斷檔已下載');
+    this.appendSyncLog('info', 'log', '下載診斷檔');
   }
 
   async copyDiagnosticReportToClipboard() {
