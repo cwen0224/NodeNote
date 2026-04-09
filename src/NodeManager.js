@@ -401,6 +401,22 @@ class NodeManager {
     this.touchTapState.timer = null;
   }
 
+  closeActiveEditingNode() {
+    const activeContent = document.querySelector('.node.is-editing .node-content[contenteditable="true"]');
+    if (activeContent instanceof HTMLElement) {
+      activeContent.blur();
+      return true;
+    }
+
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLElement && activeElement !== document.body) {
+      activeElement.blur();
+      return true;
+    }
+
+    return false;
+  }
+
   getNodeElementAtPoint(clientX, clientY, excludedIds = []) {
     if (
       !Number.isFinite(clientX)

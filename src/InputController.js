@@ -3,6 +3,7 @@
  * Captures user input directly and updates the state.
  */
 import { store } from './StateStore.js';
+import { nodeManager } from './NodeManager.js';
 import {
   computeMarqueeWorldRect,
   hitTestNodesInWorldRect,
@@ -67,6 +68,8 @@ class InputController {
         return;
       }
 
+      nodeManager.closeActiveEditingNode?.();
+      nodeManager.resetTouchTapState?.();
       this.beginTouchGesture(e);
     });
 
@@ -103,6 +106,8 @@ class InputController {
 
       if (isBackgroundClick && e.button === 0 && !this.spacePressed) {
         store.clearSelection();
+        nodeManager.closeActiveEditingNode?.();
+        nodeManager.resetTouchTapState?.();
       }
       
       if (e.button === 2 || e.button === 1 || isLeftClickPan) {
