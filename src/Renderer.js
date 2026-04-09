@@ -21,6 +21,7 @@ import {
   buildRoundedOrthogonalPath as buildRoundedOrthogonalPathFromPoints,
   selectOrthogonalRoute,
 } from './core/connectionGeometry.js';
+import { resolveConnectionPortSides } from './core/connectionData.js';
 
 class Renderer {
   constructor() {
@@ -705,13 +706,16 @@ class Renderer {
         if (targetNode) {
           const sourceRect = this.getNodeWorldRect(sourceNode.id);
           const targetRect = this.getNodeWorldRect(targetNode.id);
-          const sourcePoint = this.getPortWorldPoint(sourceNode.id, sourcePortSide) || this.getNodeCenterWorldPoint(sourceNode);
-          const targetPoint = this.getPortWorldPoint(targetNode.id, targetPortSide) || this.getNodeCenterWorldPoint(targetNode);
+          const resolvedSides = resolveConnectionPortSides(sourceRect, targetRect, sourcePortSide, targetPortSide);
+          const effectiveSourceSide = resolvedSides.sourcePortSide;
+          const effectiveTargetSide = resolvedSides.targetPortSide;
+          const sourcePoint = this.getPortWorldPoint(sourceNode.id, effectiveSourceSide) || this.getNodeCenterWorldPoint(sourceNode);
+          const targetPoint = this.getPortWorldPoint(targetNode.id, effectiveTargetSide) || this.getNodeCenterWorldPoint(targetNode);
           const sX = sourcePoint.x;
           const sY = sourcePoint.y;
           const tX = targetPoint.x;
           const tY = targetPoint.y;
-          this.drawOrthogonalPath(sX, sY, tX, tY, key, sourceNode.id, targetNode.id, sourcePortSide, targetPortSide, sourceRect, targetRect);
+          this.drawOrthogonalPath(sX, sY, tX, tY, key, sourceNode.id, targetNode.id, effectiveSourceSide, effectiveTargetSide, sourceRect, targetRect);
         }
       });
     });

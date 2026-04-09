@@ -3,7 +3,7 @@
  * Handles the interaction of drawing a line from one node to another.
  */
 import { store } from './StateStore.js';
-import { getPortSide } from './core/connectionData.js';
+import { getPortSide, resolveConnectionPortSides } from './core/connectionData.js';
 import { connectionNamingDialog } from './ConnectionNamingDialog.js';
 
 const isTouchLikePointer = (event) => event?.pointerType === 'touch' || event?.pointerType === 'pen';
@@ -143,13 +143,19 @@ class ConnectionManager {
       store.setLastActiveNode(targetNodeEl.dataset.id);
       const targetPortSide = this.resolveTargetPortSide(targetNodeEl, targetPortEl, e.clientX, e.clientY);
       const sourcePortSide = getPortSide(this.sourcePortEl);
+      const resolvedSides = resolveConnectionPortSides(
+        this.sourcePortEl?.closest?.('.node')?.getBoundingClientRect?.(),
+        targetNodeEl?.getBoundingClientRect?.(),
+        sourcePortSide,
+        targetPortSide
+      );
       this.showNamingPopup(
         this.sourceNodeId,
         targetNodeEl.dataset.id,
         e.clientX,
         e.clientY,
-        sourcePortSide,
-        targetPortSide
+        resolvedSides.sourcePortSide,
+        resolvedSides.targetPortSide
       );
     }
     this.drawPointerId = null;
