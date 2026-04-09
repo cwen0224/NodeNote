@@ -89,9 +89,12 @@
     </div>
 
     <!-- Minimap UI overlay -->
-    <div id="minimap" class="glass-panel">
-      <div id="minimap-content"></div>
-      <div id="minimap-viewport"></div>
+    <div id="minimap" class="glass-panel is-collapsed" aria-label="縮圖導覽">
+      <button id="minimap-toggle" class="minimap-toggle" type="button" aria-label="切換縮圖導覽" aria-expanded="false">縮圖</button>
+      <div class="minimap-panel">
+        <div id="minimap-content"></div>
+        <div id="minimap-viewport"></div>
+      </div>
     </div>
 
     <script type="module" src="/src/main.js"></script>

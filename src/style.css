@@ -549,7 +549,7 @@ button:hover {
 }
 
 #minimap {
-  position: absolute;
+  position: fixed;
   bottom: 24px;
   right: 24px;
   width: 200px;
@@ -559,10 +559,62 @@ button:hover {
   cursor: grab;
   touch-action: none;
   user-select: none;
+  transition: width 180ms ease, height 180ms ease, transform 180ms ease, border-radius 180ms ease;
+  display: block;
 }
 
 #minimap.is-dragging {
   cursor: grabbing;
+}
+
+#minimap.is-collapsed {
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+  padding: 0;
+  cursor: pointer;
+}
+
+#minimap.is-collapsed .minimap-panel {
+  display: none;
+}
+
+#minimap:not(.is-collapsed) {
+  padding: 10px;
+}
+
+.minimap-toggle {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: rgba(234, 241, 250, 0.9);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: inherit;
+  z-index: 2;
+}
+
+#minimap:not(.is-collapsed) .minimap-toggle {
+  inset: 10px 10px auto auto;
+  width: 52px;
+  height: 24px;
+  border-radius: 999px;
+  background: rgba(26, 35, 57, 0.92);
+  border: 1px solid rgba(88, 166, 255, 0.34);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.28);
+}
+
+.minimap-panel {
+  position: relative;
+  width: 100%;
+  height: 100%;
 }
 
 #minimap-content {

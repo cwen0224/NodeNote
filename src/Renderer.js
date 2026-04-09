@@ -35,8 +35,10 @@ class Renderer {
     this.nodeLayer = document.getElementById('node-layer');
     this.svgLayer = document.getElementById('svg-layer');
     this.minimap = document.getElementById('minimap');
+    this.minimapToggle = document.getElementById('minimap-toggle');
     this.minimapContent = document.getElementById('minimap-content');
     this.minimapViewport = document.getElementById('minimap-viewport');
+    this.minimapStateKey = 'nodenote.minimap.collapsed';
     this.minimapPadding = 12;
     this.minimapLayout = null;
     this.minimapDragState = {
@@ -54,6 +56,7 @@ class Renderer {
     this.connectionRouteCache = new Map();
 
     this.setupMinimapEvents();
+    this.initMinimapState();
 
     window.addEventListener('resize', () => {
       this.minimapLayout = null;
@@ -331,12 +334,26 @@ class Renderer {
 
   setupMinimapEvents() {
     if (!this.minimap) return;
+    if (this.minimapToggle) {
+      this.minimapToggle.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.toggleMinimapCollapsed();
+      });
+    }
 
     const updateFromPointer = (event) => {
       this.dragViewportFromMinimapPoint(event.clientX, event.clientY);
     };
 
     this.minimap.addEventListener('pointerdown', (event) => {
+      if (event.target?.closest?.('.minimap-toggle')) {
+        return;
+      }
+      if (this.isMinimapCollapsed()) {
+        this.setMinimapCollapsed(false);
+        return;
+      }
       if (event.button !== 0) return;
       if (!this.minimapLayout) {
         this.renderMinimap();
@@ -352,6 +369,13 @@ class Renderer {
     });
 
     this.minimap.addEventListener('dblclick', (event) => {
+      if (event.target?.closest?.('.minimap-toggle')) {
+        return;
+      }
+      if (this.isMinimapCollapsed()) {
+        this.setMinimapCollapsed(false);
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       this.minimapDragState.active = false;
@@ -364,12 +388,18 @@ class Renderer {
     });
 
     this.minimap.addEventListener('wheel', (event) => {
+      if (this.isMinimapCollapsed()) {
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       this.zoomViewportFromMinimapWheel(event.clientX, event.clientY, event.deltaY);
     }, { passive: false });
 
     this.minimap.addEventListener('pointermove', (event) => {
+      if (this.isMinimapCollapsed()) {
+        return;
+      }
       if (!this.minimapDragState.active) return;
       if (this.minimapDragState.pointerId !== event.pointerId) return;
       event.preventDefault();
@@ -377,6 +407,9 @@ class Renderer {
     });
 
     const endDrag = (event) => {
+      if (this.isMinimapCollapsed()) {
+        return;
+      }
       if (!this.minimapDragState.active) return;
       if (this.minimapDragState.pointerId !== null && event.pointerId !== this.minimapDragState.pointerId) {
         return;
@@ -393,10 +426,51 @@ class Renderer {
     this.minimap.addEventListener('pointerup', endDrag);
     this.minimap.addEventListener('pointercancel', endDrag);
     this.minimap.addEventListener('lostpointercapture', () => {
+      if (this.isMinimapCollapsed()) {
+        return;
+      }
       this.minimapDragState.active = false;
       this.minimapDragState.pointerId = null;
       this.minimap.classList.remove('is-dragging');
     });
+  }
+
+  initMinimapState() {
+    if (!this.minimap) {
+      return;
+    }
+
+    const stored = window.localStorage.getItem(this.minimapStateKey);
+    const collapsed = stored !== '0';
+    this.setMinimapCollapsed(collapsed);
+  }
+
+  isMinimapCollapsed() {
+    return Boolean(this.minimap?.classList.contains('is-collapsed'));
+  }
+
+  setMinimapCollapsed(collapsed) {
+    if (!this.minimap) {
+      return;
+    }
+
+    this.minimap.classList.toggle('is-collapsed', Boolean(collapsed));
+    if (this.minimapToggle) {
+      this.minimapToggle.setAttribute('aria-expanded', String(!collapsed));
+      this.minimapToggle.textContent = collapsed ? '縮圖' : '收合';
+    }
+    window.localStorage.setItem(this.minimapStateKey, collapsed ? '1' : '0');
+    if (collapsed) {
+      this.minimapDragState.active = false;
+      this.minimapDragState.pointerId = null;
+      this.minimap.classList.remove('is-dragging');
+    } else {
+      this.renderMinimap();
+    }
+  }
+
+  toggleMinimapCollapsed() {
+    this.setMinimapCollapsed(!this.isMinimapCollapsed());
   }
 
   renderAllNodes() {
