@@ -199,19 +199,8 @@ class NodeManager {
       });
     }, { passive: false });
 
-    window.addEventListener('mouseup', () => {
-      if (this.isDraggingNode) {
-        this.isDraggingNode = false;
-        this.dragSelectionIds.forEach((id) => {
-          const nodeEl = document.querySelector(`.node[data-id="${id}"]`);
-          if (nodeEl) nodeEl.classList.remove('dragging');
-        });
-        this.draggedNodeId = null;
-        this.dragSelectionIds = [];
-        this.dragStartPointer = null;
-        this.dragStartPositions.clear();
-        store.saveHistory(); // Save state after move
-      }
+    window.addEventListener('mouseup', (e) => {
+      this.finishNodeDrag(e, { allowMerge: true });
     });
 
     const endTouchDrag = (e) => {
@@ -220,20 +209,7 @@ class NodeManager {
       }
 
       e.preventDefault();
-
-      if (this.isDraggingNode) {
-        this.isDraggingNode = false;
-        this.dragSelectionIds.forEach((id) => {
-          const nodeEl = document.querySelector(`.node[data-id="${id}"]`);
-          if (nodeEl) nodeEl.classList.remove('dragging');
-        });
-        this.draggedNodeId = null;
-        this.dragSelectionIds = [];
-        this.dragStartPointer = null;
-        this.dragStartPositions.clear();
-        store.saveHistory(); // Save state after move
-      }
-
+      this.finishNodeDrag(e, { allowMerge: e.type === 'pointerup' });
       this.dragPointerId = null;
     };
 
@@ -301,6 +277,184 @@ class NodeManager {
 
     e.preventDefault();
     e.stopPropagation();
+  }
+
+  finishNodeDrag(releaseEvent, { allowMerge = false } = {}) {
+    if (!this.isDraggingNode) {
+      return false;
+    }
+
+    const draggedNodeId = this.draggedNodeId;
+    let merged = false;
+
+    if (
+      allowMerge
+      && typeof draggedNodeId === 'string'
+      && isDumiNodeId(draggedNodeId)
+      && this.dragSelectionIds.length === 1
+    ) {
+      merged = this.tryMergeDraggedDumiOnRelease(releaseEvent, draggedNodeId);
+    }
+
+    this.isDraggingNode = false;
+    this.dragSelectionIds.forEach((id) => {
+      const nodeEl = document.querySelector(`.node[data-id="${id}"]`);
+      if (nodeEl) nodeEl.classList.remove('dragging');
+    });
+    this.draggedNodeId = null;
+    this.dragSelectionIds = [];
+    this.dragStartPointer = null;
+    this.dragStartPositions.clear();
+
+    if (!merged) {
+      store.saveHistory();
+    }
+
+    return merged;
+  }
+
+  getNodeElementAtPoint(clientX, clientY, excludedIds = []) {
+    if (
+      !Number.isFinite(clientX)
+      || !Number.isFinite(clientY)
+      || typeof document?.elementsFromPoint !== 'function'
+    ) {
+      return null;
+    }
+
+    const excludedSet = new Set(
+      Array.isArray(excludedIds)
+        ? excludedIds.filter((id) => typeof id === 'string' && id)
+        : [],
+    );
+
+    const elements = document.elementsFromPoint(clientX, clientY);
+    for (const element of elements) {
+      if (!element || typeof element.closest !== 'function') {
+        continue;
+      }
+
+      const nodeEl = element.closest('.node');
+      if (!nodeEl) {
+        continue;
+      }
+
+      const nodeId = nodeEl.dataset?.id;
+      if (!nodeId || excludedSet.has(nodeId)) {
+        continue;
+      }
+
+      if (nodeEl.classList.contains('is-folder') || nodeEl.classList.contains('is-dumi')) {
+        continue;
+      }
+
+      return nodeEl;
+    }
+
+    return null;
+  }
+
+  tryMergeDraggedDumiOnRelease(releaseEvent, draggedNodeId) {
+    if (!releaseEvent || typeof releaseEvent.clientX !== 'number' || typeof releaseEvent.clientY !== 'number') {
+      return false;
+    }
+
+    const targetNodeEl = this.getNodeElementAtPoint(releaseEvent.clientX, releaseEvent.clientY, [draggedNodeId]);
+    const targetNodeId = targetNodeEl?.dataset?.id;
+    if (!targetNodeId || targetNodeId === draggedNodeId) {
+      return false;
+    }
+
+    return this.mergeDumiIntoNode(draggedNodeId, targetNodeId);
+  }
+
+  mergeDumiIntoNode(sourceNodeId, targetNodeId) {
+    const sourceNode = store.getEntityById?.(sourceNodeId);
+    const targetNode = store.getEntityById?.(targetNodeId);
+    if (
+      !sourceNode
+      || !targetNode
+      || !isDumiNodeId(sourceNodeId)
+      || isDumiNodeId(targetNodeId)
+      || targetNode.type === 'folder'
+      || sourceNodeId === targetNodeId
+    ) {
+      return false;
+    }
+
+    const sourceParams = isPlainObject(sourceNode.params) ? sourceNode.params : {};
+    if (!isPlainObject(targetNode.params)) {
+      targetNode.params = {};
+    }
+
+    const targetParams = targetNode.params;
+    Object.entries(sourceParams).forEach(([key, linkValue]) => {
+      const nextLink = isPlainObject(linkValue)
+        ? deepClone(linkValue)
+        : { targetId: linkValue };
+      if (!nextLink || typeof nextLink !== 'object') {
+        return;
+      }
+
+      const normalizedTargetId = typeof nextLink.targetId === 'string' && nextLink.targetId
+        ? nextLink.targetId
+        : (typeof linkValue === 'string' ? linkValue : null);
+      if (!normalizedTargetId) {
+        return;
+      }
+
+      nextLink.targetId = normalizedTargetId;
+      const nextKey = createUniqueParamKey(targetParams, key);
+      targetParams[nextKey] = nextLink;
+    });
+
+    const allEntities = {
+      ...(store.document.nodes || {}),
+      ...(store.document.folders || {}),
+    };
+
+    Object.values(allEntities).forEach((entity) => {
+      if (!entity || entity.id === sourceNodeId || !isPlainObject(entity.params)) {
+        return;
+      }
+
+      Object.entries(entity.params).forEach(([key, linkValue]) => {
+        const targetId = isPlainObject(linkValue) ? linkValue.targetId : linkValue;
+        if (targetId !== sourceNodeId) {
+          return;
+        }
+
+        entity.params[key] = isPlainObject(linkValue)
+          ? {
+            ...deepClone(linkValue),
+            targetId: targetNodeId,
+          }
+          : targetNodeId;
+      });
+    });
+
+    const sourceFolderId = sourceNode.folderId || store.getRootFolderId?.() || store.document.rootFolderId || 'folder_root';
+    const sourceFolder = store.document.folders?.[sourceFolderId];
+    if (sourceFolder && Array.isArray(sourceFolder.children)) {
+      sourceFolder.children = sourceFolder.children.filter((child) => !(child.kind === 'node' && child.id === sourceNodeId));
+    }
+
+    const targetFolderId = targetNode.folderId || store.getRootFolderId?.() || store.document.rootFolderId || 'folder_root';
+    const targetFolder = store.document.folders?.[targetFolderId];
+    if (sourceNodeId === sourceFolder?.entryNodeId) {
+      sourceFolder.entryNodeId = targetNodeId;
+    }
+    if (targetFolder && sourceFolder && targetFolder.id === sourceFolder.id) {
+      targetFolder.entryNodeId = targetFolder.entryNodeId || targetNodeId;
+    }
+
+    delete store.document.nodes[sourceNodeId];
+    store.setSelectionNodeIds([targetNodeId]);
+    store.setLastActiveNode(targetNodeId);
+    store.emit('nodes:updated', store.getCurrentDocument().nodes);
+    store.emit('connections:updated');
+    store.saveHistory();
+    return true;
   }
 
   createNode(x, y) {
