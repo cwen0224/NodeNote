@@ -2,6 +2,7 @@ import { renderer } from './Renderer.js';
 import { store } from './StateStore.js';
 import { nodeManager } from './NodeManager.js';
 import { trayManager } from './TrayManager.js';
+import { cloudSyncManager } from './CloudSyncManager.js';
 import { createDefaultDocument } from './core/documentSchema.js';
 import {
   createDocumentFileName,
@@ -83,6 +84,11 @@ class ShortcutManager {
   }
 
   handleKeydown(event) {
+    if (cloudSyncManager.isWorkspaceLoadingLocked?.()) {
+      event.preventDefault();
+      return;
+    }
+
     const key = event.key.toLowerCase();
     const isEditable = this.isEditableTarget(event.target);
 

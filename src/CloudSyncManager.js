@@ -128,6 +128,8 @@ class CloudSyncManager {
     this.statusText = null;
     this.logSummary = null;
     this.logList = null;
+    this.workspaceLoadingOverlay = null;
+    this.workspaceLoadingMessage = null;
     this.inputs = {};
     this.syncTimer = null;
     this.pollTimer = null;
@@ -153,6 +155,7 @@ class CloudSyncManager {
     this.sheetProjectCatalog = [];
     this.sheetProjectCatalogLoading = false;
     this.sheetProjectCatalogRequestId = 0;
+    this.workspaceInteractionLocked = false;
     this.boundVisibilityChange = this.handleVisibilityChange.bind(this);
   }
 
@@ -166,6 +169,7 @@ class CloudSyncManager {
     this.statusBadge = document.getElementById('sync-status-badge');
     this.buildDialog();
     this.buildProjectDialog();
+    this.buildWorkspaceLockOverlay();
     this.bindEvents();
     this.applyStateToUI();
     this.refreshTransportMode();
@@ -608,6 +612,45 @@ class CloudSyncManager {
     this.renderSheetProjectCatalog();
   }
 
+  buildWorkspaceLockOverlay() {
+    if (document.getElementById('workspace-loading-overlay')) {
+      this.workspaceLoadingOverlay = document.getElementById('workspace-loading-overlay');
+      this.workspaceLoadingMessage = this.workspaceLoadingOverlay?.querySelector?.('[data-workspace-loading-message]') || null;
+      return;
+    }
+
+    this.workspaceLoadingOverlay = document.createElement('div');
+    this.workspaceLoadingOverlay.id = 'workspace-loading-overlay';
+    this.workspaceLoadingOverlay.className = 'workspace-loading-overlay';
+    this.workspaceLoadingOverlay.hidden = true;
+    this.workspaceLoadingOverlay.innerHTML = `
+      <div class="workspace-loading-panel glass-panel" role="status" aria-live="polite" aria-busy="true">
+        <div class="workspace-loading-spinner" aria-hidden="true"></div>
+        <div class="workspace-loading-copy">
+          <strong class="workspace-loading-title">正在讀取專案</strong>
+          <div class="workspace-loading-message" data-workspace-loading-message>請稍候，白板讀取完成前已鎖定。</div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(this.workspaceLoadingOverlay);
+    this.workspaceLoadingMessage = this.workspaceLoadingOverlay.querySelector('[data-workspace-loading-message]');
+  }
+
+  setWorkspaceLoadingOverlay(isLocked, message = '') {
+    this.workspaceInteractionLocked = Boolean(isLocked);
+    if (this.workspaceLoadingOverlay) {
+      this.workspaceLoadingOverlay.hidden = !isLocked;
+    }
+    if (this.workspaceLoadingMessage) {
+      this.workspaceLoadingMessage.textContent = message || '請稍候，白板讀取完成前已鎖定。';
+    }
+    document.body.classList.toggle('is-workspace-locked', Boolean(isLocked));
+  }
+
+  isWorkspaceLoadingLocked() {
+    return Boolean(this.workspaceInteractionLocked);
+  }
+
   closeProjectDialog() {
     if (this.projectOverlay) {
       this.projectOverlay.hidden = true;
@@ -830,6 +873,7 @@ class CloudSyncManager {
       silentOnMissing: true,
       preferRemote: true,
       hydrateViewport: true,
+      lockWorkspace: true,
     });
     void this.loadSheetProjectCatalog({ force: true });
     return result;
@@ -1876,7 +1920,7 @@ class CloudSyncManager {
     }
   }
 
-  async pullSheetNow({ skipConfirm = false, silentOnMissing = false, preferRemote = false, hydrateViewport = false } = {}) {
+  async pullSheetNow({ skipConfirm = false, silentOnMissing = false, preferRemote = false, hydrateViewport = false, lockWorkspace = true } = {}) {
     if (!this.isConfigReady()) {
       this.setStatus('error', '請先完成 Google Sheet 設定');
       this.appendSyncLog('error', 'sheet-pull', 'Google Sheet 拉回失敗', '請先完成 Google Sheet 設定');
@@ -1893,6 +1937,9 @@ class CloudSyncManager {
       return false;
     }
 
+    if (lockWorkspace) {
+      this.setWorkspaceLoadingOverlay(true, '正在讀取 Google Sheet 專案...');
+    }
     this.syncInFlight = true;
     this.updateStatusBadge('Sheet pulling...');
     this.updateDialogStatus('正在從 Google Sheet 拉回內容...');
@@ -2012,6 +2059,9 @@ class CloudSyncManager {
       return false;
     } finally {
       this.syncInFlight = false;
+      if (lockWorkspace) {
+        this.setWorkspaceLoadingOverlay(false);
+      }
       this.updateStatusBadge();
       this.updateDialogStatus();
     }
@@ -2040,6 +2090,10 @@ class CloudSyncManager {
   handleAutosave(snapshot) {
     if (!snapshot || this.skipNextAutosave) {
       this.skipNextAutosave = false;
+      return;
+    }
+
+    if (this.workspaceInteractionLocked) {
       return;
     }
 
@@ -2218,7 +2272,7 @@ class CloudSyncManager {
     }
   }
 
-  async pullNow({ skipConfirm = false, silentOnMissing = false, preferRemote = false, hydrateViewport = false } = {}) {
+  async pullNow({ skipConfirm = false, silentOnMissing = false, preferRemote = false, hydrateViewport = false, lockWorkspace = true } = {}) {
     if (this.cloudProjectDeleted) {
       this.setStatus('idle', '雲端資料已刪除');
       this.appendSyncLog('info', 'cloud-pull', '略過拉回', '雲端資料已刪除，請先建立或開啟專案');
@@ -2226,7 +2280,7 @@ class CloudSyncManager {
     }
 
     if (this.config.provider === 'sheets') {
-      return this.pullSheetNow({ skipConfirm, silentOnMissing, preferRemote, hydrateViewport });
+      return this.pullSheetNow({ skipConfirm, silentOnMissing, preferRemote, hydrateViewport, lockWorkspace });
     }
 
     if (!this.isConfigReady()) {
@@ -2239,6 +2293,9 @@ class CloudSyncManager {
       return false;
     }
 
+    if (lockWorkspace) {
+      this.setWorkspaceLoadingOverlay(true, '正在讀取雲端快照...');
+    }
     this.syncInFlight = true;
     this.updateStatusBadge('Cloud pulling...');
     this.updateDialogStatus('正在從雲端拉回快照...');
@@ -2345,6 +2402,9 @@ class CloudSyncManager {
       return false;
     } finally {
       this.syncInFlight = false;
+      if (lockWorkspace) {
+        this.setWorkspaceLoadingOverlay(false);
+      }
       this.updateStatusBadge();
       this.updateDialogStatus();
     }
