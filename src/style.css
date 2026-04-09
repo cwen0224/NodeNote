@@ -620,6 +620,51 @@ button:hover {
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 14px 34px rgba(0, 0, 0, 0.48);
 }
 
+.node.is-dumi {
+  min-width: 146px;
+  min-height: 54px;
+  padding: 10px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(35, 46, 70, 0.96), rgba(24, 34, 58, 0.94));
+  border: 1px solid rgba(88, 166, 255, 0.46);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.03), 0 12px 26px rgba(0, 0, 0, 0.42);
+  gap: 0;
+}
+
+.node.is-dumi .dumi-node-face {
+  width: 100%;
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.node.is-dumi .node-id {
+  width: 100%;
+  text-align: center;
+  font-size: 0.98rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.node.is-dumi .node-header,
+.node.is-dumi .node-content {
+  display: none;
+}
+
+.node.is-dumi .node-delete-btn {
+  top: -8px;
+  right: -8px;
+}
+
+.node.is-dumi .port {
+  opacity: 0.18;
+}
+
 .node.is-folder .node-header {
   background: var(--folder-node-header);
   color: #cbd5e1;

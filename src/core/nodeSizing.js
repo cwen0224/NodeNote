@@ -4,6 +4,9 @@ export const NODE_MIN_SIDE = 260;
 export const NODE_MAX_SIDE = 448;
 export const NODE_FOLDER_MIN_SIDE = 320;
 export const NODE_FOLDER_MAX_SIDE = 532;
+export const DUMI_NODE_MIN_WIDTH = 146;
+export const DUMI_NODE_MAX_WIDTH = 220;
+export const DUMI_NODE_HEIGHT = 54;
 export const NODE_HEADER_HEIGHT = 42;
 export const NODE_CONTENT_HORIZONTAL_PADDING = 56;
 export const NODE_CONTENT_VERTICAL_PADDING = 24;
@@ -42,6 +45,19 @@ function getDumiNodeText(node = {}) {
   return [node.title, node.id]
     .map((value) => (typeof value === 'string' ? value.trim() : ''))
     .find((value) => value.length > 0) || '';
+}
+
+function estimateDumiNodeRect(title = '') {
+  const text = typeof title === 'string' ? title : '';
+  const widthNeed = Math.ceil((Math.max(1, text.length) * 10) + 54);
+  const width = Math.max(DUMI_NODE_MIN_WIDTH, Math.min(DUMI_NODE_MAX_WIDTH, widthNeed));
+  return {
+    width,
+    height: DUMI_NODE_HEIGHT,
+    side: width,
+    desiredSide: width,
+    scrollable: false,
+  };
 }
 
 function getFolderNodeText(node = {}) {
@@ -123,6 +139,10 @@ export function resolveNodeSize(node = {}, options = {}) {
   const content = isFolder ? getFolderNodeText(node) : (isDumi ? getDumiNodeText(node) : getNodeContent(node));
   const minSide = options.minSide ?? (isFolder ? NODE_FOLDER_MIN_SIDE : NODE_MIN_SIDE);
   const maxSide = options.maxSide ?? (isFolder ? NODE_FOLDER_MAX_SIDE : NODE_MAX_SIDE);
+  if (isDumi) {
+    const title = typeof node.title === 'string' ? node.title : content;
+    return estimateDumiNodeRect(title);
+  }
   if (content.length > 0) {
     return estimateNodeSquareSize(content, {
       ...options,

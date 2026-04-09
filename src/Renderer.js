@@ -541,11 +541,8 @@ class Renderer {
       `;
     } else if (isDumiNode) {
       div.innerHTML = `
-        <div class="node-header">
-          <span class="node-id" title="${this.escapeHtml(nodeLabel)}">${this.escapeHtml(nodeLabel)}</span>
-          <div class="node-header-actions">
-            <button class="node-rename-btn" type="button" aria-label="編輯名稱">Aa</button>
-          </div>
+        <div class="dumi-node-face">
+          <span class="node-id node-title-editable" title="${this.escapeHtml(nodeLabel)}">${this.escapeHtml(nodeLabel)}</span>
         </div>
         <button class="node-delete-btn" type="button" aria-label="刪除節點">×</button>
         <div class="port top"></div>
@@ -654,11 +651,13 @@ class Renderer {
     }
 
     const renameBtn = div.querySelector('.node-rename-btn');
-    renameBtn?.addEventListener('mousedown', (e) => e.stopPropagation());
-    renameBtn?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      renameTitle();
-    });
+    if (renameBtn) {
+      renameBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+      renameBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        renameTitle();
+      });
+    }
 
     const editBtn = div.querySelector('.node-edit-btn');
     editBtn?.addEventListener('mousedown', (e) => e.stopPropagation());
