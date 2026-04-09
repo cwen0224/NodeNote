@@ -651,15 +651,13 @@ button:hover {
   font-weight: 700;
   letter-spacing: 0.01em;
   cursor: grab;
+  user-select: none;
+  pointer-events: none;
 }
 
 .node.is-dumi .node-header,
 .node.is-dumi .node-content {
   display: none;
-}
-
-.node.is-dumi .node-title-editable {
-  user-select: none;
 }
 
 .node.is-dumi .node-delete-btn {

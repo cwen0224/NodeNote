@@ -656,6 +656,16 @@ class Renderer {
       });
     }
 
+    if (isDumiNode) {
+      div.addEventListener('dblclick', (e) => {
+        if (e.target.closest('.node-delete-btn') || e.target.closest('.port')) {
+          return;
+        }
+        e.stopPropagation();
+        renameTitle();
+      });
+    }
+
     const renameBtn = div.querySelector('.node-rename-btn');
     if (renameBtn) {
       renameBtn.addEventListener('mousedown', (e) => e.stopPropagation());
