@@ -9,6 +9,7 @@ import {
 } from './core/googleSheetCollab.js';
 import {
   commitGitHubSnapshot,
+  deleteGitHubSnapshot,
   fetchGitHubSnapshot,
 } from './core/cloudGitHubTransport.js';
 import {
@@ -134,6 +135,7 @@ class CloudSyncManager {
     this.pendingSnapshot = null;
     this.skipNextAutosave = false;
     this.sheetHydrationState = 'ready';
+    this.cloudProjectDeleted = false;
     this.initialized = false;
     this.boundAutosave = this.handleAutosave.bind(this);
     this.sheetClientId = readOrCreateClientId();
@@ -398,6 +400,7 @@ class CloudSyncManager {
 
   resetSheetSyncContext() {
     this.sheetHydrationState = 'pending';
+    this.cloudProjectDeleted = false;
     this.sheetBaselineDocument = null;
     this.sheetLastRevision = 0;
     this.sheetLastFingerprint = null;
@@ -521,6 +524,7 @@ class CloudSyncManager {
         <div class="cloud-project-actions">
           <button type="button" data-project-action="open">開啟專案</button>
           <button type="button" data-project-action="create">建立新專案</button>
+          <button type="button" class="cloud-project-danger" data-project-action="delete">刪除雲端資料</button>
           <button type="button" data-project-action="close">關閉</button>
         </div>
       </div>
@@ -550,6 +554,8 @@ class CloudSyncManager {
         this.applyProjectSelection();
       } else if (action === 'create') {
         this.createProjectSelection();
+      } else if (action === 'delete') {
+        this.deleteCloudProjectSelection();
       } else if (action === 'refresh-list') {
         void this.loadSheetProjectCatalog({ force: true });
       } else if (action === 'close') {
@@ -604,6 +610,11 @@ class CloudSyncManager {
 
   updateProjectDialogStatus() {
     if (!this.projectHint) {
+      return;
+    }
+
+    if (this.sheetHydrationState === 'deleted') {
+      this.projectHint.textContent = '目前雲端資料已刪除，請建立新專案或切換到其他專案。';
       return;
     }
 
@@ -829,6 +840,82 @@ class CloudSyncManager {
     const result = await this.syncNow({ force: true });
     void this.loadSheetProjectCatalog({ force: true });
     return result;
+  }
+
+  async deleteCloudProjectSelection() {
+    const projectKey = sanitizeString(this.projectProjectKeyInput?.value || this.config.sheetProjectKey, 'default');
+    const projectName = sanitizeString(
+      this.projectProjectNameInput?.value || this.config.sheetProjectName || store.getDocumentSnapshot?.()?.meta?.title || projectKey,
+      ''
+    );
+
+    if (!projectKey) {
+      this.setStatus('error', '請先輸入專案鍵');
+      this.appendSyncLog('error', 'project', '刪除雲端資料失敗', '請先輸入專案鍵');
+      return false;
+    }
+
+    const confirmedKey = window.prompt(`確定刪除雲端資料，請輸入專案鍵：${projectKey}`, projectKey);
+    if (sanitizeString(confirmedKey, '') !== projectKey) {
+      this.appendSyncLog('info', 'project', '刪除雲端資料已取消', `projectKey=${projectKey}`);
+      return false;
+    }
+
+    this.syncInFlight = true;
+    this.updateStatusBadge('Deleting cloud project...');
+    this.updateDialogStatus('正在刪除雲端資料...');
+    this.appendSyncLog('info', 'project', '刪除雲端資料', `projectKey=${projectKey}`);
+
+    try {
+      if (this.config.provider === 'github') {
+        await deleteGitHubSnapshot({
+          owner: this.config.owner,
+          repo: this.config.repo,
+          path: this.config.path,
+          token: this.config.token,
+          branch: this.config.branch,
+        });
+      } else {
+        const response = await requestJsonp(buildSheetRequestUrl({
+          baseUrl: this.config.sheetWebAppUrl,
+          action: 'delete-project',
+          projectKey,
+          clientId: this.sheetClientId,
+          secret: this.config.sheetSecret,
+        }));
+
+        if (response?.ok === false) {
+          throw new Error(response.error || '刪除雲端資料失敗');
+        }
+      }
+
+      this.resetSheetSyncContext();
+      this.sheetHydrationState = 'deleted';
+      this.cloudProjectDeleted = true;
+      this.sheetBaselineDocument = null;
+      this.sheetLastRevision = 0;
+      this.sheetLastFingerprint = null;
+      this.saveConfig({
+        ...this.config,
+        sheetProjectName: '',
+      });
+      this.fillProjectDialogFromConfig();
+      this.updateProjectDialogStatus();
+      this.updateProviderPanels();
+      this.refreshTransportMode();
+      this.setStatus('idle', `已刪除雲端資料：${projectName || projectKey}`);
+      this.appendSyncLog('info', 'project', '刪除雲端資料完成', `projectKey=${projectKey}`);
+      void this.loadSheetProjectCatalog({ force: true });
+      return true;
+    } catch (error) {
+      this.setStatus('error', '刪除雲端資料失敗');
+      this.appendSyncLog('error', 'project', '刪除雲端資料失敗', this.getErrorMessage(error));
+      return false;
+    } finally {
+      this.syncInFlight = false;
+      this.updateStatusBadge();
+      this.updateDialogStatus();
+    }
   }
 
   buildDialog() {
@@ -1261,7 +1348,7 @@ class CloudSyncManager {
   }
 
   refreshTransportMode() {
-    if (this.config.provider === 'sheets' && this.isConfigReady() && !document.hidden) {
+    if (this.config.provider === 'sheets' && this.isConfigReady() && !this.cloudProjectDeleted && this.sheetHydrationState !== 'deleted' && !document.hidden) {
       this.startSheetPolling();
       return;
     }
@@ -1281,7 +1368,7 @@ class CloudSyncManager {
   startSheetPolling() {
     this.stopSheetPolling();
 
-    if (this.config.provider !== 'sheets' || !this.isConfigReady()) {
+    if (this.config.provider !== 'sheets' || !this.isConfigReady() || this.sheetHydrationState === 'deleted' || this.cloudProjectDeleted) {
       return;
     }
 
@@ -1327,6 +1414,12 @@ class CloudSyncManager {
     if (!this.isConfigReady()) {
       this.setStatus('error', '請先完成 Google Sheet 設定');
       this.appendSyncLog('error', 'sheet', 'Google Sheet 同步失敗', '請先完成 Google Sheet 設定');
+      return false;
+    }
+
+    if (this.sheetHydrationState === 'deleted' || this.cloudProjectDeleted) {
+      this.setStatus('idle', '雲端資料已刪除');
+      this.appendSyncLog('info', 'sheet', '略過同步', '雲端資料已刪除，請先建立或開啟專案');
       return false;
     }
 
@@ -1505,6 +1598,10 @@ class CloudSyncManager {
       return false;
     }
 
+    if (this.cloudProjectDeleted || this.sheetHydrationState === 'deleted') {
+      return false;
+    }
+
     if (this.sheetPollInFlight) {
       return false;
     }
@@ -1651,6 +1748,12 @@ class CloudSyncManager {
     if (!this.isConfigReady()) {
       this.setStatus('error', '請先完成 Google Sheet 設定');
       this.appendSyncLog('error', 'sheet-pull', 'Google Sheet 拉回失敗', '請先完成 Google Sheet 設定');
+      return false;
+    }
+
+    if (this.sheetHydrationState === 'deleted' || this.cloudProjectDeleted) {
+      this.setStatus('idle', '雲端資料已刪除');
+      this.appendSyncLog('info', 'sheet-pull', '略過拉回', '雲端資料已刪除，請先建立或開啟專案');
       return false;
     }
 
@@ -1899,6 +2002,12 @@ class CloudSyncManager {
   }
 
   async pushSnapshot(snapshot, { force = false } = {}) {
+    if (this.cloudProjectDeleted) {
+      this.setStatus('idle', '雲端資料已刪除');
+      this.appendSyncLog('info', 'cloud', '略過同步', '雲端資料已刪除，請先建立或開啟專案');
+      return false;
+    }
+
     if (this.config.provider === 'sheets') {
       return this.pushSheetSnapshot(snapshot, { force });
     }
@@ -1978,6 +2087,12 @@ class CloudSyncManager {
   }
 
   async pullNow({ skipConfirm = false, silentOnMissing = false, preferRemote = false, hydrateViewport = false } = {}) {
+    if (this.cloudProjectDeleted) {
+      this.setStatus('idle', '雲端資料已刪除');
+      this.appendSyncLog('info', 'cloud-pull', '略過拉回', '雲端資料已刪除，請先建立或開啟專案');
+      return false;
+    }
+
     if (this.config.provider === 'sheets') {
       return this.pullSheetNow({ skipConfirm, silentOnMissing, preferRemote, hydrateViewport });
     }

@@ -82,3 +82,41 @@ export async function commitGitHubSnapshot({
     body: JSON.stringify(body),
   });
 }
+
+export async function deleteGitHubSnapshot({
+  owner,
+  repo,
+  path,
+  token,
+  branch,
+}) {
+  const endpoint = buildGitHubEndpointUrl({ owner, repo, path });
+  const remote = await fetchGitHubSnapshot({
+    owner,
+    repo,
+    path,
+    token,
+    allowMissing: true,
+  });
+
+  if (!remote?.sha) {
+    return {
+      deleted: false,
+      missing: true,
+      path,
+      branch,
+    };
+  }
+
+  const body = {
+    message: `NodeNote delete snapshot ${new Date().toISOString()}`,
+    sha: remote.sha,
+    branch,
+  };
+
+  return requestJson(endpoint, {
+    method: 'DELETE',
+    headers: buildGitHubHeaders(token),
+    body: JSON.stringify(body),
+  });
+}

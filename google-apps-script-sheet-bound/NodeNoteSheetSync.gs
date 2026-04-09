@@ -32,6 +32,10 @@ function doGet(e) {
       return respond(buildProjectCatalog_());
     }
 
+    if (action === 'delete-project' || action === 'deleteproject' || action === 'delete') {
+      return respond(deleteProject_(projectKey));
+    }
+
     return respond({
       ok: false,
       error: `Unknown action: ${action}`,
@@ -205,6 +209,46 @@ function applyPatch_(projectKey, patch) {
   return buildProjectState_(projectKey);
 }
 
+function deleteProject_(projectKey) {
+  const spreadsheet = getSpreadsheet_();
+  ensureSpreadsheetLayout_(spreadsheet);
+  const stateSheet = getOrCreateSheet_(spreadsheet, 'state', ['projectKey', 'revision', 'updatedAt', 'rootFolderId', 'metaJson', 'assetsJson', 'extrasJson', 'projectName']);
+  const nodesSheet = getOrCreateSheet_(spreadsheet, 'nodes', ['projectKey', 'id', 'payloadJson']);
+  const foldersSheet = getOrCreateSheet_(spreadsheet, 'folders', ['projectKey', 'id', 'payloadJson']);
+  const assetsSheet = getOrCreateSheet_(spreadsheet, 'assets', ['projectKey', 'id', 'payloadJson']);
+  const dashboardSheet = getOrCreateSheet_(spreadsheet, 'dashboard', ['metric', 'value', 'updatedAt']);
+
+  const stateRow = findRowByProjectKey_(stateSheet, projectKey);
+  const stateRecord = stateRow ? rowToObject_(stateSheet, stateRow) : {};
+
+  removeProjectRows_(stateSheet, projectKey);
+  removeProjectRows_(nodesSheet, projectKey);
+  removeProjectRows_(foldersSheet, projectKey);
+  removeProjectRows_(assetsSheet, projectKey);
+
+  upsertDashboardSheet_(dashboardSheet, {
+    projectKey,
+    revision: 0,
+    updatedAt: new Date().toISOString(),
+    rootFolderId: stateRecord?.rootFolderId || 'folder_root',
+    nodeCount: 0,
+    folderCount: 0,
+    assetCount: 0,
+  });
+
+  const catalog = buildProjectCatalog_();
+  return {
+    ok: true,
+    provider: 'google-sheets',
+    spreadsheetId: spreadsheet.getId(),
+    spreadsheetUrl: spreadsheet.getUrl(),
+    deleted: true,
+    projectKey,
+    projectName: stateRecord?.projectName || null,
+    projects: catalog.projects,
+  };
+}
+
 function buildProjectCatalog_() {
   const spreadsheet = getSpreadsheet_();
   ensureSpreadsheetLayout_(spreadsheet);
@@ -301,6 +345,21 @@ function replaceEntityTable_(sheet, projectKey, records) {
     .map((record) => [projectKey, String(record.id), JSON.stringify(record)]);
 
   writeAllRows_(sheet, kept.concat(nextRows));
+}
+
+function removeProjectRows_(sheet, projectKey) {
+  const rows = readAllRows_(sheet);
+  const header = rows[0] || [];
+  const kept = [header];
+
+  for (let index = 1; index < rows.length; index += 1) {
+    const row = rows[index];
+    if (normalizeProjectKey_(row[0]) !== projectKey) {
+      kept.push(row);
+    }
+  }
+
+  writeAllRows_(sheet, kept);
 }
 
 function upsertStateRow_(sheet, projectKey, record) {

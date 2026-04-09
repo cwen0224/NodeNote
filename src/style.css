@@ -1362,6 +1362,19 @@ button:hover {
   padding-top: 2px;
 }
 
+.cloud-project-danger {
+  background: rgba(248, 113, 113, 0.16);
+  border-color: rgba(248, 113, 113, 0.34);
+  color: #fecaca;
+}
+
+.cloud-project-danger:hover,
+.cloud-project-danger:focus-visible {
+  background: rgba(248, 113, 113, 0.24);
+  border-color: rgba(248, 113, 113, 0.58);
+  color: #fff;
+}
+
 .cloud-sync-panel {
   width: min(92vw, 760px);
   max-height: min(88vh, 760px);
