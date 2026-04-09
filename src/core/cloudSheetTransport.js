@@ -55,6 +55,7 @@ export function buildSheetRequestUrl({
 export function buildSheetCommitPayload({
   patch,
   projectKey = 'default',
+  projectName = '',
   clientId = '',
   clientName = 'NodeNote',
   secret = '',
@@ -68,6 +69,7 @@ export function buildSheetCommitPayload({
     schema: 'nodenote.sheet.cocollab',
     version,
     projectKey: sanitizeText(projectKey, 'default'),
+    projectName: sanitizeText(projectName),
     clientId: sanitizeText(clientId),
     clientName: sanitizeText(clientName, 'NodeNote'),
     secret: sanitizeText(secret),

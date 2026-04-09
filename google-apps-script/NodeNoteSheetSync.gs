@@ -73,7 +73,7 @@ function doPost(e) {
 function buildProjectState_(projectKey) {
   const spreadsheet = getSpreadsheet_();
   ensureSpreadsheetLayout_(spreadsheet);
-  const stateSheet = getOrCreateSheet_(spreadsheet, 'state', ['projectKey', 'revision', 'updatedAt', 'rootFolderId', 'metaJson', 'assetsJson', 'extrasJson']);
+  const stateSheet = getOrCreateSheet_(spreadsheet, 'state', ['projectKey', 'revision', 'updatedAt', 'rootFolderId', 'metaJson', 'assetsJson', 'extrasJson', 'projectName']);
   const nodesSheet = getOrCreateSheet_(spreadsheet, 'nodes', ['projectKey', 'id', 'payloadJson']);
   const foldersSheet = getOrCreateSheet_(spreadsheet, 'folders', ['projectKey', 'id', 'payloadJson']);
   const assetsSheet = getOrCreateSheet_(spreadsheet, 'assets', ['projectKey', 'id', 'payloadJson']);
@@ -103,6 +103,7 @@ function buildProjectState_(projectKey) {
     projectKey,
     revision: Number.parseInt(stateRecord?.revision || `${NODE_NOTE_DEFAULT_REVISION}`, 10) || 0,
     updatedAt: stateRecord?.updatedAt || null,
+    projectName: stateRecord?.projectName || null,
     document: {
       schemaVersion: '2.0.0',
       meta: parseJson_(stateRecord?.metaJson, { title: 'Untitled', description: '', tags: [], createdAt: null, updatedAt: null }),
@@ -118,7 +119,7 @@ function buildProjectState_(projectKey) {
 function applyPatch_(projectKey, patch) {
   const spreadsheet = getSpreadsheet_();
   ensureSpreadsheetLayout_(spreadsheet);
-  const stateSheet = getOrCreateSheet_(spreadsheet, 'state', ['projectKey', 'revision', 'updatedAt', 'rootFolderId', 'metaJson', 'assetsJson', 'extrasJson']);
+  const stateSheet = getOrCreateSheet_(spreadsheet, 'state', ['projectKey', 'revision', 'updatedAt', 'rootFolderId', 'metaJson', 'assetsJson', 'extrasJson', 'projectName']);
   const nodesSheet = getOrCreateSheet_(spreadsheet, 'nodes', ['projectKey', 'id', 'payloadJson']);
   const foldersSheet = getOrCreateSheet_(spreadsheet, 'folders', ['projectKey', 'id', 'payloadJson']);
   const assetsSheet = getOrCreateSheet_(spreadsheet, 'assets', ['projectKey', 'id', 'payloadJson']);
@@ -144,6 +145,9 @@ function applyPatch_(projectKey, patch) {
   const nextExtras = isPlainObject_(patch.extras)
     ? patch.extras
     : parseJson_(currentState.extrasJson, {});
+  const nextProjectName = typeof patch.projectName === 'string' && patch.projectName.trim()
+    ? patch.projectName.trim()
+    : (String(currentState.projectName || '').trim() || String(nextMeta?.title || '').trim() || 'Untitled');
   const nextRootFolderId = typeof patch.rootFolderId === 'string' && patch.rootFolderId.trim()
     ? patch.rootFolderId.trim()
     : (currentState.rootFolderId || 'folder_root');
@@ -156,6 +160,7 @@ function applyPatch_(projectKey, patch) {
     metaJson: JSON.stringify(nextMeta || {}),
     assetsJson: JSON.stringify(nextAssets || []),
     extrasJson: JSON.stringify(nextExtras || {}),
+    projectName: nextProjectName,
   });
 
   upsertDashboardSheet_(dashboardSheet, {
@@ -174,7 +179,7 @@ function applyPatch_(projectKey, patch) {
 function buildProjectCatalog_() {
   const spreadsheet = getSpreadsheet_();
   ensureSpreadsheetLayout_(spreadsheet);
-  const stateSheet = getOrCreateSheet_(spreadsheet, 'state', ['projectKey', 'revision', 'updatedAt', 'rootFolderId', 'metaJson', 'assetsJson', 'extrasJson']);
+  const stateSheet = getOrCreateSheet_(spreadsheet, 'state', ['projectKey', 'revision', 'updatedAt', 'rootFolderId', 'metaJson', 'assetsJson', 'extrasJson', 'projectName']);
   const nodesSheet = getOrCreateSheet_(spreadsheet, 'nodes', ['projectKey', 'id', 'payloadJson']);
   const foldersSheet = getOrCreateSheet_(spreadsheet, 'folders', ['projectKey', 'id', 'payloadJson']);
   const assetsSheet = getOrCreateSheet_(spreadsheet, 'assets', ['projectKey', 'id', 'payloadJson']);
@@ -195,13 +200,15 @@ function buildProjectCatalog_() {
     const updatedAt = String(row[2] || '').trim() || null;
     const rootFolderId = String(row[3] || '').trim() || 'folder_root';
     const meta = parseJson_(row[4], { title: 'Untitled' });
-    const title = typeof meta?.title === 'string' && meta.title.trim()
+    const projectName = String(row[7] || '').trim() || '';
+    const title = projectName || (typeof meta?.title === 'string' && meta.title.trim()
       ? meta.title.trim()
-      : 'Untitled';
+      : 'Untitled');
 
     projects.push({
       projectKey,
       title,
+      projectName: title,
       revision,
       updatedAt,
       rootFolderId,
@@ -269,7 +276,7 @@ function replaceEntityTable_(sheet, projectKey, records) {
 
 function upsertStateRow_(sheet, projectKey, record) {
   const rows = readAllRows_(sheet);
-  const header = rows[0] || ['projectKey', 'revision', 'updatedAt', 'rootFolderId', 'metaJson', 'assetsJson', 'extrasJson'];
+  const header = rows[0] || ['projectKey', 'revision', 'updatedAt', 'rootFolderId', 'metaJson', 'assetsJson', 'extrasJson', 'projectName'];
   const nextRow = [
     projectKey,
     record.revision || 0,
@@ -278,6 +285,7 @@ function upsertStateRow_(sheet, projectKey, record) {
     record.metaJson || '{}',
     record.assetsJson || '[]',
     record.extrasJson || '{}',
+    record.projectName || 'Untitled',
   ];
 
   let replaced = false;
@@ -466,9 +474,13 @@ function getOrCreateSheet_(spreadsheet, name, headers) {
   const currentHeaders = sheet.getLastRow() > 0
     ? sheet.getRange(1, 1, 1, Math.max(1, sheet.getLastColumn())).getValues()[0]
     : [];
-  if (!currentHeaders.length || String(currentHeaders[0] || '').trim() !== String(headers[0] || '').trim()) {
+  const nextHeaders = Array.isArray(headers) ? headers : [];
+  const firstHeaderMatches = currentHeaders.length && String(currentHeaders[0] || '').trim() === String(nextHeaders[0] || '').trim();
+  if (!currentHeaders.length || !firstHeaderMatches) {
     sheet.clearContents();
-    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sheet.getRange(1, 1, 1, nextHeaders.length).setValues([nextHeaders]);
+  } else if (currentHeaders.length < nextHeaders.length) {
+    sheet.getRange(1, 1, 1, nextHeaders.length).setValues([nextHeaders]);
   }
 
   return sheet;

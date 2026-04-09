@@ -203,6 +203,7 @@ class CloudSyncManager {
       restoreOnStartupWhenEmpty: false,
       sheetWebAppUrl: DEFAULT_SHEET_WEB_APP_URL,
       sheetProjectKey: 'default',
+      sheetProjectName: '',
       sheetClientName: 'NodeNote',
       sheetSecret: '',
       sheetPollIntervalMs: DEFAULT_SHEET_POLL_MS,
@@ -226,6 +227,9 @@ class CloudSyncManager {
         }
         if (!sanitizeString(next.sheetClientName)) {
           next.sheetClientName = defaults.sheetClientName;
+        }
+        if (!sanitizeString(next.sheetProjectName)) {
+          next.sheetProjectName = '';
         }
         if (!Number.isFinite(next.sheetPollIntervalMs) || next.sheetPollIntervalMs < DEFAULT_SHEET_POLL_MS) {
           next.sheetPollIntervalMs = DEFAULT_SHEET_POLL_MS;
@@ -468,6 +472,7 @@ class CloudSyncManager {
       this.projectOverlay = document.getElementById('cloud-project-modal');
       this.projectPanel = this.projectOverlay?.querySelector?.('.cloud-project-panel') || null;
       this.projectProjectKeyInput = this.projectOverlay?.querySelector?.('[data-project-field="sheetProjectKey"]') || null;
+      this.projectProjectNameInput = this.projectOverlay?.querySelector?.('[data-project-field="sheetProjectName"]') || null;
       this.projectProjectKeyHistory = this.projectOverlay?.querySelector?.('[data-project-project-key-history]') || null;
       this.projectRemoteProjectList = this.projectOverlay?.querySelector?.('[data-project-remote-list]') || null;
       this.projectCatalogStatus = this.projectOverlay?.querySelector?.('[data-project-catalog-status]') || null;
@@ -506,6 +511,11 @@ class CloudSyncManager {
             <datalist id="sheet-project-key-history" data-project-project-key-history></datalist>
             <small>會套用到 Google Sheet 共編。開啟會切換並從雲端拉回；新建會以目前內容作為起點建立專案。</small>
           </label>
+          <label class="cloud-project-field cloud-project-field--wide">
+            <span>專案名稱</span>
+            <input type="text" data-project-field="sheetProjectName" autocomplete="off" placeholder="未命名專案" />
+            <small>會顯示在雲端專案清單；可以留空，系統會使用目前文件標題或專案鍵。</small>
+          </label>
         </div>
         <div class="cloud-project-actions">
           <button type="button" data-project-action="open">開啟專案</button>
@@ -518,6 +528,7 @@ class CloudSyncManager {
     document.body.appendChild(this.projectOverlay);
     this.projectPanel = this.projectOverlay.querySelector('.cloud-project-panel');
     this.projectProjectKeyInput = this.projectOverlay.querySelector('[data-project-field="sheetProjectKey"]');
+    this.projectProjectNameInput = this.projectOverlay.querySelector('[data-project-field="sheetProjectName"]');
     this.projectProjectKeyHistory = this.projectOverlay.querySelector('[data-project-project-key-history]');
     this.projectRemoteProjectList = this.projectOverlay.querySelector('[data-project-remote-list]');
     this.projectCatalogStatus = this.projectOverlay.querySelector('[data-project-catalog-status]');
@@ -584,6 +595,10 @@ class CloudSyncManager {
     if (this.projectProjectKeyInput) {
       this.projectProjectKeyInput.value = sanitizeString(this.config.sheetProjectKey, 'default');
     }
+    if (this.projectProjectNameInput) {
+      const fallbackTitle = store.getDocumentSnapshot?.()?.meta?.title || '';
+      this.projectProjectNameInput.value = sanitizeString(this.config.sheetProjectName, '') || sanitizeString(fallbackTitle, '');
+    }
   }
 
   updateProjectDialogStatus() {
@@ -592,12 +607,13 @@ class CloudSyncManager {
     }
 
     const projectKey = sanitizeString(this.projectProjectKeyInput?.value || this.config.sheetProjectKey, 'default');
+    const projectName = sanitizeString(this.projectProjectNameInput?.value || this.config.sheetProjectName || store.getDocumentSnapshot?.()?.meta?.title || projectKey, '');
     if (this.config.provider === 'sheets') {
-      this.projectHint.textContent = `目前使用 Google Sheet 共編，專案鍵：${projectKey || 'default'}`;
+      this.projectHint.textContent = `目前使用 Google Sheet 共編，專案鍵：${projectKey || 'default'}，名稱：${projectName || '未命名專案'}`;
       return;
     }
 
-    this.projectHint.textContent = `目前不是 Google Sheet 共編模式，但仍可先保存專案鍵：${projectKey || 'default'}`;
+    this.projectHint.textContent = `目前不是 Google Sheet 共編模式，但仍可先保存專案鍵：${projectKey || 'default'}，名稱：${projectName || '未命名專案'}`;
   }
 
   normalizeSheetProjectCatalog(response) {
@@ -620,6 +636,7 @@ class CloudSyncManager {
         return {
           projectKey,
           title: sanitizeString(project.title, projectKey) || projectKey,
+          projectName: sanitizeString(project.projectName, '') || sanitizeString(project.title, projectKey) || projectKey,
           revision: Number.parseInt(project.revision || '0', 10) || 0,
           updatedAt: sanitizeString(project.updatedAt) || null,
           rootFolderId: sanitizeString(project.rootFolderId, 'folder_root') || 'folder_root',
@@ -669,9 +686,10 @@ class CloudSyncManager {
     this.projectRemoteProjectList.innerHTML = projects.map((project) => {
       const selected = project.projectKey === currentProjectKey ? ' is-active' : '';
       const updatedAt = project.updatedAt ? formatClockStamp(project.updatedAt) : '未記錄';
+      const projectName = project.projectName || project.title || project.projectKey;
       return `
         <button type="button" class="cloud-project-catalog-item${selected}" data-project-action="select-project" data-project-key="${escapeHtml(project.projectKey)}">
-          <strong>${escapeHtml(project.title || project.projectKey)}</strong>
+          <strong>${escapeHtml(projectName)}</strong>
           <span>${escapeHtml(project.projectKey)}</span>
           <small>revision ${escapeHtml(String(project.revision || 0))} · ${escapeHtml(updatedAt)}</small>
         </button>
@@ -737,6 +755,7 @@ class CloudSyncManager {
 
   async applyProjectSelection() {
     const nextProjectKey = sanitizeString(this.projectProjectKeyInput?.value, 'default');
+    const nextProjectName = sanitizeString(this.projectProjectNameInput?.value || this.config.sheetProjectName || store.getDocumentSnapshot?.()?.meta?.title || nextProjectKey, '');
     if (!nextProjectKey) {
       this.setStatus('error', '請先輸入專案鍵');
       this.appendSyncLog('error', 'project', '開啟專案失敗', '請先輸入專案鍵');
@@ -749,6 +768,7 @@ class CloudSyncManager {
       provider: 'sheets',
       sheetWebAppUrl: sanitizeString(this.config.sheetWebAppUrl) || DEFAULT_SHEET_WEB_APP_URL,
       sheetProjectKey: nextProjectKey,
+      sheetProjectName: nextProjectName,
       sheetClientName: sanitizeString(this.config.sheetClientName, 'NodeNote'),
     };
     this.resetSheetSyncContext();
@@ -773,6 +793,7 @@ class CloudSyncManager {
 
   async createProjectSelection() {
     let nextProjectKey = sanitizeString(this.projectProjectKeyInput?.value, '');
+    let nextProjectName = sanitizeString(this.projectProjectNameInput?.value || this.config.sheetProjectName || store.getDocumentSnapshot?.()?.meta?.title || '', '');
     if (!nextProjectKey) {
       const stamp = new Date();
       const mm = String(stamp.getMonth() + 1).padStart(2, '0');
@@ -781,6 +802,9 @@ class CloudSyncManager {
       const min = String(stamp.getMinutes()).padStart(2, '0');
       nextProjectKey = `project_${stamp.getFullYear()}${mm}${dd}_${hh}${min}`;
     }
+    if (!nextProjectName) {
+      nextProjectName = nextProjectKey;
+    }
 
     this.rememberSheetProjectKey(nextProjectKey);
     this.config = {
@@ -788,6 +812,7 @@ class CloudSyncManager {
       provider: 'sheets',
       sheetWebAppUrl: sanitizeString(this.config.sheetWebAppUrl) || DEFAULT_SHEET_WEB_APP_URL,
       sheetProjectKey: nextProjectKey,
+      sheetProjectName: nextProjectName,
       sheetClientName: sanitizeString(this.config.sheetClientName, 'NodeNote'),
     };
     this.resetSheetSyncContext();
@@ -1340,6 +1365,7 @@ class CloudSyncManager {
       const payload = buildSheetCommitPayload({
         patch,
         projectKey: this.config.sheetProjectKey,
+        projectName: sanitizeString(this.config.sheetProjectName || store.getDocumentSnapshot()?.meta?.title || this.config.sheetProjectKey, ''),
         clientId: this.sheetClientId,
         clientName: resolveSheetClientName(this.config, `NodeNote-${this.sheetClientId.slice(-4)}`),
         secret: this.config.sheetSecret,
