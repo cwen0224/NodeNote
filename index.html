@@ -30,10 +30,10 @@
       });
     </script>
     
-    <div id="tray-drawer" class="tray-drawer glass-panel is-collapsed" aria-label="Tray drawer">
+    <div id="tray-drawer" class="tray-drawer glass-panel is-collapsed" aria-label="托盤抽屜">
       <div class="tray-drawer-panel">
         <div class="tray-drawer-header">
-          <div class="tray-drawer-title">Tray</div>
+          <div class="tray-drawer-title">托盤</div>
           <button id="btn-tray-close" type="button" aria-label="關閉托盤">×</button>
         </div>
         <div class="tray-drawer-body">
@@ -47,20 +47,21 @@
     <!-- Top toolbar for tray and actions -->
     <div id="toolbar" class="glass-panel">
       <div class="toolbar-primary">
-        <div class="toolbar-folder-nav">
-          <button id="btn-folder-back" type="button">Back</button>
-          <div id="folder-breadcrumb" aria-label="Folder breadcrumb"></div>
+          <div class="toolbar-folder-nav">
+            <button id="btn-folder-back" type="button">返回</button>
+            <div id="folder-breadcrumb" aria-label="資料夾導覽"></div>
+          </div>
         </div>
-      </div>
-      <div class="toolbar-actions">
-        <div class="actions">
-          <button id="btn-folder-group" type="button">Group</button>
-          <button id="btn-sync-now" type="button" title="同步並驗證 Google Sheet">同步</button>
-          <button id="btn-undo">Undo</button>
-          <button id="btn-redo">Redo</button>
-          <button id="btn-ai-prompt-copy" type="button">複製提詞</button>
+        <div class="toolbar-actions">
+          <div class="actions">
+            <button id="btn-folder-group" type="button">群組</button>
+            <button id="btn-sync-now" type="button" title="同步並驗證 Google Sheet">同步</button>
+            <button id="btn-open-project" type="button">開啟專案</button>
+            <button id="btn-undo">復原</button>
+            <button id="btn-redo">重做</button>
+            <button id="btn-ai-prompt-copy" type="button">複製提詞</button>
+          </div>
         </div>
-      </div>
     </div>
 
     <div id="utility-dock" class="utility-dock glass-panel">

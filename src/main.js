@@ -114,6 +114,7 @@ const initApp = () => {
     // Wire Undo/Redo
     const folderBackBtn = document.getElementById('btn-folder-back');
     const syncBtn = document.getElementById('btn-sync-now');
+    const openProjectBtn = document.getElementById('btn-open-project');
     const aiPromptCopyBtn = document.getElementById('btn-ai-prompt-copy');
     const trayDrawer = document.getElementById('tray-drawer');
     const trayCloseBtn = document.getElementById('btn-tray-close');
@@ -128,9 +129,25 @@ const initApp = () => {
       }
     };
     if(folderBackBtn) folderBackBtn.onclick = () => store.exitFolder();
+    if (folderBackBtn) {
+      folderBackBtn.textContent = '返回';
+    }
     if (syncBtn) {
       syncBtn.textContent = '同步';
       syncBtn.title = '同步並驗證 Google Sheet';
+    }
+    if (openProjectBtn) {
+      openProjectBtn.textContent = '開啟專案';
+      openProjectBtn.title = '在新分頁開啟目前雲端專案';
+    }
+    if (folderGroupBtn) {
+      folderGroupBtn.textContent = '群組';
+    }
+    if (undoBtn) {
+      undoBtn.textContent = '復原';
+    }
+    if (redoBtn) {
+      redoBtn.textContent = '重做';
     }
     const setTrayDrawerOpen = (isOpen) => {
       if (!trayDrawer) {
@@ -213,6 +230,9 @@ const initApp = () => {
       syncBtn.onclick = async () => {
         await cloudSyncManager.syncNow({ force: true });
       };
+    }
+    if (openProjectBtn) {
+      openProjectBtn.onclick = () => cloudSyncManager.openProject();
     }
     if(folderGroupBtn) folderGroupBtn.onclick = () => nodeManager.groupSelectionIntoFolder();
     if(undoBtn) undoBtn.onclick = () => store.undo();

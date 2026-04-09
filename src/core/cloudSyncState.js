@@ -20,6 +20,14 @@ export function applyCloudSyncStatePatch(state = {}, patch = {}) {
     target.lastRemoteSha = safePatch.lastRemoteSha;
   }
 
+  if (Object.prototype.hasOwnProperty.call(safePatch, 'spreadsheetUrl')) {
+    target.spreadsheetUrl = safePatch.spreadsheetUrl;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(safePatch, 'spreadsheetId')) {
+    target.spreadsheetId = safePatch.spreadsheetId;
+  }
+
   if (Object.prototype.hasOwnProperty.call(safePatch, 'syncCountDelta')) {
     const delta = Number(safePatch.syncCountDelta);
     target.syncCount = (Number.isFinite(target.syncCount) ? target.syncCount : 0) + (Number.isFinite(delta) ? delta : 0);

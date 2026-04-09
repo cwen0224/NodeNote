@@ -11,6 +11,8 @@ export function buildCloudSyncSuccessPatch({
   syncedAt = null,
   remoteRevision = null,
   remoteSha = null,
+  spreadsheetUrl = null,
+  spreadsheetId = null,
   syncCountDelta = 0,
   clearLastError = true,
 } = {}) {
@@ -19,6 +21,8 @@ export function buildCloudSyncSuccessPatch({
   assignIfPresent(patch, 'lastSyncedAt', syncedAt);
   assignIfPresent(patch, 'lastRemoteRevision', remoteRevision);
   assignIfPresent(patch, 'lastRemoteSha', remoteSha);
+  assignIfPresent(patch, 'spreadsheetUrl', spreadsheetUrl);
+  assignIfPresent(patch, 'spreadsheetId', spreadsheetId);
 
   if (Number.isFinite(syncCountDelta) && syncCountDelta !== 0) {
     patch.syncCountDelta = syncCountDelta;

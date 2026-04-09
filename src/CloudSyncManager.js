@@ -236,6 +236,8 @@ class CloudSyncManager {
       lastSyncedAt: null,
       lastError: null,
       lastRemoteSha: null,
+      spreadsheetUrl: null,
+      spreadsheetId: null,
       lastFingerprint: null,
       lastRemoteRevision: 0,
       syncCount: 0,
@@ -307,6 +309,60 @@ class CloudSyncManager {
     });
   }
 
+  getGitHubProjectUrl() {
+    const owner = sanitizeString(this.config.owner);
+    const repo = sanitizeString(this.config.repo);
+    const branch = sanitizeString(this.config.branch, 'master');
+    const path = sanitizeString(this.config.path, DEFAULT_SYNC_PATH);
+
+    if (!owner || !repo) {
+      return '';
+    }
+
+    const encodedPath = path
+      .split('/')
+      .filter(Boolean)
+      .map((segment) => encodeURIComponent(segment))
+      .join('/');
+
+    if (!encodedPath) {
+      return `https://github.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
+    }
+
+    return `https://github.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/blob/${encodeURIComponent(branch)}/${encodedPath}`;
+  }
+
+  getProjectUrl() {
+    if (this.config.provider === 'sheets') {
+      return sanitizeString(this.state.spreadsheetUrl || '');
+    }
+
+    if (this.config.provider === 'github') {
+      return this.getGitHubProjectUrl();
+    }
+
+    return '';
+  }
+
+  openProject() {
+    const targetUrl = this.getProjectUrl();
+    if (targetUrl) {
+      window.open(targetUrl, '_blank', 'noopener,noreferrer');
+      this.appendSyncLog('info', 'project', '開啟專案', targetUrl);
+      return true;
+    }
+
+    if (this.config.provider === 'sheets') {
+      this.setStatus('idle', '尚未取得試算表網址，請先完成一次同步');
+      this.appendSyncLog('info', 'project', '無法開啟專案', '尚未取得試算表網址');
+    } else if (this.config.provider === 'github') {
+      this.setStatus('idle', '請先完成 GitHub 同步設定');
+      this.appendSyncLog('info', 'project', '無法開啟專案', '尚未設定 GitHub 專案網址');
+    }
+
+    return false;
+  }
+
   buildDialog() {
     if (document.getElementById('cloud-sync-modal')) {
       this.overlay = document.getElementById('cloud-sync-modal');
@@ -324,7 +380,7 @@ class CloudSyncManager {
       <div class="cloud-sync-panel glass-panel">
         <div class="cloud-sync-header">
           <div>
-            <h2>Cloud Sync</h2>
+            <h2>雲端同步</h2>
             <p>GitHub 用最新快照備份，Google Sheet 用近即時共編。</p>
           </div>
           <button type="button" class="cloud-sync-close" data-cloud-action="close" aria-label="關閉雲端同步">×</button>
@@ -332,7 +388,7 @@ class CloudSyncManager {
         <div class="cloud-sync-status" aria-live="polite">尚未設定雲端同步。</div>
         <div class="cloud-sync-form">
           <label class="cloud-sync-field">
-            <span>Provider</span>
+            <span>同步來源</span>
             <select data-cloud-field="provider">
               <option value="github">GitHub 備份</option>
               <option value="sheets">Google Sheet 共編</option>
@@ -341,23 +397,23 @@ class CloudSyncManager {
           <section class="cloud-sync-provider-group" data-provider-panel="github">
             <div class="cloud-sync-grid">
               <label class="cloud-sync-field">
-                <span>Owner</span>
+                <span>擁有者</span>
                 <input type="text" data-cloud-field="owner" autocomplete="off" />
               </label>
               <label class="cloud-sync-field">
-                <span>Repository</span>
+                <span>儲存庫</span>
                 <input type="text" data-cloud-field="repo" autocomplete="off" />
               </label>
               <label class="cloud-sync-field">
-                <span>Branch</span>
+                <span>分支</span>
                 <input type="text" data-cloud-field="branch" autocomplete="off" />
               </label>
               <label class="cloud-sync-field cloud-sync-field--wide">
-                <span>Path</span>
+                <span>路徑</span>
                 <input type="text" data-cloud-field="path" autocomplete="off" />
               </label>
               <label class="cloud-sync-field cloud-sync-field--wide">
-                <span>GitHub Token</span>
+                <span>GitHub 權杖</span>
                 <input type="password" data-cloud-field="token" autocomplete="off" />
                 <small>Token 會存進瀏覽器本機，只建議使用 Contents: write 的 fine-grained PAT。</small>
               </label>
@@ -369,23 +425,23 @@ class CloudSyncManager {
             </div>
             <div class="cloud-sync-grid">
               <label class="cloud-sync-field cloud-sync-field--wide">
-                <span>Web App URL</span>
+                <span>Web App 網址</span>
                 <input type="text" data-cloud-field="sheetWebAppUrl" autocomplete="off" placeholder="https://script.google.com/macros/s/..." />
               </label>
               <label class="cloud-sync-field">
-                <span>Project Key</span>
+                <span>專案鍵</span>
                 <input type="text" data-cloud-field="sheetProjectKey" autocomplete="off" placeholder="default" />
               </label>
               <label class="cloud-sync-field">
-                <span>Client Name</span>
+                <span>裝置名稱</span>
                 <input type="text" data-cloud-field="sheetClientName" autocomplete="off" placeholder="Alice" />
               </label>
               <label class="cloud-sync-field">
-                <span>Secret</span>
+                <span>密鑰</span>
                 <input type="password" data-cloud-field="sheetSecret" autocomplete="off" />
               </label>
               <label class="cloud-sync-field">
-                <span>Poll Interval (ms)</span>
+                <span>輪詢間隔（毫秒）</span>
                 <input type="number" min="1000" step="250" data-cloud-field="sheetPollIntervalMs" autocomplete="off" />
               </label>
             </div>
@@ -407,7 +463,7 @@ class CloudSyncManager {
           </div>
           <div class="cloud-sync-log-actions">
             <button type="button" data-cloud-action="copy-logs">複製日誌</button>
-            <button type="button" data-cloud-action="clear-logs">清空</button>
+            <button type="button" data-cloud-action="clear-logs">清空日誌</button>
           </div>
         </div>
         <div class="cloud-sync-log-summary" data-cloud-log-summary>尚未記錄任何同步日誌。</div>
@@ -922,9 +978,14 @@ class CloudSyncManager {
         },
       }));
 
-      const { remoteDocument, remoteRevision, updatedAt } = normalizeSheetResponse(response, {
+      const { remoteDocument, remoteRevision, updatedAt, spreadsheetId, spreadsheetUrl } = normalizeSheetResponse(response, {
         fallbackRevision: this.sheetLastRevision || 0,
       });
+
+      commitCloudSyncStatePatch(this, buildCloudSyncSuccessPatch({
+        spreadsheetId,
+        spreadsheetUrl,
+      }));
 
       if (!remoteDocument) {
         throw new Error('驗證失敗：讀回不到 Google Sheet 內容');
@@ -942,6 +1003,8 @@ class CloudSyncManager {
           fingerprint: buildDocumentFingerprint(remoteDocument),
           syncedAt: updatedAt || new Date().toISOString(),
           remoteRevision: this.sheetLastRevision,
+          spreadsheetId,
+          spreadsheetUrl,
         },
         statusMessage: 'Google Sheet 驗證成功',
         statusDetail: `Revision ${this.sheetLastRevision || 0}`,
@@ -995,12 +1058,17 @@ class CloudSyncManager {
         },
       }));
 
-      const { remoteDocument, remoteRevision, updatedAt, localPatch, mergedDocument, hasLocalChanges } =
+      const { remoteDocument, remoteRevision, updatedAt, spreadsheetId, spreadsheetUrl, localPatch, mergedDocument, hasLocalChanges } =
         mergeSheetRemoteDocument({
           response,
           baselineDocument: this.sheetBaselineDocument || createDefaultDocument(),
           currentDocument: store.getDocumentSnapshot(),
         });
+
+      commitCloudSyncStatePatch(this, buildCloudSyncSuccessPatch({
+        spreadsheetId,
+        spreadsheetUrl,
+      }));
 
       if (!remoteDocument) {
         return false;
@@ -1025,6 +1093,8 @@ class CloudSyncManager {
           patch: {
             remoteRevision,
             syncedAt: updatedAt || new Date().toISOString(),
+            spreadsheetId,
+            spreadsheetUrl,
           },
           statusMessage: '本機內容較新，保留本機版本',
           statusDetail: localSavedAt
@@ -1047,6 +1117,8 @@ class CloudSyncManager {
         buildCloudSyncSuccessPatch({
           remoteRevision,
           syncedAt: updatedAt || new Date().toISOString(),
+          spreadsheetId,
+          spreadsheetUrl,
         })
       );
 
@@ -1065,6 +1137,8 @@ class CloudSyncManager {
       finishCloudSyncSuccess(this, {
         patch: {
           fingerprint: buildDocumentFingerprint(mergedDocument),
+          spreadsheetId,
+          spreadsheetUrl,
         },
         statusMessage: 'Google Sheet 已同步',
         statusDetail: `Revision ${remoteRevision}`,
@@ -1127,11 +1201,16 @@ class CloudSyncManager {
         secret: this.config.sheetSecret,
       }));
 
-      const { remoteDocument, remoteRevision, updatedAt, mergedDocument } = mergeSheetRemoteDocument({
+      const { remoteDocument, remoteRevision, updatedAt, spreadsheetId, spreadsheetUrl, mergedDocument } = mergeSheetRemoteDocument({
         response,
         baselineDocument: this.sheetBaselineDocument || createDefaultDocument(),
         currentDocument: store.getDocumentSnapshot(),
       });
+
+      commitCloudSyncStatePatch(this, buildCloudSyncSuccessPatch({
+        spreadsheetId,
+        spreadsheetUrl,
+      }));
 
       if (!remoteDocument) {
         this.sheetHydrationState = 'missing';
@@ -1158,6 +1237,8 @@ class CloudSyncManager {
         finishCloudSyncIdle(this, {
           patch: {
             remoteRevision: this.sheetLastRevision,
+            spreadsheetId,
+            spreadsheetUrl,
           },
           statusMessage: '本機內容較新，保留本機版本',
           statusDetail: localSavedAt
@@ -1189,6 +1270,8 @@ class CloudSyncManager {
           remoteRevision: this.sheetLastRevision,
           fingerprint: buildDocumentFingerprint(mergedDocument),
           syncedAt: updatedAt || new Date().toISOString(),
+          spreadsheetId,
+          spreadsheetUrl,
         },
         statusMessage: 'Google Sheet 拉回完成',
         statusDetail: `Revision ${this.sheetLastRevision || 0}`,

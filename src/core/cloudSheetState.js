@@ -10,11 +10,15 @@ export function normalizeSheetResponse(response = {}, { fallbackRevision = 0 } =
   const remoteDocument = response?.document ? normalizeDocument(response.document) : null;
   const remoteRevision = Number.isFinite(response?.revision) ? response.revision : fallbackRevision;
   const updatedAt = sanitizeString(response?.updatedAt, '') || null;
+  const spreadsheetId = sanitizeString(response?.spreadsheetId, '') || null;
+  const spreadsheetUrl = sanitizeString(response?.spreadsheetUrl, '') || null;
 
   return {
     remoteDocument,
     remoteRevision,
     updatedAt,
+    spreadsheetId,
+    spreadsheetUrl,
   };
 }
 
