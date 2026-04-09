@@ -924,9 +924,8 @@ class Renderer {
       nodeEl.dataset.orphanTargetPortSide = entry.targetPortSide || 'left';
       nodeEl.style.width = `${width}px`;
       nodeEl.style.height = `${height}px`;
-      const center = entry.orphanedTargetCenter || entry.center || { x: entry.x, y: entry.y };
-      nodeEl.style.left = `${Math.round((Number(center?.x) || entry.x || 0) - width / 2)}px`;
-      nodeEl.style.top = `${Math.round((Number(center?.y) || entry.y || 0) - height / 2)}px`;
+      nodeEl.style.left = `${Math.round(entry.x - width / 2)}px`;
+      nodeEl.style.top = `${Math.round(entry.y - height / 2)}px`;
       nodeEl.innerHTML = `
         <input class="orphan-connection-input" type="text" value="${this.escapeHtml(entry.labelText)}" aria-label="連線名稱" spellcheck="false" />
         <div class="port right connection-orphan-port"></div>
@@ -934,43 +933,6 @@ class Renderer {
 
       const portEl = nodeEl.querySelector('.connection-orphan-port');
       const inputEl = nodeEl.querySelector('.orphan-connection-input');
-      const startReconnectFromBlock = (event) => {
-        if (event.target?.closest?.('.orphan-connection-input')) {
-          return;
-        }
-        if (event.target?.closest?.('.connection-orphan-port')) {
-          connectionManager.beginDrawingFromPort(portEl, event);
-          return;
-        }
-        const started = connectionManager.beginOrphanBlockDrag({
-          sourceId: entry.sourceId,
-          key: entry.key,
-          nodeEl,
-          inputEl,
-          event,
-        });
-        if (started) {
-          const moveDrag = (moveEvent) => {
-            connectionManager.updateOrphanBlockDrag(moveEvent);
-          };
-          const endDrag = (endEvent) => {
-            connectionManager.finishOrphanBlockDrag(endEvent);
-            window.removeEventListener('mousemove', moveDrag);
-            window.removeEventListener('mouseup', endDrag);
-            window.removeEventListener('pointermove', moveDrag);
-            window.removeEventListener('pointerup', endDrag);
-            window.removeEventListener('pointercancel', endDrag);
-          };
-          if (event.pointerType === 'touch' || event.pointerType === 'pen') {
-            window.addEventListener('pointermove', moveDrag, { passive: false });
-            window.addEventListener('pointerup', endDrag);
-            window.addEventListener('pointercancel', endDrag);
-          } else {
-            window.addEventListener('mousemove', moveDrag);
-            window.addEventListener('mouseup', endDrag);
-          }
-        }
-      };
       if (inputEl) {
         inputEl.addEventListener('focus', () => {
           window.requestAnimationFrame(() => inputEl.select?.());
@@ -995,17 +957,6 @@ class Renderer {
           connectionManager.renameConnectionKey(entry.sourceId, entry.key, nextKey);
         });
       }
-
-      nodeEl.addEventListener('mousedown', startReconnectFromBlock);
-      nodeEl.addEventListener('pointerdown', (event) => {
-        if (!event?.pointerType) {
-          return;
-        }
-        if (event.pointerType !== 'touch' && event.pointerType !== 'pen') {
-          return;
-        }
-        startReconnectFromBlock(event);
-      });
 
       this.nodeLayer.appendChild(nodeEl);
     });
