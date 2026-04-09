@@ -1498,11 +1498,13 @@ class CloudSyncManager {
         if (silentOnMissing) {
           this.setStatus('idle', 'Google Sheet 尚未有內容');
           this.appendSyncLog('info', 'sheet-pull', 'Google Sheet 尚無內容', '保留目前工作區');
+          this.sheetHydrationState = 'ready';
           return false;
         }
 
         this.setStatus('error', 'Google Sheet 沒有找到內容，請先完成一次同步');
         this.appendSyncLog('error', 'sheet-pull', 'Google Sheet 拉回失敗', 'Google Sheet 沒有找到內容，請先完成一次同步');
+        this.sheetHydrationState = 'ready';
         return false;
       }
 
@@ -1535,6 +1537,7 @@ class CloudSyncManager {
             winner: freshness.winner,
           },
         });
+        this.sheetHydrationState = 'ready';
         return true;
       }
 
