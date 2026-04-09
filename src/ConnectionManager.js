@@ -230,6 +230,43 @@ class ConnectionManager {
     });
   }
 
+  connectNodesByTouch(sourceNodeId, targetNodeId, options = {}) {
+    if (typeof sourceNodeId !== 'string' || typeof targetNodeId !== 'string') {
+      return false;
+    }
+
+    if (!sourceNodeId || !targetNodeId || sourceNodeId === targetNodeId) {
+      return false;
+    }
+
+    const sourceNodeEl = document.querySelector(`.node[data-id="${sourceNodeId}"]`);
+    const targetNodeEl = document.querySelector(`.node[data-id="${targetNodeId}"]`);
+    if (!sourceNodeEl || !targetNodeEl) {
+      return false;
+    }
+
+    const sourceRect = sourceNodeEl.getBoundingClientRect?.();
+    const targetRect = targetNodeEl.getBoundingClientRect?.();
+    const resolvedSides = resolveConnectionPortSides(sourceRect, targetRect, 'right', 'left');
+    const popupX = Number.isFinite(options.clientX) && Number.isFinite(options.clientY)
+      ? options.clientX
+      : ((sourceRect.left + sourceRect.right + targetRect.left + targetRect.right) / 4);
+    const popupY = Number.isFinite(options.clientX) && Number.isFinite(options.clientY)
+      ? options.clientY
+      : ((sourceRect.top + sourceRect.bottom + targetRect.top + targetRect.bottom) / 4);
+
+    this.showNamingPopup(
+      sourceNodeId,
+      targetNodeId,
+      popupX,
+      popupY,
+      resolvedSides.sourcePortSide,
+      resolvedSides.targetPortSide,
+      options,
+    );
+    return true;
+  }
+
   addConnection(sourceId, targetId, key, sourcePortSide, targetPortSide) {
     const node = store.state.nodes[sourceId];
     if (node) {

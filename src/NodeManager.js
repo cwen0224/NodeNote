@@ -3,6 +3,7 @@
  * Handles node lifecycle: creation, removal, dragging, and content updates.
  */
 import { store } from './StateStore.js';
+import { connectionManager } from './ConnectionManager.js';
 import { createDefaultFolder } from './core/documentSchema.js';
 import { createNodeId, materializeClipboardPayload } from './core/graphClipboard.js';
 import { resolveNodeSize } from './core/nodeSizing.js';
@@ -36,6 +37,7 @@ class NodeManager {
       timer: null,
     };
     this.touchEditBlockUntil = 0;
+    this.touchNodePresses = new Map();
   }
 
   getNodeBounds(nodes = {}, nodeIds = []) {
@@ -214,11 +216,15 @@ class NodeManager {
 
     const endTouchDrag = (e) => {
       if (!isTouchLikePointer(e) || e.pointerId !== this.dragPointerId) {
+        if (isTouchLikePointer(e)) {
+          this.touchNodePresses.delete(e.pointerId);
+        }
         return;
       }
 
       e.preventDefault();
       this.finishNodeDrag(e, { allowMerge: e.type === 'pointerup' });
+      this.touchNodePresses.delete(e.pointerId);
       this.dragPointerId = null;
     };
 
@@ -253,6 +259,41 @@ class NodeManager {
     const nodeId = nodeEl.dataset.id;
     const currentSelectionIds = [...new Set(store.state.selection?.nodeIds || [])].filter((id) => store.state.nodes[id]);
     const isNodeSelected = currentSelectionIds.includes(nodeId);
+
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    this.touchNodePresses.set(e.pointerId, {
+      nodeId,
+      startedAt: now,
+      clientX: e.clientX,
+      clientY: e.clientY,
+    });
+
+    const otherTouchPresses = [...this.touchNodePresses.entries()]
+      .filter(([pointerId, press]) => {
+        if (pointerId === e.pointerId || !press?.nodeId || press.nodeId === nodeId) {
+          return false;
+        }
+        return Number.isFinite(press.startedAt) && (now - press.startedAt) <= 520;
+      });
+    if (otherTouchPresses.length > 0) {
+      const [sourcePointerId, sourcePress] = otherTouchPresses
+        .sort((a, b) => (a[1].startedAt || 0) - (b[1].startedAt || 0))[0];
+      const sourceNodeId = sourcePress?.nodeId;
+      const targetNodeId = nodeId;
+      if (sourceNodeId && targetNodeId && sourceNodeId !== targetNodeId) {
+        this.cancelNodeDrag({ saveHistory: false });
+        connectionManager.connectNodesByTouch(sourceNodeId, targetNodeId, {
+          clientX: e.clientX,
+          clientY: e.clientY,
+          sourcePointerId,
+          targetPointerId: e.pointerId,
+        });
+        this.clearTouchNodePresses();
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+    }
 
     this.isDraggingNode = true;
     const { scale } = store.getTransform();
@@ -290,6 +331,41 @@ class NodeManager {
 
     e.preventDefault();
     e.stopPropagation();
+  }
+
+  cancelNodeDrag({ saveHistory = false } = {}) {
+    if (!this.isDraggingNode) {
+      this.draggedNodeId = null;
+      this.dragSelectionIds = [];
+      this.dragStartPointer = null;
+      this.dragStartPositions.clear();
+      this.dragPointerId = null;
+      return false;
+    }
+
+    this.isDraggingNode = false;
+    this.dragSelectionIds.forEach((id) => {
+      const nodeEl = document.querySelector(`.node[data-id="${id}"]`);
+      if (nodeEl) nodeEl.classList.remove('dragging');
+    });
+    const draggedPointerId = this.dragPointerId;
+    if (Number.isFinite(draggedPointerId)) {
+      const dragNodeEl = document.querySelector(`.node[data-id="${this.draggedNodeId}"]`);
+      try {
+        dragNodeEl?.releasePointerCapture?.(draggedPointerId);
+      } catch {
+        // Ignore release failures on unsupported elements.
+      }
+    }
+    this.draggedNodeId = null;
+    this.dragSelectionIds = [];
+    this.dragStartPointer = null;
+    this.dragStartPositions.clear();
+    this.dragPointerId = null;
+    if (saveHistory) {
+      store.saveHistory();
+    }
+    return true;
   }
 
   finishNodeDrag(releaseEvent, { allowMerge = false } = {}) {
@@ -347,15 +423,7 @@ class NodeManager {
       }
     }
 
-    this.isDraggingNode = false;
-    this.dragSelectionIds.forEach((id) => {
-      const nodeEl = document.querySelector(`.node[data-id="${id}"]`);
-      if (nodeEl) nodeEl.classList.remove('dragging');
-    });
-    this.draggedNodeId = null;
-    this.dragSelectionIds = [];
-    this.dragStartPointer = null;
-    this.dragStartPositions.clear();
+    this.cancelNodeDrag({ saveHistory: false });
 
     if (!merged) {
       store.saveHistory();
@@ -408,6 +476,10 @@ class NodeManager {
     this.touchTapState.lastTapAt = 0;
     this.touchTapState.lastTapNodeId = null;
     this.touchTapState.timer = null;
+  }
+
+  clearTouchNodePresses() {
+    this.touchNodePresses.clear();
   }
 
   closeActiveEditingNode() {
