@@ -126,7 +126,9 @@ class Renderer {
         previous: this.pointerState.current,
         current: { x: e.clientX, y: e.clientY, at: now },
       };
-      this.schedulePortRevealUpdate();
+      if (e.pointerType !== 'touch') {
+        this.schedulePortRevealUpdate();
+      }
     });
 
     this.viewport?.addEventListener('pointerleave', () => {

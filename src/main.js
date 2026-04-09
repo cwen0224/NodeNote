@@ -154,6 +154,10 @@ const initApp = () => {
           return;
         }
 
+        if (event.pointerType && event.pointerType !== 'mouse') {
+          return;
+        }
+
         const isCollapsed = trayDrawer.classList.contains('is-collapsed');
         const x = Number.isFinite(event.clientX) ? event.clientX : window.innerWidth;
 

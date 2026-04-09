@@ -6,6 +6,8 @@ import { store } from './StateStore.js';
 import { getPortSide } from './core/connectionData.js';
 import { connectionNamingDialog } from './ConnectionNamingDialog.js';
 
+const isTouchLikePointer = (event) => event?.pointerType === 'touch' || event?.pointerType === 'pen';
+
 class ConnectionManager {
   constructor() {
     this.isDrawing = false;
@@ -14,6 +16,7 @@ class ConnectionManager {
     this.tempPath = null;
     this.svgLayer = null;
     this.historyNames = new Set(['next', 'on_click', 'trigger', 'success', 'fail']);
+    this.drawPointerId = null;
   }
 
   init() {
@@ -29,17 +32,57 @@ class ConnectionManager {
       }
     });
 
+    document.addEventListener('pointerdown', (e) => {
+      if (!isTouchLikePointer(e) || !e.target.classList.contains('port')) {
+        return;
+      }
+
+      this.startDrawing(e);
+    });
+
     window.addEventListener('mousemove', (e) => {
       if (this.isDrawing) {
         this.updateDrawing(e);
       }
     });
 
+    window.addEventListener('pointermove', (e) => {
+      if (!isTouchLikePointer(e) || !this.isDrawing || e.pointerId !== this.drawPointerId) {
+        return;
+      }
+
+      e.preventDefault();
+      this.updateDrawing(e);
+    }, { passive: false });
+
     window.addEventListener('mouseup', (e) => {
       if (this.isDrawing) {
         this.finishDrawing(e);
       }
     });
+
+    const endTouchDrawing = (e) => {
+      if (!isTouchLikePointer(e) || e.pointerId !== this.drawPointerId) {
+        return;
+      }
+
+      e.preventDefault();
+      this.finishDrawing(e);
+      this.drawPointerId = null;
+    };
+
+    const cancelTouchDrawing = (e) => {
+      if (!isTouchLikePointer(e) || e.pointerId !== this.drawPointerId) {
+        return;
+      }
+
+      e.preventDefault();
+      this.cancelDrawing();
+      this.drawPointerId = null;
+    };
+
+    window.addEventListener('pointerup', endTouchDrawing);
+    window.addEventListener('pointercancel', cancelTouchDrawing);
   }
 
   startDrawing(e) {
@@ -53,11 +96,17 @@ class ConnectionManager {
     this.sourceNodeId = nodeEl.dataset.id;
     this.sourcePortEl = portEl;
     store.setLastActiveNode(this.sourceNodeId);
+    if (isTouchLikePointer(e)) {
+      this.drawPointerId = e.pointerId;
+    }
 
     this.tempPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
     this.tempPath.setAttribute("class", "connection-path temp-path");
     this.svgLayer.appendChild(this.tempPath);
     
+    if (isTouchLikePointer(e)) {
+      e.preventDefault();
+    }
     e.stopPropagation();
   }
 
@@ -87,8 +136,9 @@ class ConnectionManager {
       this.tempPath = null;
     }
 
-    const targetNodeEl = e.target.closest('.node');
-    const targetPortEl = e.target.closest('.port');
+    const dropTarget = document.elementFromPoint(e.clientX, e.clientY) || e.target;
+    const targetNodeEl = dropTarget?.closest?.('.node');
+    const targetPortEl = dropTarget?.closest?.('.port');
     if (targetNodeEl && targetNodeEl.dataset.id !== this.sourceNodeId) {
       store.setLastActiveNode(targetNodeEl.dataset.id);
       const targetPortSide = this.resolveTargetPortSide(targetNodeEl, targetPortEl, e.clientX, e.clientY);
@@ -102,6 +152,20 @@ class ConnectionManager {
         targetPortSide
       );
     }
+    this.drawPointerId = null;
+    this.sourceNodeId = null;
+    this.sourcePortEl = null;
+  }
+
+  cancelDrawing() {
+    this.isDrawing = false;
+    if (this.tempPath) {
+      this.tempPath.remove();
+      this.tempPath = null;
+    }
+    this.drawPointerId = null;
+    this.sourceNodeId = null;
+    this.sourcePortEl = null;
   }
 
   showNamingPopup(sourceId, targetId, x, y, sourcePortSide, targetPortSide, options = {}) {

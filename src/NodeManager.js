@@ -15,6 +15,8 @@ import {
   isPlainObject,
 } from './core/connectionData.js';
 
+const isTouchLikePointer = (event) => event?.pointerType === 'touch' || event?.pointerType === 'pen';
+
 class NodeManager {
   constructor() {
     this.viewport = null;
@@ -25,6 +27,7 @@ class NodeManager {
     this.dragStartPointer = null;
     this.dragStartPositions = new Map();
     this.dragOffset = { x: 0, y: 0 };
+    this.dragPointerId = null;
     this.contentTimeout = null;
   }
 
@@ -130,6 +133,14 @@ class NodeManager {
       }
     });
 
+    this.nodeLayer.addEventListener('pointerdown', (e) => {
+      if (!isTouchLikePointer(e)) {
+        return;
+      }
+
+      this.handleTouchNodePointerDown(e);
+    });
+
     window.addEventListener('mousemove', (e) => {
       if (this.isDraggingNode && this.draggedNodeId && this.dragStartPointer && this.dragStartPositions.size) {
         const { scale } = store.getTransform();
@@ -155,6 +166,38 @@ class NodeManager {
       }
     });
 
+    window.addEventListener('pointermove', (e) => {
+      if (!isTouchLikePointer(e) || !this.isDraggingNode || e.pointerId !== this.dragPointerId) {
+        return;
+      }
+
+      if (!this.dragStartPointer || !this.dragStartPositions.size) {
+        return;
+      }
+
+      e.preventDefault();
+      const { scale } = store.getTransform();
+      const currentPointer = {
+        x: e.clientX / scale,
+        y: e.clientY / scale,
+      };
+      const dx = currentPointer.x - this.dragStartPointer.x;
+      const dy = currentPointer.y - this.dragStartPointer.y;
+      const moveOrder = [
+        ...this.dragSelectionIds.filter((id) => id !== this.draggedNodeId),
+        this.draggedNodeId,
+      ];
+
+      moveOrder.forEach((id) => {
+        const startPosition = this.dragStartPositions.get(id);
+        if (!startPosition) {
+          return;
+        }
+
+        this.updateNodePosition(id, startPosition.x + dx, startPosition.y + dy);
+      });
+    }, { passive: false });
+
     window.addEventListener('mouseup', () => {
       if (this.isDraggingNode) {
         this.isDraggingNode = false;
@@ -169,6 +212,94 @@ class NodeManager {
         store.saveHistory(); // Save state after move
       }
     });
+
+    const endTouchDrag = (e) => {
+      if (!isTouchLikePointer(e) || e.pointerId !== this.dragPointerId) {
+        return;
+      }
+
+      e.preventDefault();
+
+      if (this.isDraggingNode) {
+        this.isDraggingNode = false;
+        this.dragSelectionIds.forEach((id) => {
+          const nodeEl = document.querySelector(`.node[data-id="${id}"]`);
+          if (nodeEl) nodeEl.classList.remove('dragging');
+        });
+        this.draggedNodeId = null;
+        this.dragSelectionIds = [];
+        this.dragStartPointer = null;
+        this.dragStartPositions.clear();
+        store.saveHistory(); // Save state after move
+      }
+
+      this.dragPointerId = null;
+    };
+
+    window.addEventListener('pointerup', endTouchDrag);
+    window.addEventListener('pointercancel', endTouchDrag);
+  }
+
+  handleTouchNodePointerDown(e) {
+    const nodeEl = e.target.closest('.node');
+    if (!nodeEl) return;
+    if (e.target.closest('.port')) return;
+    if (e.target.closest('.node-edit-btn')) return;
+    if (e.target.closest('.node-folder-open-btn')) return;
+    if (e.target.closest('.node-delete-btn')) return;
+    if (e.target.closest('.node-content') && nodeEl.classList.contains('is-editing')) return;
+
+    const contentEl = e.target.closest('.node-content');
+    const contentIsScrollable = Boolean(contentEl)
+      && (contentEl.scrollHeight > contentEl.clientHeight + 1 || contentEl.scrollWidth > contentEl.clientWidth + 1);
+    if (contentEl && contentIsScrollable) {
+      this.selectNodeForInteraction(nodeEl.dataset.id, false);
+      store.setLastActiveNode(nodeEl.dataset.id);
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+
+    const nodeId = nodeEl.dataset.id;
+    const currentSelectionIds = [...new Set(store.state.selection?.nodeIds || [])].filter((id) => store.state.nodes[id]);
+    const isNodeSelected = currentSelectionIds.includes(nodeId);
+
+    this.isDraggingNode = true;
+    const { scale } = store.getTransform();
+    this.draggedNodeId = nodeId;
+    this.dragSelectionIds = (isNodeSelected && currentSelectionIds.length > 1)
+      ? currentSelectionIds
+      : [nodeId];
+    if (!isNodeSelected || currentSelectionIds.length <= 1) {
+      this.selectNodeForInteraction(nodeId, false);
+    }
+    store.setLastActiveNode(this.draggedNodeId);
+
+    this.dragStartPointer = {
+      x: e.clientX / scale,
+      y: e.clientY / scale,
+    };
+    this.dragStartPositions = new Map(this.dragSelectionIds.map((id) => {
+      const node = store.state.nodes[id];
+      return [id, { x: node.x, y: node.y }];
+    }));
+    this.dragPointerId = e.pointerId;
+
+    this.dragSelectionIds.forEach((id) => {
+      const dragNode = document.querySelector(`.node[data-id="${id}"]`);
+      if (dragNode) {
+        dragNode.classList.add('dragging');
+      }
+    });
+
+    try {
+      nodeEl.setPointerCapture?.(e.pointerId);
+    } catch {
+      // Ignore capture failures on unsupported elements.
+    }
+
+    e.preventDefault();
+    e.stopPropagation();
   }
 
   createNode(x, y) {
