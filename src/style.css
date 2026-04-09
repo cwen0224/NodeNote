@@ -642,57 +642,6 @@ button:hover {
   cursor: pointer;
 }
 
-.orphan-connection-node {
-    position: absolute;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 12px 10px 14px;
-    border-radius: 18px;
-    cursor: text;
-    opacity: 0.98;
-    box-shadow: 0 0 0 1px rgba(88, 166, 255, 0.32), 0 14px 34px rgba(0, 0, 0, 0.42);
-}
-
-.orphan-connection-node .orphan-connection-input {
-  width: 100%;
-  min-width: 0;
-  border: 0;
-  outline: none;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-size: 0.92rem;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  line-height: 1.35;
-}
-
-.orphan-connection-node .port {
-  opacity: 1;
-  pointer-events: auto;
-  position: relative;
-  flex: 0 0 auto;
-  width: 48px;
-  height: 48px;
-}
-
-.orphan-connection-node .port.right {
-  right: 0;
-  top: 0;
-}
-
-.orphan-connection-node .port::before {
-  width: 18px;
-  height: 18px;
-  inset: calc(50% - 9px);
-}
-
-.orphan-connection-node.is-orphaned {
-  border: 1px dashed rgba(96, 165, 250, 0.7);
-  background: linear-gradient(180deg, rgba(30, 41, 59, 0.96), rgba(15, 23, 42, 0.92));
-}
-
 .node-folder-open-btn {
   width: 22px;
   height: 22px;
@@ -1188,16 +1137,6 @@ button:hover {
   fill: rgba(96, 165, 250, 0.96);
   stroke: rgba(15, 23, 42, 0.34);
   stroke-width: 0.75;
-}
-
-.connection-label-group.is-orphaned .connection-label-box {
-  fill: rgba(30, 41, 59, 0.9);
-  stroke: rgba(96, 165, 250, 0.72);
-  stroke-dasharray: 4 3;
-}
-
-.connection-label-group.is-orphaned .connection-label {
-  fill: rgba(219, 234, 254, 0.98);
 }
 
 .temp-path {

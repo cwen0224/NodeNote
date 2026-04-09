@@ -66,7 +66,6 @@ class NodeManager {
     this.nodeLayer.addEventListener('mousedown', (e) => {
       const nodeEl = e.target.closest('.node');
       if (!nodeEl) return;
-      if (e.target.closest('.orphan-connection-node')) return;
       if (e.target.closest('.port')) return;
       if (e.target.closest('.node-edit-btn')) return;
       if (e.target.closest('.node-folder-open-btn')) return;
@@ -244,7 +243,6 @@ class NodeManager {
   handleTouchNodePointerDown(e) {
     const nodeEl = e.target.closest('.node');
     if (!nodeEl) return;
-    if (e.target.closest('.orphan-connection-node')) return;
     if (e.target.closest('.port')) return;
     if (e.target.closest('.node-edit-btn')) return;
     if (e.target.closest('.node-folder-open-btn')) return;
@@ -692,19 +690,7 @@ class NodeManager {
         const targetId = typeof linkValue === 'string' ? linkValue : linkValue?.targetId;
         if (uniqueIds.includes(targetId)) {
           if (node && !uniqueIds.includes(node.id)) {
-            const deletedTarget = deletedEntities.get(targetId);
-            const deletedSize = resolveNodeSize(deletedTarget);
-            const orphanedTargetCenter = {
-              x: (deletedTarget?.x || 0) + (deletedSize.width / 2),
-              y: (deletedTarget?.y || 0) + (deletedSize.height / 2),
-            };
-            node.params[key] = {
-              ...(isPlainObject(linkValue) ? linkValue : {}),
-              targetId: null,
-              orphanedTargetId: targetId,
-              orphanedTargetCenter,
-              orphanedTargetLabel: getNodeLabel(deletedTarget),
-            };
+            delete node.params[key];
             changed = true;
             return;
           }

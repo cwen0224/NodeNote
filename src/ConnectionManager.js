@@ -100,13 +100,12 @@ class ConnectionManager {
   beginDrawingFromPort(portEl, e) {
     this.isDrawing = true;
     const labelGroup = portEl.closest?.('.connection-label-group');
-    const orphanNodeEl = portEl.closest?.('.orphan-connection-node');
-    const reconnectSourceId = labelGroup?.dataset?.sourceId || orphanNodeEl?.dataset?.orphanSourceId || '';
-    const reconnectKey = labelGroup?.dataset?.connectionKey || orphanNodeEl?.dataset?.orphanConnectionKey || '';
+    const reconnectSourceId = labelGroup?.dataset?.sourceId || '';
+    const reconnectKey = labelGroup?.dataset?.connectionKey || '';
     const isReconnectPort = Boolean(
       reconnectSourceId &&
       reconnectKey &&
-      (portEl.classList.contains('connection-reconnect-port') || portEl.classList.contains('connection-orphan-port'))
+      portEl.classList.contains('connection-reconnect-port')
     );
     const nodeEl = portEl.closest('.node');
     this.sourceNodeId = isReconnectPort ? reconnectSourceId : nodeEl?.dataset?.id;
@@ -118,7 +117,7 @@ class ConnectionManager {
         key: reconnectKey,
         sourcePortSide: typeof currentValue === 'string'
           ? 'right'
-          : (currentValue?.sourcePort || orphanNodeEl?.dataset?.orphanSourcePortSide || 'right'),
+          : (currentValue?.sourcePort || 'right'),
       };
     })() : null;
     store.setLastActiveNode(this.sourceNodeId);
@@ -258,9 +257,6 @@ class ConnectionManager {
       sourcePort: sourcePortSide || currentValue?.sourcePort || 'right',
       targetPort: targetPortSide || currentValue?.targetPort || 'left',
     };
-    delete node.params[key].orphanedTargetId;
-    delete node.params[key].orphanedTargetCenter;
-    delete node.params[key].orphanedTargetLabel;
 
     store.emit('connections:updated');
     store.saveHistory();

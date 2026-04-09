@@ -52,8 +52,6 @@ class Renderer {
     this.visibilityCheckRaf = null;
     this.pendingVisibilityCheck = false;
     this.connectionRouteCache = new Map();
-    this.pendingOrphanConnections = [];
-    this.orphanBlockDragCleanup = null;
 
     this.setupMinimapEvents();
 
@@ -695,7 +693,6 @@ class Renderer {
   renderConnections() {
     if (!this.svgLayer) return;
     this.svgLayer.innerHTML = '';
-    this.pendingOrphanConnections = [];
     
     // Draw all active connections from nodes.params
     Object.values(store.state.nodes).forEach(sourceNode => {
@@ -706,23 +703,16 @@ class Renderer {
         const sourcePortSide = typeof linkValue === 'string' ? 'right' : linkValue?.sourcePort || 'right';
         const targetPortSide = typeof linkValue === 'string' ? 'left' : linkValue?.targetPort || 'left';
         const targetNode = store.state.nodes[targetId];
+        if (!targetNode) {
+          return;
+        }
         const sourceRect = this.getNodeWorldRect(sourceNode.id);
-        const targetRect = targetNode ? this.getNodeWorldRect(targetNode.id) : null;
+        const targetRect = this.getNodeWorldRect(targetNode.id);
         const resolvedSides = resolveConnectionPortSides(sourceRect, targetRect, sourcePortSide, targetPortSide);
         const effectiveSourceSide = resolvedSides.sourcePortSide;
         const effectiveTargetSide = resolvedSides.targetPortSide;
         const sourcePoint = this.getPortWorldPoint(sourceNode.id, effectiveSourceSide) || this.getNodeCenterWorldPoint(sourceNode);
-        const targetPoint = targetNode
-          ? (this.getPortWorldPoint(targetNode.id, effectiveTargetSide) || this.getNodeCenterWorldPoint(targetNode))
-          : (linkValue && typeof linkValue === 'object' && linkValue.orphanedTargetCenter && typeof linkValue.orphanedTargetCenter === 'object'
-            ? {
-              x: Number(linkValue.orphanedTargetCenter.x) || sourcePoint.x,
-              y: Number(linkValue.orphanedTargetCenter.y) || sourcePoint.y,
-            }
-            : {
-              x: sourcePoint.x + 160,
-              y: sourcePoint.y,
-            });
+        const targetPoint = this.getPortWorldPoint(targetNode.id, effectiveTargetSide) || this.getNodeCenterWorldPoint(targetNode);
         const sX = sourcePoint.x;
         const sY = sourcePoint.y;
         const tX = targetPoint.x;
@@ -734,7 +724,7 @@ class Renderer {
           tY,
           key,
           sourceNode.id,
-          targetNode ? targetNode.id : null,
+          targetNode.id,
           effectiveSourceSide,
           effectiveTargetSide,
           sourceRect,
@@ -742,8 +732,6 @@ class Renderer {
         );
       });
     });
-
-    this.renderOrphanConnectionNodes();
   }
 
   buildRoundedOrthogonalPath(points = [], radius = 18) {
@@ -791,21 +779,6 @@ class Renderer {
       }
     } catch {
       // If SVG measurement fails, fall back to the geometric midpoint.
-    }
-
-    if (!targetId) {
-      this.pendingOrphanConnections.push({
-        sourceId,
-        key,
-        labelText,
-        x: tX,
-        y: tY,
-        sourcePortSide: sourcePortSide || 'right',
-        targetPortSide: targetPortSide || 'left',
-        sourceRect,
-        targetRect,
-      });
-      return;
     }
 
     const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
@@ -903,63 +876,6 @@ class Renderer {
     text.setAttribute("pointer-events", "none");
     group.append(rect, text, deleteBtn);
     this.svgLayer.appendChild(group);
-  }
-
-  renderOrphanConnectionNodes() {
-    if (!this.nodeLayer) return;
-
-    this.nodeLayer.querySelectorAll('.orphan-connection-node').forEach((el) => el.remove());
-    if (!this.pendingOrphanConnections.length) {
-      return;
-    }
-
-    this.pendingOrphanConnections.forEach((entry) => {
-      const nodeEl = document.createElement('div');
-      const width = Math.max(140, Math.min(240, entry.labelText.length * 10 + 74));
-      const height = 66;
-      nodeEl.className = 'orphan-connection-node is-orphaned';
-      nodeEl.dataset.orphanSourceId = entry.sourceId || '';
-      nodeEl.dataset.orphanConnectionKey = entry.key || '';
-      nodeEl.dataset.orphanSourcePortSide = entry.sourcePortSide || 'right';
-      nodeEl.dataset.orphanTargetPortSide = entry.targetPortSide || 'left';
-      nodeEl.style.width = `${width}px`;
-      nodeEl.style.height = `${height}px`;
-      nodeEl.style.left = `${Math.round(entry.x - width / 2)}px`;
-      nodeEl.style.top = `${Math.round(entry.y - height / 2)}px`;
-      nodeEl.innerHTML = `
-        <input class="orphan-connection-input" type="text" value="${this.escapeHtml(entry.labelText)}" aria-label="連線名稱" spellcheck="false" />
-        <div class="port right connection-orphan-port"></div>
-      `;
-
-      const portEl = nodeEl.querySelector('.connection-orphan-port');
-      const inputEl = nodeEl.querySelector('.orphan-connection-input');
-      if (inputEl) {
-        inputEl.addEventListener('focus', () => {
-          window.requestAnimationFrame(() => inputEl.select?.());
-        });
-        inputEl.addEventListener('keydown', (event) => {
-          if (event.key === 'Enter') {
-            event.preventDefault();
-            inputEl.blur();
-          }
-          if (event.key === 'Escape') {
-            event.preventDefault();
-            inputEl.value = entry.labelText;
-            inputEl.blur();
-          }
-        });
-        inputEl.addEventListener('blur', () => {
-          const nextKey = String(inputEl.value || '').trim();
-          if (!nextKey || nextKey === entry.labelText) {
-            inputEl.value = entry.labelText;
-            return;
-          }
-          connectionManager.renameConnectionKey(entry.sourceId, entry.key, nextKey);
-        });
-      }
-
-      this.nodeLayer.appendChild(nodeEl);
-    });
   }
 
   appendConnectionDirectionTrail(path, route) {
