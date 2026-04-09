@@ -1400,7 +1400,7 @@ class CloudSyncManager {
     }
   }
 
-  async pullSheetNow({ skipConfirm = false, silentOnMissing = false } = {}) {
+  async pullSheetNow({ skipConfirm = false, silentOnMissing = false, preferRemote = false, hydrateViewport = false } = {}) {
     if (!this.isConfigReady()) {
       this.setStatus('error', '請先完成 Google Sheet 設定');
       this.appendSyncLog('error', 'sheet-pull', 'Google Sheet 拉回失敗', '請先完成 Google Sheet 設定');
@@ -1451,10 +1451,12 @@ class CloudSyncManager {
       }
 
       const localSavedAt = persistenceManager.getStoredSnapshot()?.savedAt || this.state.lastSyncedAt || null;
-      const freshness = resolveCloudSyncFreshness({
-        localSavedAt,
-        remoteSavedAt: updatedAt,
-      });
+      const freshness = preferRemote
+        ? { shouldApplyRemote: true, winner: 'remote' }
+        : resolveCloudSyncFreshness({
+            localSavedAt,
+            remoteSavedAt: updatedAt,
+          });
 
       if (!freshness.shouldApplyRemote) {
         this.sheetBaselineDocument = clone(remoteDocument);
