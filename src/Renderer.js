@@ -914,99 +914,48 @@ class Renderer {
 
     this.pendingOrphanConnections.forEach((entry) => {
       const nodeEl = document.createElement('div');
-      nodeEl.className = 'node glass-panel orphan-connection-node is-orphaned';
+      const width = Math.max(140, Math.min(240, entry.labelText.length * 10 + 74));
+      const height = 66;
+      nodeEl.className = 'orphan-connection-node is-orphaned';
       nodeEl.dataset.orphanSourceId = entry.sourceId || '';
       nodeEl.dataset.orphanConnectionKey = entry.key || '';
       nodeEl.dataset.orphanSourcePortSide = entry.sourcePortSide || 'right';
       nodeEl.dataset.orphanTargetPortSide = entry.targetPortSide || 'left';
-      nodeEl.style.left = `${Math.round(entry.x - 96)}px`;
-      nodeEl.style.top = `${Math.round(entry.y - 58)}px`;
+      nodeEl.style.width = `${width}px`;
+      nodeEl.style.height = `${height}px`;
+      nodeEl.style.left = `${Math.round(entry.x - width / 2)}px`;
+      nodeEl.style.top = `${Math.round(entry.y - height / 2)}px`;
       nodeEl.innerHTML = `
-        <div class="node-header">
-          <span class="node-id" title="${this.escapeHtml(entry.labelText)}">${this.escapeHtml(entry.labelText)}</span>
-          <div class="node-header-actions">
-            <button class="node-rename-btn" type="button" aria-label="重新命名">Aa</button>
-            <button class="node-delete-btn" type="button" aria-label="刪除連線">×</button>
-          </div>
-        </div>
-        <div class="node-content" contenteditable="false" spellcheck="false">${this.escapeHtml(entry.labelText)}</div>
+        <input class="orphan-connection-input" type="text" value="${this.escapeHtml(entry.labelText)}" aria-label="連線名稱" spellcheck="false" />
         <div class="port right connection-orphan-port"></div>
       `;
 
       const portEl = nodeEl.querySelector('.connection-orphan-port');
-      const titleEl = nodeEl.querySelector('.node-id');
-      const contentEl = nodeEl.querySelector('.node-content');
-      const renameBtn = nodeEl.querySelector('.node-rename-btn');
-      const deleteBtn = nodeEl.querySelector('.node-delete-btn');
-
-      titleEl?.addEventListener('dblclick', (event) => {
-        event.stopPropagation();
-        connectionManager.showNamingPopup(
-          entry.sourceId,
-          null,
-          event.clientX,
-          event.clientY,
-          entry.sourcePortSide,
-          entry.targetPortSide,
-          { mode: 'rename', initialKey: entry.labelText }
-        );
-      });
-
-      contentEl?.addEventListener('dblclick', (event) => {
-        event.stopPropagation();
-        connectionManager.showNamingPopup(
-          entry.sourceId,
-          null,
-          event.clientX,
-          event.clientY,
-          entry.sourcePortSide,
-          entry.targetPortSide,
-          { mode: 'rename', initialKey: entry.labelText }
-        );
-      });
-
-      const triggerReconnect = (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        if (!portEl) {
-          return;
-        }
-        connectionManager.startDrawing({
-          target: portEl,
-          clientX: event.clientX,
-          clientY: event.clientY,
-          pointerId: event.pointerId,
-          pointerType: event.pointerType,
-          preventDefault: () => event.preventDefault(),
-          stopPropagation: () => event.stopPropagation(),
+      const inputEl = nodeEl.querySelector('.orphan-connection-input');
+      if (inputEl) {
+        inputEl.addEventListener('focus', () => {
+          window.requestAnimationFrame(() => inputEl.select?.());
         });
-      };
-
-      nodeEl.addEventListener('pointerdown', (event) => {
-        if (event.target?.closest?.('.node-delete-btn')) {
-          return;
-        }
-        triggerReconnect(event);
-      });
-
-      renameBtn?.addEventListener('mousedown', (event) => event.stopPropagation());
-      renameBtn?.addEventListener('click', (event) => {
-        event.stopPropagation();
-        connectionManager.showNamingPopup(
-          entry.sourceId,
-          null,
-          event.clientX,
-          event.clientY,
-          entry.sourcePortSide,
-          entry.targetPortSide,
-          { mode: 'rename', initialKey: entry.labelText }
-        );
-      });
-      deleteBtn?.addEventListener('mousedown', (event) => event.stopPropagation());
-      deleteBtn?.addEventListener('click', (event) => {
-        event.stopPropagation();
-        connectionManager.deleteConnectionByKey(entry.sourceId, entry.key);
-      });
+        inputEl.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            inputEl.blur();
+          }
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            inputEl.value = entry.labelText;
+            inputEl.blur();
+          }
+        });
+        inputEl.addEventListener('blur', () => {
+          const nextKey = String(inputEl.value || '').trim();
+          if (!nextKey || nextKey === entry.labelText) {
+            inputEl.value = entry.labelText;
+            return;
+          }
+          connectionManager.renameConnectionKey(entry.sourceId, entry.key, nextKey);
+        });
+      }
 
       this.nodeLayer.appendChild(nodeEl);
     });

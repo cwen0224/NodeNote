@@ -643,48 +643,43 @@ button:hover {
 }
 
 .orphan-connection-node {
-  min-width: 190px;
-  min-height: 96px;
-  cursor: grab;
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px 10px 14px;
+  border-radius: 18px;
+  cursor: text;
   opacity: 0.98;
   box-shadow: 0 0 0 1px rgba(88, 166, 255, 0.32), 0 14px 34px rgba(0, 0, 0, 0.42);
 }
 
-.orphan-connection-node .node-header {
-  padding: 8px 12px;
-  font-size: 0.68rem;
-}
-
-.orphan-connection-node .node-content {
-  padding: 14px 12px;
-  font-size: 0.9rem;
-  line-height: 1.45;
-  min-height: 0;
-}
-
-.orphan-connection-node .node-id {
-  font-size: 0.8rem;
-}
-
-.orphan-connection-node .node-header-actions {
-  gap: 4px;
-}
-
-.orphan-connection-node .node-rename-btn,
-.orphan-connection-node .node-delete-btn {
-  width: 22px;
-  height: 22px;
-  font-size: 0.72rem;
+.orphan-connection-node .orphan-connection-input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
 }
 
 .orphan-connection-node .port {
   opacity: 1;
   pointer-events: auto;
+  position: relative;
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
 }
 
 .orphan-connection-node .port.right {
-  right: -24px;
-  top: calc(50% - 24px);
+  right: 0;
+  top: 0;
 }
 
 .orphan-connection-node .port::before {
