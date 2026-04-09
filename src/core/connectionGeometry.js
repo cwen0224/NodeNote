@@ -47,11 +47,12 @@ function scoreRoute(points, sourceBounds, targetBounds, routePadding) {
 }
 
 function normalizeBounds(bounds = {}, fallbackX = 0, fallbackY = 0) {
+  const safeBounds = bounds && typeof bounds === 'object' ? bounds : {};
   return {
-    left: isFiniteNumber(bounds.left) ? bounds.left : fallbackX,
-    right: isFiniteNumber(bounds.right) ? bounds.right : fallbackX,
-    top: isFiniteNumber(bounds.top) ? bounds.top : fallbackY,
-    bottom: isFiniteNumber(bounds.bottom) ? bounds.bottom : fallbackY,
+    left: isFiniteNumber(safeBounds.left) ? safeBounds.left : fallbackX,
+    right: isFiniteNumber(safeBounds.right) ? safeBounds.right : fallbackX,
+    top: isFiniteNumber(safeBounds.top) ? safeBounds.top : fallbackY,
+    bottom: isFiniteNumber(safeBounds.bottom) ? safeBounds.bottom : fallbackY,
   };
 }
 
