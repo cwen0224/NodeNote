@@ -643,7 +643,13 @@ class Renderer {
 
     if (titleEl) {
       titleEl.classList.add('node-title-editable');
-      titleEl.addEventListener('mousedown', (e) => e.stopPropagation());
+      titleEl.addEventListener('mousedown', (e) => {
+        if (isDumiNode) {
+          e.preventDefault();
+        } else {
+          e.stopPropagation();
+        }
+      });
       titleEl.addEventListener('dblclick', (e) => {
         e.stopPropagation();
         renameTitle();

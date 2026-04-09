@@ -632,6 +632,7 @@ button:hover {
   border: 1px solid rgba(88, 166, 255, 0.46);
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.03), 0 12px 26px rgba(0, 0, 0, 0.42);
   gap: 0;
+  user-select: none;
 }
 
 .node.is-dumi .dumi-node-face {
@@ -649,11 +650,16 @@ button:hover {
   font-size: 0.98rem;
   font-weight: 700;
   letter-spacing: 0.01em;
+  cursor: grab;
 }
 
 .node.is-dumi .node-header,
 .node.is-dumi .node-content {
   display: none;
+}
+
+.node.is-dumi .node-title-editable {
+  user-select: none;
 }
 
 .node.is-dumi .node-delete-btn {

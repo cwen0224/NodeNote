@@ -95,7 +95,7 @@ class NodeManager {
         return;
       }
 
-      if (e.target.closest('.node-title-editable')) {
+      if (e.target.closest('.node-title-editable') && !nodeEl.classList.contains('is-dumi')) {
         e.preventDefault();
         e.stopPropagation();
         return;
