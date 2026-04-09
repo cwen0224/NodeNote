@@ -28,6 +28,10 @@ function doGet(e) {
       });
     }
 
+    if (action === 'projects') {
+      return respond(buildProjectCatalog_());
+    }
+
     return respond({
       ok: false,
       error: `Unknown action: ${action}`,
@@ -165,6 +169,65 @@ function applyPatch_(projectKey, patch) {
   });
 
   return buildProjectState_(projectKey);
+}
+
+function buildProjectCatalog_() {
+  const spreadsheet = getSpreadsheet_();
+  ensureSpreadsheetLayout_(spreadsheet);
+  const stateSheet = getOrCreateSheet_(spreadsheet, 'state', ['projectKey', 'revision', 'updatedAt', 'rootFolderId', 'metaJson', 'assetsJson', 'extrasJson']);
+  const nodesSheet = getOrCreateSheet_(spreadsheet, 'nodes', ['projectKey', 'id', 'payloadJson']);
+  const foldersSheet = getOrCreateSheet_(spreadsheet, 'folders', ['projectKey', 'id', 'payloadJson']);
+  const assetsSheet = getOrCreateSheet_(spreadsheet, 'assets', ['projectKey', 'id', 'payloadJson']);
+
+  const rows = readAllRows_(stateSheet);
+  const seen = new Set();
+  const projects = [];
+
+  for (let index = 1; index < rows.length; index += 1) {
+    const row = rows[index] || [];
+    const projectKey = normalizeProjectKey_(row[0]);
+    if (!projectKey || seen.has(projectKey)) {
+      continue;
+    }
+
+    seen.add(projectKey);
+    const revision = Number.parseInt(row[1] || `${NODE_NOTE_DEFAULT_REVISION}`, 10) || 0;
+    const updatedAt = String(row[2] || '').trim() || null;
+    const rootFolderId = String(row[3] || '').trim() || 'folder_root';
+    const meta = parseJson_(row[4], { title: 'Untitled' });
+    const title = typeof meta?.title === 'string' && meta.title.trim()
+      ? meta.title.trim()
+      : 'Untitled';
+
+    projects.push({
+      projectKey,
+      title,
+      revision,
+      updatedAt,
+      rootFolderId,
+      nodeCount: countProjectRows_(nodesSheet, projectKey),
+      folderCount: countProjectRows_(foldersSheet, projectKey),
+      assetCount: countProjectRows_(assetsSheet, projectKey),
+    });
+  }
+
+  projects.sort((left, right) => {
+    const leftTime = Date.parse(left.updatedAt || '') || 0;
+    const rightTime = Date.parse(right.updatedAt || '') || 0;
+    if (rightTime !== leftTime) {
+      return rightTime - leftTime;
+    }
+
+    return String(left.projectKey || '').localeCompare(String(right.projectKey || ''));
+  });
+
+  return {
+    ok: true,
+    provider: 'google-sheets',
+    spreadsheetId: spreadsheet.getId(),
+    spreadsheetUrl: spreadsheet.getUrl(),
+    projects,
+  };
 }
 
 function upsertEntityPatch_(sheet, projectKey, upserts, deletes) {

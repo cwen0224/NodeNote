@@ -143,7 +143,11 @@ class CloudSyncManager {
     this.projectPanel = null;
     this.projectProjectKeyInput = null;
     this.projectProjectKeyHistory = null;
+    this.projectRemoteProjectList = null;
     this.projectHint = null;
+    this.sheetProjectCatalog = [];
+    this.sheetProjectCatalogLoading = false;
+    this.sheetProjectCatalogRequestId = 0;
     this.boundVisibilityChange = this.handleVisibilityChange.bind(this);
   }
 
@@ -445,6 +449,8 @@ class CloudSyncManager {
     this.fillProjectDialogFromConfig();
     this.updateProjectDialogStatus();
     this.renderProjectKeyHistory();
+    this.renderSheetProjectCatalog();
+    void this.loadSheetProjectCatalog({ force: true });
 
     if (this.projectOverlay) {
       this.projectOverlay.hidden = false;
@@ -462,8 +468,11 @@ class CloudSyncManager {
       this.projectPanel = this.projectOverlay?.querySelector?.('.cloud-project-panel') || null;
       this.projectProjectKeyInput = this.projectOverlay?.querySelector?.('[data-project-field="sheetProjectKey"]') || null;
       this.projectProjectKeyHistory = this.projectOverlay?.querySelector?.('[data-project-project-key-history]') || null;
+      this.projectRemoteProjectList = this.projectOverlay?.querySelector?.('[data-project-remote-list]') || null;
+      this.projectCatalogStatus = this.projectOverlay?.querySelector?.('[data-project-catalog-status]') || null;
       this.projectHint = this.projectOverlay?.querySelector?.('.cloud-project-status') || null;
       this.renderProjectKeyHistory();
+      this.renderSheetProjectCatalog();
       return;
     }
 
@@ -481,6 +490,14 @@ class CloudSyncManager {
           <button type="button" class="cloud-project-close" data-project-action="close" aria-label="關閉專案視窗">×</button>
         </div>
         <div class="cloud-project-status" aria-live="polite">尚未選擇專案鍵。</div>
+        <div class="cloud-project-catalog">
+          <div class="cloud-project-catalog-header">
+            <span>雲端專案</span>
+            <button type="button" class="cloud-project-catalog-refresh" data-project-action="refresh-list">重新整理</button>
+          </div>
+          <div class="cloud-project-catalog-status" data-project-catalog-status>尚未載入雲端專案清單。</div>
+          <div class="cloud-project-catalog-list" data-project-remote-list></div>
+        </div>
         <div class="cloud-project-form">
           <label class="cloud-project-field cloud-project-field--wide">
             <span>專案鍵</span>
@@ -501,6 +518,8 @@ class CloudSyncManager {
     this.projectPanel = this.projectOverlay.querySelector('.cloud-project-panel');
     this.projectProjectKeyInput = this.projectOverlay.querySelector('[data-project-field="sheetProjectKey"]');
     this.projectProjectKeyHistory = this.projectOverlay.querySelector('[data-project-project-key-history]');
+    this.projectRemoteProjectList = this.projectOverlay.querySelector('[data-project-remote-list]');
+    this.projectCatalogStatus = this.projectOverlay.querySelector('[data-project-catalog-status]');
     this.projectHint = this.projectOverlay.querySelector('.cloud-project-status');
     this.projectOverlay.addEventListener('click', (event) => {
       if (event.target === this.projectOverlay) {
@@ -518,8 +537,19 @@ class CloudSyncManager {
         this.applyProjectSelection();
       } else if (action === 'create') {
         this.createProjectSelection();
+      } else if (action === 'refresh-list') {
+        void this.loadSheetProjectCatalog({ force: true });
       } else if (action === 'close') {
         this.closeProjectDialog();
+      } else if (action === 'select-project') {
+        const projectKey = sanitizeString(actionButton.dataset.projectKey, 'default');
+        if (projectKey) {
+          this.projectProjectKeyInput.value = projectKey;
+          this.updateProjectDialogStatus();
+          this.renderSheetProjectCatalog();
+          this.projectProjectKeyInput?.focus?.();
+          this.projectProjectKeyInput?.select?.();
+        }
       }
     });
     this.projectProjectKeyInput?.addEventListener('input', () => {
@@ -540,6 +570,7 @@ class CloudSyncManager {
       }
     });
     this.renderProjectKeyHistory();
+    this.renderSheetProjectCatalog();
   }
 
   closeProjectDialog() {
@@ -566,6 +597,131 @@ class CloudSyncManager {
     }
 
     this.projectHint.textContent = `目前不是 Google Sheet 共編模式，但仍可先保存專案鍵：${projectKey || 'default'}`;
+  }
+
+  normalizeSheetProjectCatalog(response) {
+    if (!isPlainObject(response)) {
+      return [];
+    }
+
+    const projects = Array.isArray(response.projects) ? response.projects : [];
+    return projects
+      .map((project) => {
+        if (!isPlainObject(project)) {
+          return null;
+        }
+
+        const projectKey = sanitizeString(project.projectKey, '');
+        if (!projectKey) {
+          return null;
+        }
+
+        return {
+          projectKey,
+          title: sanitizeString(project.title, projectKey) || projectKey,
+          revision: Number.parseInt(project.revision || '0', 10) || 0,
+          updatedAt: sanitizeString(project.updatedAt) || null,
+          rootFolderId: sanitizeString(project.rootFolderId, 'folder_root') || 'folder_root',
+          nodeCount: Number.parseInt(project.nodeCount || '0', 10) || 0,
+          folderCount: Number.parseInt(project.folderCount || '0', 10) || 0,
+          assetCount: Number.parseInt(project.assetCount || '0', 10) || 0,
+        };
+      })
+      .filter(Boolean)
+      .sort((left, right) => {
+        const leftTime = Date.parse(left.updatedAt || '') || 0;
+        const rightTime = Date.parse(right.updatedAt || '') || 0;
+        if (rightTime !== leftTime) {
+          return rightTime - leftTime;
+        }
+        return left.projectKey.localeCompare(right.projectKey);
+      });
+  }
+
+  renderSheetProjectCatalog() {
+    if (!this.projectRemoteProjectList) {
+      return;
+    }
+
+    const currentProjectKey = sanitizeString(this.projectProjectKeyInput?.value || this.config.sheetProjectKey, 'default');
+    const projects = Array.isArray(this.sheetProjectCatalog) ? this.sheetProjectCatalog : [];
+
+    if (this.projectCatalogStatus) {
+      if (this.sheetProjectCatalogLoading) {
+        this.projectCatalogStatus.textContent = '正在載入雲端專案清單...';
+      } else if (projects.length) {
+        this.projectCatalogStatus.textContent = `已載入 ${projects.length} 個雲端專案。點一下可帶入專案鍵。`;
+      } else {
+        this.projectCatalogStatus.textContent = '找不到雲端專案清單，仍可手動輸入專案鍵。';
+      }
+    }
+
+    if (!projects.length) {
+      this.projectRemoteProjectList.innerHTML = `
+        <div class="cloud-project-catalog-empty">
+          ${this.sheetProjectCatalogLoading ? '載入中...' : '目前沒有可選的雲端專案。'}
+        </div>
+      `;
+      return;
+    }
+
+    this.projectRemoteProjectList.innerHTML = projects.map((project) => {
+      const selected = project.projectKey === currentProjectKey ? ' is-active' : '';
+      const updatedAt = project.updatedAt ? formatClockStamp(project.updatedAt) : '未記錄';
+      return `
+        <button type="button" class="cloud-project-catalog-item${selected}" data-project-action="select-project" data-project-key="${escapeHtml(project.projectKey)}">
+          <strong>${escapeHtml(project.title || project.projectKey)}</strong>
+          <span>${escapeHtml(project.projectKey)}</span>
+          <small>revision ${escapeHtml(String(project.revision || 0))} · ${escapeHtml(updatedAt)}</small>
+        </button>
+      `;
+    }).join('');
+  }
+
+  async loadSheetProjectCatalog({ force = false } = {}) {
+    if (this.sheetProjectCatalogLoading && !force) {
+      return this.sheetProjectCatalog;
+    }
+
+    if (this.config.provider !== 'sheets' || !this.isConfigReady()) {
+      this.sheetProjectCatalog = [];
+      this.sheetProjectCatalogLoading = false;
+      this.renderSheetProjectCatalog();
+      return [];
+    }
+
+    const requestId = ++this.sheetProjectCatalogRequestId;
+    this.sheetProjectCatalogLoading = true;
+    this.renderSheetProjectCatalog();
+
+    try {
+      const response = await requestJsonp(buildSheetRequestUrl({
+        baseUrl: this.config.sheetWebAppUrl,
+        action: 'projects',
+        projectKey: sanitizeString(this.config.sheetProjectKey, 'default'),
+        clientId: this.sheetClientId,
+        secret: this.config.sheetSecret,
+      }));
+      if (requestId !== this.sheetProjectCatalogRequestId) {
+        return this.sheetProjectCatalog;
+      }
+
+      this.sheetProjectCatalog = this.normalizeSheetProjectCatalog(response);
+      this.renderSheetProjectCatalog();
+      return this.sheetProjectCatalog;
+    } catch (error) {
+      if (requestId === this.sheetProjectCatalogRequestId) {
+        this.sheetProjectCatalog = [];
+        this.renderSheetProjectCatalog();
+      }
+      this.appendSyncLog('error', 'project', '載入雲端專案清單失敗', error?.message || '未知錯誤');
+      return [];
+    } finally {
+      if (requestId === this.sheetProjectCatalogRequestId) {
+        this.sheetProjectCatalogLoading = false;
+        this.renderSheetProjectCatalog();
+      }
+    }
   }
 
   renderProjectKeyHistory() {
@@ -604,12 +760,14 @@ class CloudSyncManager {
     this.closeProjectDialog();
     this.setStatus('idle', `已切換專案鍵：${nextProjectKey}`);
     this.appendSyncLog('info', 'project', '切換專案鍵', `projectKey=${nextProjectKey}`);
-    return this.pullNow({
+    const result = await this.pullNow({
       skipConfirm: true,
       silentOnMissing: true,
       preferRemote: true,
       hydrateViewport: true,
     });
+    void this.loadSheetProjectCatalog({ force: true });
+    return result;
   }
 
   async createProjectSelection() {
@@ -641,7 +799,9 @@ class CloudSyncManager {
     this.closeProjectDialog();
     this.setStatus('idle', `已建立新專案：${nextProjectKey}`);
     this.appendSyncLog('info', 'project', '建立新專案', `projectKey=${nextProjectKey}`);
-    return this.syncNow({ force: true });
+    const result = await this.syncNow({ force: true });
+    void this.loadSheetProjectCatalog({ force: true });
+    return result;
   }
 
   buildDialog() {

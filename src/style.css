@@ -1202,6 +1202,113 @@ button:hover {
   line-height: 1.45;
 }
 
+.cloud-project-catalog {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(15, 23, 42, 0.34);
+}
+
+.cloud-project-catalog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.cloud-project-catalog-header span {
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.cloud-project-catalog-refresh {
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+}
+
+.cloud-project-catalog-status {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.cloud-project-catalog-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  max-height: 220px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.cloud-project-catalog-empty {
+  grid-column: 1 / -1;
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px dashed rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+  font-size: 0.84rem;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.cloud-project-catalog-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  min-height: 88px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(15, 23, 42, 0.54);
+  color: var(--text-primary);
+  text-align: left;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+
+.cloud-project-catalog-item strong {
+  font-size: 0.9rem;
+  line-height: 1.25;
+}
+
+.cloud-project-catalog-item span {
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  line-height: 1.3;
+  word-break: break-all;
+}
+
+.cloud-project-catalog-item small {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  line-height: 1.35;
+}
+
+.cloud-project-catalog-item:hover,
+.cloud-project-catalog-item:focus-visible {
+  border-color: rgba(88, 166, 255, 0.5);
+  background: rgba(30, 41, 59, 0.82);
+  transform: translateY(-1px);
+}
+
+.cloud-project-catalog-item.is-active {
+  border-color: rgba(88, 166, 255, 0.95);
+  box-shadow: 0 0 0 1px rgba(88, 166, 255, 0.24);
+}
+
 .cloud-project-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
