@@ -907,7 +907,9 @@ class Renderer {
       });
       if (reconnectPort) {
         reconnectPort.addEventListener('pointerdown', (event) => {
+          event.preventDefault();
           event.stopPropagation();
+          connectionManager.startDrawing(event);
         });
       }
 

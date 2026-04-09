@@ -26,15 +26,17 @@ class ConnectionManager {
   }
 
   setupEvents() {
+    const getPortElement = (event) => event?.target?.closest?.('.port') || null;
+
     // Start drawing from a port
     document.addEventListener('mousedown', (e) => {
-      if (e.target.classList.contains('port')) {
+      if (getPortElement(e)) {
         this.startDrawing(e);
       }
     });
 
     document.addEventListener('pointerdown', (e) => {
-      if (!isTouchLikePointer(e) || !e.target.classList.contains('port')) {
+      if (!isTouchLikePointer(e) || !getPortElement(e)) {
         return;
       }
 
@@ -88,7 +90,7 @@ class ConnectionManager {
 
   startDrawing(e) {
     this.isDrawing = true;
-    const portEl = e.target.closest('.port');
+    const portEl = e.target.closest?.('.port');
     if (!portEl) {
       this.isDrawing = false;
       return;
