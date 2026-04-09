@@ -891,6 +891,29 @@ class Renderer {
           { mode: 'rename', initialKey: labelText }
         );
       });
+      if (reconnectPort) {
+        group.addEventListener('pointerdown', (event) => {
+          if (event.button !== undefined && event.button !== 0) {
+            return;
+          }
+
+          if (event.target?.closest?.('.connection-delete-btn')) {
+            return;
+          }
+
+          event.preventDefault();
+          event.stopPropagation();
+          connectionManager.startDrawing({
+            target: reconnectPort,
+            clientX: event.clientX,
+            clientY: event.clientY,
+            pointerId: event.pointerId,
+            pointerType: event.pointerType,
+            preventDefault: () => event.preventDefault(),
+            stopPropagation: () => event.stopPropagation(),
+          });
+        });
+      }
       deleteBtn.addEventListener('pointerenter', () => setDeleteHover(true));
       deleteBtn.addEventListener('pointerleave', () => setDeleteHover(false));
       deleteBtn.addEventListener('focus', () => setDeleteHover(true));
@@ -905,13 +928,6 @@ class Renderer {
           connectionManager.deleteConnectionByKey(sourceId, key);
         }
       });
-      if (reconnectPort) {
-        reconnectPort.addEventListener('pointerdown', (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          connectionManager.startDrawing(event);
-        });
-      }
 
     rect.setAttribute("pointer-events", "none");
     text.setAttribute("pointer-events", "none");
