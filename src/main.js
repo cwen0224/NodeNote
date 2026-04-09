@@ -137,8 +137,8 @@ const initApp = () => {
       syncBtn.title = '同步並驗證 Google Sheet';
     }
     if (openProjectBtn) {
-      openProjectBtn.textContent = '開啟專案';
-      openProjectBtn.title = '選擇專案鍵並切換專案';
+      openProjectBtn.textContent = '專案';
+      openProjectBtn.title = '開啟專案選擇窗';
     }
     if (folderGroupBtn) {
       folderGroupBtn.textContent = '群組';

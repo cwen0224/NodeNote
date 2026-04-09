@@ -2,6 +2,7 @@ import { store } from './StateStore.js';
 import { normalizeDocument } from './core/documentSchema.js';
 
 const AUTOSAVE_STORAGE_KEY = 'nodenote.autosave.current.v1';
+const AUTOSAVE_SCOPE_STORAGE_KEY = 'nodenote.autosave.scope.v1';
 const AUTOSAVE_SCHEMA = 'nodenote.autosave';
 const AUTOSAVE_VERSION = '1.0.0';
 const AUTOSAVE_DEBOUNCE_MS = 450;
@@ -39,6 +40,7 @@ class PersistenceManager {
     this.saveTimer = null;
     this.revision = 0;
     this.restored = false;
+    this.scopeKey = this.loadScopeKey();
     this.boundScheduleSave = this.scheduleSave.bind(this);
     this.boundFlushNow = this.flushNow.bind(this);
     this.boundBeforeUnload = this.flushNow.bind(this);
@@ -81,7 +83,7 @@ class PersistenceManager {
 
   getStoredSnapshot() {
     try {
-      const raw = localStorage.getItem(AUTOSAVE_STORAGE_KEY);
+      const raw = localStorage.getItem(this.getAutosaveStorageKey());
       if (!raw) {
         return null;
       }
@@ -95,6 +97,46 @@ class PersistenceManager {
     } catch {
       return null;
     }
+  }
+
+  loadScopeKey() {
+    try {
+      const raw = localStorage.getItem(AUTOSAVE_SCOPE_STORAGE_KEY);
+      return typeof raw === 'string' && raw.trim() ? raw.trim() : 'global';
+    } catch {
+      return 'global';
+    }
+  }
+
+  saveScopeKey(scopeKey) {
+    const nextScope = typeof scopeKey === 'string' && scopeKey.trim() ? scopeKey.trim() : 'global';
+    this.scopeKey = nextScope;
+    try {
+      localStorage.setItem(AUTOSAVE_SCOPE_STORAGE_KEY, nextScope);
+    } catch {
+      // Ignore quota issues.
+    }
+  }
+
+  getAutosaveStorageKey(scopeKey = this.scopeKey) {
+    const safeScope = typeof scopeKey === 'string' && scopeKey.trim() ? scopeKey.trim() : 'global';
+    return `${AUTOSAVE_STORAGE_KEY}.${encodeURIComponent(safeScope)}`;
+  }
+
+  setScopeKey(scopeKey, { restore = false } = {}) {
+    const nextScope = typeof scopeKey === 'string' && scopeKey.trim() ? scopeKey.trim() : 'global';
+    if (nextScope === this.scopeKey) {
+      if (restore) {
+        return this.restoreAutosave();
+      }
+      return false;
+    }
+
+    this.saveScopeKey(nextScope);
+    if (restore) {
+      return this.restoreAutosave();
+    }
+    return true;
   }
 
   hasStoredSnapshot() {
@@ -152,7 +194,7 @@ class PersistenceManager {
 
     let saved = false;
     try {
-      localStorage.setItem(AUTOSAVE_STORAGE_KEY, JSON.stringify(snapshot));
+      localStorage.setItem(this.getAutosaveStorageKey(), JSON.stringify(snapshot));
       saved = true;
     } catch (error) {
       console.warn('Autosave failed', error);

@@ -152,6 +152,7 @@ class CloudSyncManager {
       return;
     }
 
+    persistenceManager.setScopeKey(this.getWorkspaceScopeKey(this.config));
     this.toolbarButton = document.getElementById('btn-sync-now');
     this.statusBadge = document.getElementById('sync-status-badge');
     this.buildDialog();
@@ -236,6 +237,8 @@ class CloudSyncManager {
       ...this.config,
       ...(isPlainObject(config) ? config : {}),
     };
+
+    persistenceManager.setScopeKey(this.getWorkspaceScopeKey(this.config));
 
     try {
       localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(this.config));
@@ -365,6 +368,23 @@ class CloudSyncManager {
     this.renderProjectKeyHistory();
   }
 
+  getWorkspaceScopeKey(config = this.config) {
+    const provider = sanitizeString(config?.provider, 'sheets');
+    if (provider === 'sheets') {
+      return `sheets:${sanitizeString(config?.sheetProjectKey, 'default')}`;
+    }
+
+    if (provider === 'github') {
+      const owner = sanitizeString(config?.owner);
+      const repo = sanitizeString(config?.repo);
+      const branch = sanitizeString(config?.branch, 'master');
+      const path = sanitizeString(config?.path, DEFAULT_SYNC_PATH);
+      return `github:${owner}/${repo}/${branch}/${path}`;
+    }
+
+    return 'global';
+  }
+
   resetSheetSyncContext() {
     this.sheetHydrationState = 'pending';
     this.sheetBaselineDocument = null;
@@ -454,8 +474,8 @@ class CloudSyncManager {
       <div class="cloud-project-panel glass-panel">
         <div class="cloud-project-header">
           <div>
-            <h2>開啟專案</h2>
-            <p>選擇或輸入專案鍵，切換到對應的 Google Sheet 專案。</p>
+            <h2>專案</h2>
+            <p>輸入專案鍵，可開啟既有專案，或建立新的專案。</p>
           </div>
           <button type="button" class="cloud-project-close" data-project-action="close" aria-label="關閉專案視窗">×</button>
         </div>
@@ -465,11 +485,12 @@ class CloudSyncManager {
             <span>專案鍵</span>
             <input type="text" data-project-field="sheetProjectKey" list="sheet-project-key-history" autocomplete="off" placeholder="default" />
             <datalist id="sheet-project-key-history" data-project-project-key-history></datalist>
-            <small>會套用到 Google Sheet 共編。開啟後會切換並從雲端拉回對應專案。</small>
+            <small>會套用到 Google Sheet 共編。開啟會切換並從雲端拉回；新建會以目前內容作為起點建立專案。</small>
           </label>
         </div>
         <div class="cloud-project-actions">
           <button type="button" data-project-action="open">開啟專案</button>
+          <button type="button" data-project-action="create">建立新專案</button>
           <button type="button" data-project-action="close">關閉</button>
         </div>
       </div>
@@ -494,6 +515,8 @@ class CloudSyncManager {
       const action = actionButton.dataset.projectAction;
       if (action === 'open') {
         this.applyProjectSelection();
+      } else if (action === 'create') {
+        this.createProjectSelection();
       } else if (action === 'close') {
         this.closeProjectDialog();
       }
@@ -572,6 +595,7 @@ class CloudSyncManager {
     };
     this.resetSheetSyncContext();
     this.saveConfig();
+    persistenceManager.setScopeKey(this.getWorkspaceScopeKey(this.config));
     this.fillProjectDialogFromConfig();
     this.updateProjectDialogStatus();
     this.updateProviderPanels();
@@ -585,6 +609,38 @@ class CloudSyncManager {
       preferRemote: true,
       hydrateViewport: true,
     });
+  }
+
+  async createProjectSelection() {
+    let nextProjectKey = sanitizeString(this.projectProjectKeyInput?.value, '');
+    if (!nextProjectKey) {
+      const stamp = new Date();
+      const mm = String(stamp.getMonth() + 1).padStart(2, '0');
+      const dd = String(stamp.getDate()).padStart(2, '0');
+      const hh = String(stamp.getHours()).padStart(2, '0');
+      const min = String(stamp.getMinutes()).padStart(2, '0');
+      nextProjectKey = `project_${stamp.getFullYear()}${mm}${dd}_${hh}${min}`;
+    }
+
+    this.rememberSheetProjectKey(nextProjectKey);
+    this.config = {
+      ...this.config,
+      provider: 'sheets',
+      sheetWebAppUrl: sanitizeString(this.config.sheetWebAppUrl) || DEFAULT_SHEET_WEB_APP_URL,
+      sheetProjectKey: nextProjectKey,
+      sheetClientName: sanitizeString(this.config.sheetClientName, 'NodeNote'),
+    };
+    this.resetSheetSyncContext();
+    this.sheetHydrationState = 'ready';
+    this.saveConfig();
+    this.fillProjectDialogFromConfig();
+    this.updateProjectDialogStatus();
+    this.updateProviderPanels();
+    this.refreshTransportMode();
+    this.closeProjectDialog();
+    this.setStatus('idle', `已建立新專案：${nextProjectKey}`);
+    this.appendSyncLog('info', 'project', '建立新專案', `projectKey=${nextProjectKey}`);
+    return this.syncNow({ force: true });
   }
 
   buildDialog() {
