@@ -35,6 +35,7 @@ class NodeManager {
       lastTapNodeId: null,
       timer: null,
     };
+    this.touchEditBlockUntil = 0;
   }
 
   getNodeBounds(nodes = {}, nodeIds = []) {
@@ -226,6 +227,10 @@ class NodeManager {
   }
 
   handleTouchNodePointerDown(e) {
+    if (this.isTouchEditBlocked()) {
+      return;
+    }
+
     const nodeEl = e.target.closest('.node');
     if (!nodeEl) return;
     if (e.target.closest('.port')) return;
@@ -364,6 +369,10 @@ class NodeManager {
       return false;
     }
 
+    if (this.isTouchEditBlocked()) {
+      return false;
+    }
+
     const nodeEl = document.querySelector(`.node[data-id="${nodeId}"]`);
     if (!nodeEl) {
       return false;
@@ -415,6 +424,16 @@ class NodeManager {
     }
 
     return false;
+  }
+
+  blockTouchEditFor(durationMs = 420) {
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    this.touchEditBlockUntil = Math.max(this.touchEditBlockUntil || 0, now + Math.max(0, durationMs));
+  }
+
+  isTouchEditBlocked() {
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    return Number.isFinite(this.touchEditBlockUntil) && this.touchEditBlockUntil > now;
   }
 
   getNodeElementAtPoint(clientX, clientY, excludedIds = []) {

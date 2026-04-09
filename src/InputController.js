@@ -70,6 +70,7 @@ class InputController {
 
       nodeManager.closeActiveEditingNode?.();
       nodeManager.resetTouchTapState?.();
+      nodeManager.blockTouchEditFor?.(520);
       this.beginTouchGesture(e);
     });
 
@@ -108,6 +109,7 @@ class InputController {
         store.clearSelection();
         nodeManager.closeActiveEditingNode?.();
         nodeManager.resetTouchTapState?.();
+        nodeManager.blockTouchEditFor?.(520);
       }
       
       if (e.button === 2 || e.button === 1 || isLeftClickPan) {
