@@ -1140,6 +1140,121 @@ button:hover {
   display: none;
 }
 
+#cloud-project-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 4001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(2, 6, 23, 0.42);
+  padding: 20px;
+}
+
+#cloud-project-modal[hidden] {
+  display: none;
+}
+
+.cloud-project-panel {
+  width: min(92vw, 520px);
+  max-height: min(80vh, 520px);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cloud-project-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.cloud-project-header h2 {
+  font-size: 1.05rem;
+  line-height: 1.2;
+  margin-bottom: 4px;
+}
+
+.cloud-project-header p {
+  color: var(--text-muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.cloud-project-close {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  font-size: 1rem;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+
+.cloud-project-status {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.cloud-project-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+
+.cloud-project-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cloud-project-field span {
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.cloud-project-field input {
+  width: 100%;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(15, 23, 42, 0.58);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+}
+
+.cloud-project-field input:focus {
+  border-color: rgba(88, 166, 255, 0.9);
+  box-shadow: 0 0 0 1px rgba(88, 166, 255, 0.32);
+}
+
+.cloud-project-field small {
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  line-height: 1.35;
+}
+
+.cloud-project-field--wide {
+  grid-column: 1 / -1;
+}
+
+.cloud-project-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-top: 2px;
+}
+
 .cloud-sync-panel {
   width: min(92vw, 760px);
   max-height: min(88vh, 760px);

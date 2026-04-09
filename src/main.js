@@ -138,7 +138,7 @@ const initApp = () => {
     }
     if (openProjectBtn) {
       openProjectBtn.textContent = '開啟專案';
-      openProjectBtn.title = '在新分頁開啟目前雲端專案';
+      openProjectBtn.title = '選擇專案鍵並切換專案';
     }
     if (folderGroupBtn) {
       folderGroupBtn.textContent = '群組';

@@ -78,6 +78,7 @@ const CLOUD_SYNC_VERSION = '1.0.0';
 const AUTO_SYNC_DEBOUNCE_MS = 2800;
 const SHEET_AUTO_SYNC_DEBOUNCE_MS = 1200;
 const SHEET_CLIENT_STORAGE_KEY = 'nodenote.sheet.client-id.v1';
+const SHEET_PROJECT_KEY_HISTORY_STORAGE_KEY = 'nodenote.sheet.project-key-history.v1';
 const DEFAULT_SHEET_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwoztDsaKOldxW3HxJ_DTnaem58yCqKeQk-6kbqXj-E9LZ9dGuGhZUOF_JZY6HNejQC/exec';
 const LEGACY_SHEET_WEB_APP_URLS = new Set([
   'https://script.google.com/macros/s/AKfycbya8qJjNRDSSk7nZuGx0-ACZTt6fIHisw7uaZ-zmGpf3JgB17HVhH7bDUHGIg3eEOyz/exec',
@@ -137,6 +138,12 @@ class CloudSyncManager {
     this.sheetBaselineDocument = null;
     this.sheetLastRevision = 0;
     this.sheetLastFingerprint = null;
+    this.sheetProjectKeyHistory = this.loadSheetProjectKeyHistory();
+    this.projectOverlay = null;
+    this.projectPanel = null;
+    this.projectProjectKeyInput = null;
+    this.projectProjectKeyHistory = null;
+    this.projectHint = null;
     this.boundVisibilityChange = this.handleVisibilityChange.bind(this);
   }
 
@@ -148,6 +155,7 @@ class CloudSyncManager {
     this.toolbarButton = document.getElementById('btn-sync-now');
     this.statusBadge = document.getElementById('sync-status-badge');
     this.buildDialog();
+    this.buildProjectDialog();
     this.bindEvents();
     this.applyStateToUI();
     this.refreshTransportMode();
@@ -309,6 +317,49 @@ class CloudSyncManager {
     });
   }
 
+  loadSheetProjectKeyHistory() {
+    try {
+      const raw = localStorage.getItem(SHEET_PROJECT_KEY_HISTORY_STORAGE_KEY);
+      if (!raw) {
+        return [];
+      }
+
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) {
+        return [];
+      }
+
+      return parsed
+        .map((value) => sanitizeString(value))
+        .filter(Boolean)
+        .slice(0, 12);
+    } catch {
+      return [];
+    }
+  }
+
+  saveSheetProjectKeyHistory() {
+    try {
+      localStorage.setItem(SHEET_PROJECT_KEY_HISTORY_STORAGE_KEY, JSON.stringify(this.sheetProjectKeyHistory.slice(0, 12)));
+    } catch {
+      // Ignore storage quota issues.
+    }
+  }
+
+  rememberSheetProjectKey(projectKey) {
+    const nextKey = sanitizeString(projectKey);
+    if (!nextKey) {
+      return;
+    }
+
+    this.sheetProjectKeyHistory = [
+      nextKey,
+      ...this.sheetProjectKeyHistory.filter((item) => item !== nextKey),
+    ].slice(0, 12);
+    this.saveSheetProjectKeyHistory();
+    this.renderProjectKeyHistory();
+  }
+
   getGitHubProjectUrl() {
     const owner = sanitizeString(this.config.owner);
     const repo = sanitizeString(this.config.repo);
@@ -345,22 +396,168 @@ class CloudSyncManager {
   }
 
   openProject() {
-    const targetUrl = this.getProjectUrl();
-    if (targetUrl) {
-      window.open(targetUrl, '_blank', 'noopener,noreferrer');
-      this.appendSyncLog('info', 'project', '開啟專案', targetUrl);
-      return true;
+    if (!this.projectOverlay) {
+      this.buildProjectDialog();
     }
 
+    this.fillProjectDialogFromConfig();
+    this.updateProjectDialogStatus();
+    this.renderProjectKeyHistory();
+
+    if (this.projectOverlay) {
+      this.projectOverlay.hidden = false;
+    }
+
+    this.projectProjectKeyInput?.focus?.();
+    this.projectProjectKeyInput?.select?.();
+    this.appendSyncLog('info', 'project', '開啟專案視窗');
+    return true;
+  }
+
+  buildProjectDialog() {
+    if (document.getElementById('cloud-project-modal')) {
+      this.projectOverlay = document.getElementById('cloud-project-modal');
+      this.projectPanel = this.projectOverlay?.querySelector?.('.cloud-project-panel') || null;
+      this.projectProjectKeyInput = this.projectOverlay?.querySelector?.('[data-project-field="sheetProjectKey"]') || null;
+      this.projectProjectKeyHistory = this.projectOverlay?.querySelector?.('[data-project-project-key-history]') || null;
+      this.projectHint = this.projectOverlay?.querySelector?.('.cloud-project-status') || null;
+      this.renderProjectKeyHistory();
+      return;
+    }
+
+    this.projectOverlay = document.createElement('div');
+    this.projectOverlay.id = 'cloud-project-modal';
+    this.projectOverlay.className = 'cloud-project-overlay';
+    this.projectOverlay.hidden = true;
+    this.projectOverlay.innerHTML = `
+      <div class="cloud-project-panel glass-panel">
+        <div class="cloud-project-header">
+          <div>
+            <h2>開啟專案</h2>
+            <p>選擇或輸入專案鍵，切換到對應的 Google Sheet 專案。</p>
+          </div>
+          <button type="button" class="cloud-project-close" data-project-action="close" aria-label="關閉專案視窗">×</button>
+        </div>
+        <div class="cloud-project-status" aria-live="polite">尚未選擇專案鍵。</div>
+        <div class="cloud-project-form">
+          <label class="cloud-project-field cloud-project-field--wide">
+            <span>專案鍵</span>
+            <input type="text" data-project-field="sheetProjectKey" list="sheet-project-key-history" autocomplete="off" placeholder="default" />
+            <datalist id="sheet-project-key-history" data-project-project-key-history></datalist>
+            <small>會套用到 Google Sheet 共編。開啟後會切換並從雲端拉回對應專案。</small>
+          </label>
+        </div>
+        <div class="cloud-project-actions">
+          <button type="button" data-project-action="open">開啟專案</button>
+          <button type="button" data-project-action="close">關閉</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(this.projectOverlay);
+    this.projectPanel = this.projectOverlay.querySelector('.cloud-project-panel');
+    this.projectProjectKeyInput = this.projectOverlay.querySelector('[data-project-field="sheetProjectKey"]');
+    this.projectProjectKeyHistory = this.projectOverlay.querySelector('[data-project-project-key-history]');
+    this.projectHint = this.projectOverlay.querySelector('.cloud-project-status');
+    this.projectOverlay.addEventListener('click', (event) => {
+      if (event.target === this.projectOverlay) {
+        this.closeProjectDialog();
+      }
+    });
+    this.projectPanel?.addEventListener('click', (event) => {
+      const actionButton = event.target.closest?.('[data-project-action]');
+      if (!actionButton) {
+        return;
+      }
+
+      const action = actionButton.dataset.projectAction;
+      if (action === 'open') {
+        this.applyProjectSelection();
+      } else if (action === 'close') {
+        this.closeProjectDialog();
+      }
+    });
+    this.projectProjectKeyInput?.addEventListener('input', () => {
+      this.updateProjectDialogStatus();
+    });
+    this.projectProjectKeyInput?.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        this.applyProjectSelection();
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        this.closeProjectDialog();
+      }
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && this.projectOverlay && !this.projectOverlay.hidden) {
+        this.closeProjectDialog();
+      }
+    });
+    this.renderProjectKeyHistory();
+  }
+
+  closeProjectDialog() {
+    if (this.projectOverlay) {
+      this.projectOverlay.hidden = true;
+    }
+  }
+
+  fillProjectDialogFromConfig() {
+    if (this.projectProjectKeyInput) {
+      this.projectProjectKeyInput.value = sanitizeString(this.config.sheetProjectKey, 'default');
+    }
+  }
+
+  updateProjectDialogStatus() {
+    if (!this.projectHint) {
+      return;
+    }
+
+    const projectKey = sanitizeString(this.projectProjectKeyInput?.value || this.config.sheetProjectKey, 'default');
     if (this.config.provider === 'sheets') {
-      this.setStatus('idle', '尚未取得試算表網址，請先完成一次同步');
-      this.appendSyncLog('info', 'project', '無法開啟專案', '尚未取得試算表網址');
-    } else if (this.config.provider === 'github') {
-      this.setStatus('idle', '請先完成 GitHub 同步設定');
-      this.appendSyncLog('info', 'project', '無法開啟專案', '尚未設定 GitHub 專案網址');
+      this.projectHint.textContent = `目前使用 Google Sheet 共編，專案鍵：${projectKey || 'default'}`;
+      return;
     }
 
-    return false;
+    this.projectHint.textContent = `目前不是 Google Sheet 共編模式，但仍可先保存專案鍵：${projectKey || 'default'}`;
+  }
+
+  renderProjectKeyHistory() {
+    if (!this.projectProjectKeyHistory) {
+      return;
+    }
+
+    this.projectProjectKeyHistory.innerHTML = this.sheetProjectKeyHistory
+      .map((projectKey) => `<option value="${escapeHtml(projectKey)}"></option>`)
+      .join('');
+  }
+
+  async applyProjectSelection() {
+    const nextProjectKey = sanitizeString(this.projectProjectKeyInput?.value, 'default');
+    if (!nextProjectKey) {
+      this.setStatus('error', '請先輸入專案鍵');
+      this.appendSyncLog('error', 'project', '開啟專案失敗', '請先輸入專案鍵');
+      return false;
+    }
+
+    this.rememberSheetProjectKey(nextProjectKey);
+    this.config = {
+      ...this.config,
+      provider: 'sheets',
+      sheetWebAppUrl: sanitizeString(this.config.sheetWebAppUrl) || DEFAULT_SHEET_WEB_APP_URL,
+      sheetProjectKey: nextProjectKey,
+      sheetClientName: sanitizeString(this.config.sheetClientName, 'NodeNote'),
+    };
+    this.saveConfig();
+    this.fillProjectDialogFromConfig();
+    this.updateProjectDialogStatus();
+    this.updateProviderPanels();
+    this.refreshTransportMode();
+    this.closeProjectDialog();
+    this.setStatus('idle', `已切換專案鍵：${nextProjectKey}`);
+    this.appendSyncLog('info', 'project', '切換專案鍵', `projectKey=${nextProjectKey}`);
+    return this.pullNow({ skipConfirm: true, silentOnMissing: true });
   }
 
   buildDialog() {
