@@ -347,6 +347,8 @@ class CloudSyncManager {
         this.saveConfigFromDialog({ syncImmediately: true });
       } else if (action === 'pull') {
         this.pullNow();
+      } else if (action === 'copy-diagnostic') {
+        this.copyDiagnosticReportToClipboard();
       } else if (action === 'copy-logs') {
         this.copySyncLogsToClipboard();
       } else if (action === 'clear-logs') {
@@ -1035,6 +1037,7 @@ class CloudSyncManager {
             <p>只存在這台裝置的瀏覽器本機，可用來追蹤同步、驗證與錯誤。</p>
           </div>
           <div class="cloud-sync-log-actions">
+            <button type="button" data-cloud-action="copy-diagnostic">複製診斷</button>
             <button type="button" data-cloud-action="copy-logs">複製日誌</button>
             <button type="button" data-cloud-action="clear-logs">清空日誌</button>
           </div>
@@ -1269,6 +1272,89 @@ class CloudSyncManager {
 
   buildSyncLogText() {
     return buildSyncLogText(this.logEntries);
+  }
+
+  buildDiagnosticReport() {
+    const projectCatalog = Array.isArray(this.sheetProjectCatalog)
+      ? this.sheetProjectCatalog.map((project) => ({
+        projectKey: project?.projectKey || '',
+        projectName: project?.projectName || '',
+        title: project?.title || '',
+        revision: project?.revision || 0,
+        updatedAt: project?.updatedAt || '',
+        nodeCount: project?.nodeCount || 0,
+        folderCount: project?.folderCount || 0,
+        assetCount: project?.assetCount || 0,
+      }))
+      : [];
+
+    const recentLogs = this.logEntries.slice(-25).map((entry) => ({
+      timestamp: entry?.timestamp || '',
+      level: entry?.level || '',
+      scope: entry?.scope || '',
+      title: entry?.title || '',
+      message: entry?.message || '',
+      detail: entry?.detail || '',
+      context: entry?.context || null,
+    }));
+
+    return JSON.stringify({
+      generatedAt: new Date().toISOString(),
+      href: typeof window !== 'undefined' ? window.location.href : '',
+      userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+      config: {
+        provider: this.config.provider || '',
+        sheetWebAppUrl: this.config.sheetWebAppUrl || '',
+        sheetProjectKey: this.config.sheetProjectKey || '',
+        sheetProjectName: this.config.sheetProjectName || '',
+        sheetClientName: this.config.sheetClientName || '',
+        autoSync: Boolean(this.config.autoSync),
+        restoreOnStartupWhenEmpty: Boolean(this.config.restoreOnStartupWhenEmpty),
+        sheetHydrationState: this.sheetHydrationState,
+        cloudProjectDeleted: Boolean(this.cloudProjectDeleted),
+      },
+      state: {
+        status: this.state?.status || '',
+        lastError: this.state?.lastError || '',
+        lastSyncedAt: this.state?.lastSyncedAt || '',
+        lastRemoteRevision: this.state?.lastRemoteRevision || 0,
+        lastRemoteSha: this.state?.lastRemoteSha || '',
+      },
+      project: {
+        selectedProjectKey: this.projectSelectedProjectKey || '',
+        selectedProjectName: sanitizeString(this.projectProjectNameInput?.value || this.config.sheetProjectName || ''),
+        catalogLoading: Boolean(this.sheetProjectCatalogLoading),
+        catalogSize: projectCatalog.length,
+        catalog: projectCatalog,
+      },
+      logs: recentLogs,
+    }, null, 2);
+  }
+
+  async copyDiagnosticReportToClipboard() {
+    const text = this.buildDiagnosticReport();
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.setAttribute('readonly', 'true');
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        textarea.remove();
+      }
+      this.setStatus('idle', '診斷資料已複製');
+      this.appendSyncLog('info', 'log', '複製診斷資料');
+      return true;
+    } catch (error) {
+      this.setStatus('error', '複製診斷失敗');
+      this.appendSyncLog('error', 'log', '複製診斷資料失敗', this.getErrorMessage(error));
+      return false;
+    }
   }
 
   async copySyncLogsToClipboard() {
