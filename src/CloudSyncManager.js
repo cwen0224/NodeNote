@@ -79,8 +79,9 @@ const AUTO_SYNC_DEBOUNCE_MS = 2800;
 const SHEET_AUTO_SYNC_DEBOUNCE_MS = 1200;
 const SHEET_CLIENT_STORAGE_KEY = 'nodenote.sheet.client-id.v1';
 const SHEET_PROJECT_KEY_HISTORY_STORAGE_KEY = 'nodenote.sheet.project-key-history.v1';
-const DEFAULT_SHEET_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwoztDsaKOldxW3HxJ_DTnaem58yCqKeQk-6kbqXj-E9LZ9dGuGhZUOF_JZY6HNejQC/exec';
+const DEFAULT_SHEET_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwUmkFmlaghJWUrQVNR78ygvz0PzzYeBu_rqP3ZwAs/exec';
 const LEGACY_SHEET_WEB_APP_URLS = new Set([
+  'https://script.google.com/macros/s/AKfycbwoztDsaKOldxW3HxJ_DTnaem58yCqKeQk-6kbqXj-E9LZ9dGuGhZUOF_JZY6HNejQC/exec',
   'https://script.google.com/macros/s/AKfycbya8qJjNRDSSk7nZuGx0-ACZTt6fIHisw7uaZ-zmGpf3JgB17HVhH7bDUHGIg3eEOyz/exec',
   'https://script.google.com/macros/s/AKfycbwez1B0c5LClHi4kYXqWyuEtCtDstFz0QRkSfBkQib7LSJG4-KzOeVrose73hANvueP/exec',
 ]);
