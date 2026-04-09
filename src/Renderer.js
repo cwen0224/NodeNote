@@ -743,6 +743,8 @@ class Renderer {
     path.setAttribute("d", d);
     this.svgLayer.appendChild(path);
 
+    this.appendConnectionDirectionTrail(path, route);
+
     let labelPoint = {
       x: (sX + tX) / 2,
       y: (sY + tY) / 2,
@@ -854,6 +856,70 @@ class Renderer {
     text.setAttribute("pointer-events", "none");
     group.append(rect, text, deleteBtn);
     this.svgLayer.appendChild(group);
+  }
+
+  appendConnectionDirectionTrail(path, route) {
+    if (!this.svgLayer || !path || typeof path.getTotalLength !== 'function' || typeof path.getPointAtLength !== 'function') {
+      return;
+    }
+
+    let totalLength = 0;
+    try {
+      totalLength = path.getTotalLength();
+    } catch {
+      return;
+    }
+
+    if (!Number.isFinite(totalLength) || totalLength < 90) {
+      return;
+    }
+
+    const trail = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    trail.setAttribute("class", "connection-flow-trail");
+
+    const minSpacing = Math.max(28, Math.min(48, Math.round((route?.distance || totalLength) * 0.12)));
+    const startOffset = Math.min(24, Math.max(12, Math.round(minSpacing * 0.45)));
+    const endOffset = Math.min(24, Math.max(12, Math.round(minSpacing * 0.45)));
+    const centerGapStart = totalLength * 0.43;
+    const centerGapEnd = totalLength * 0.57;
+    const sampleDelta = Math.max(6, Math.min(14, Math.round(minSpacing * 0.25)));
+
+    for (let offset = startOffset; offset < totalLength - endOffset; offset += minSpacing) {
+      if (offset >= centerGapStart && offset <= centerGapEnd) {
+        continue;
+      }
+
+      let currentPoint = null;
+      let nextPoint = null;
+      try {
+        currentPoint = path.getPointAtLength(offset);
+        nextPoint = path.getPointAtLength(Math.min(totalLength, offset + sampleDelta));
+      } catch {
+        continue;
+      }
+
+      if (!currentPoint || !nextPoint) {
+        continue;
+      }
+
+      const dx = nextPoint.x - currentPoint.x;
+      const dy = nextPoint.y - currentPoint.y;
+      const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+
+      const arrow = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      arrow.setAttribute("class", "connection-flow-arrow");
+      arrow.setAttribute("x", String(currentPoint.x));
+      arrow.setAttribute("y", String(currentPoint.y + 0.5));
+      arrow.setAttribute("text-anchor", "middle");
+      arrow.setAttribute("dominant-baseline", "middle");
+      arrow.setAttribute("transform", `rotate(${angle} ${currentPoint.x} ${currentPoint.y})`);
+      arrow.textContent = '>';
+      trail.appendChild(arrow);
+    }
+
+    if (trail.childNodes.length > 0) {
+      this.svgLayer.appendChild(trail);
+    }
   }
 
   getNodeCenterWorldPoint(node) {
