@@ -22,6 +22,7 @@ import {
   buildSheetRequestUrl,
   DEFAULT_SHEET_POLL_MS,
   resolveSheetClientName,
+  resolveSheetProjectKey,
   resolveSheetPollIntervalMs,
 } from './core/cloudSheetTransport.js';
 import {
@@ -145,9 +146,9 @@ class CloudSyncManager {
     this.sheetProjectKeyHistory = this.loadSheetProjectKeyHistory();
     this.projectOverlay = null;
     this.projectPanel = null;
-    this.projectProjectKeyInput = null;
-    this.projectProjectKeyHistory = null;
     this.projectRemoteProjectList = null;
+    this.projectProjectNameInput = null;
+    this.projectSelectedProjectKey = '';
     this.projectHint = null;
     this.sheetProjectCatalog = [];
     this.sheetProjectCatalogLoading = false;
@@ -205,7 +206,7 @@ class CloudSyncManager {
       autoSync: true,
       restoreOnStartupWhenEmpty: false,
       sheetWebAppUrl: DEFAULT_SHEET_WEB_APP_URL,
-      sheetProjectKey: 'default',
+      sheetProjectKey: '',
       sheetProjectName: '',
       sheetClientName: 'NodeNote',
       sheetSecret: '',
@@ -215,7 +216,11 @@ class CloudSyncManager {
     try {
       const raw = localStorage.getItem(CONFIG_STORAGE_KEY);
       if (!raw) {
-        return { ...defaults };
+        const next = { ...defaults };
+        if (next.provider === 'sheets') {
+          next.sheetProjectKey = resolveSheetProjectKey(next, store.getDocumentSnapshot?.()?.meta?.title || 'project');
+        }
+        return next;
       }
 
       const parsed = JSON.parse(raw);
@@ -234,13 +239,20 @@ class CloudSyncManager {
         if (!sanitizeString(next.sheetProjectName)) {
           next.sheetProjectName = '';
         }
+        if (!sanitizeString(next.sheetProjectKey)) {
+          next.sheetProjectKey = resolveSheetProjectKey(next, store.getDocumentSnapshot?.()?.meta?.title || 'project');
+        }
         if (!Number.isFinite(next.sheetPollIntervalMs) || next.sheetPollIntervalMs < DEFAULT_SHEET_POLL_MS) {
           next.sheetPollIntervalMs = DEFAULT_SHEET_POLL_MS;
         }
       }
       return next;
     } catch {
-      return { ...defaults };
+      const next = { ...defaults };
+      if (next.provider === 'sheets') {
+        next.sheetProjectKey = resolveSheetProjectKey(next, store.getDocumentSnapshot?.()?.meta?.title || 'project');
+      }
+      return next;
     }
   }
 
@@ -249,6 +261,13 @@ class CloudSyncManager {
       ...this.config,
       ...(isPlainObject(config) ? config : {}),
     };
+
+    if (this.config.provider === 'sheets' && !sanitizeString(this.config.sheetProjectKey)) {
+      this.config.sheetProjectKey = resolveSheetProjectKey(
+        this.config,
+        store.getDocumentSnapshot?.()?.meta?.title || 'project'
+      );
+    }
 
     persistenceManager.setScopeKey(this.getWorkspaceScopeKey(this.config));
 
@@ -384,7 +403,7 @@ class CloudSyncManager {
   getWorkspaceScopeKey(config = this.config) {
     const provider = sanitizeString(config?.provider, 'sheets');
     if (provider === 'sheets') {
-      return `sheets:${sanitizeString(config?.sheetProjectKey, 'default')}`;
+      return `sheets:${resolveSheetProjectKey(config, store.getDocumentSnapshot?.()?.meta?.title || 'project')}`;
     }
 
     if (provider === 'github') {
@@ -457,7 +476,6 @@ class CloudSyncManager {
 
     this.fillProjectDialogFromConfig();
     this.updateProjectDialogStatus();
-    this.renderProjectKeyHistory();
     this.renderSheetProjectCatalog();
     void this.loadSheetProjectCatalog({ force: true });
 
@@ -465,8 +483,8 @@ class CloudSyncManager {
       this.projectOverlay.hidden = false;
     }
 
-    this.projectProjectKeyInput?.focus?.();
-    this.projectProjectKeyInput?.select?.();
+    this.projectProjectNameInput?.focus?.();
+    this.projectProjectNameInput?.select?.();
     this.appendSyncLog('info', 'project', '開啟專案視窗');
     return true;
   }
@@ -475,13 +493,10 @@ class CloudSyncManager {
     if (document.getElementById('cloud-project-modal')) {
       this.projectOverlay = document.getElementById('cloud-project-modal');
       this.projectPanel = this.projectOverlay?.querySelector?.('.cloud-project-panel') || null;
-      this.projectProjectKeyInput = this.projectOverlay?.querySelector?.('[data-project-field="sheetProjectKey"]') || null;
       this.projectProjectNameInput = this.projectOverlay?.querySelector?.('[data-project-field="sheetProjectName"]') || null;
-      this.projectProjectKeyHistory = this.projectOverlay?.querySelector?.('[data-project-project-key-history]') || null;
       this.projectRemoteProjectList = this.projectOverlay?.querySelector?.('[data-project-remote-list]') || null;
       this.projectCatalogStatus = this.projectOverlay?.querySelector?.('[data-project-catalog-status]') || null;
       this.projectHint = this.projectOverlay?.querySelector?.('.cloud-project-status') || null;
-      this.renderProjectKeyHistory();
       this.renderSheetProjectCatalog();
       return;
     }
@@ -495,11 +510,11 @@ class CloudSyncManager {
         <div class="cloud-project-header">
           <div>
             <h2>專案</h2>
-            <p>輸入專案鍵，可開啟既有專案，或建立新的專案。</p>
+            <p>輸入專案名稱，系統會自動生成專案鍵。</p>
           </div>
           <button type="button" class="cloud-project-close" data-project-action="close" aria-label="關閉專案視窗">×</button>
         </div>
-        <div class="cloud-project-status" aria-live="polite">尚未選擇專案鍵。</div>
+        <div class="cloud-project-status" aria-live="polite">尚未選擇專案名稱。</div>
         <div class="cloud-project-catalog">
           <div class="cloud-project-catalog-header">
             <span>雲端專案</span>
@@ -510,19 +525,13 @@ class CloudSyncManager {
         </div>
         <div class="cloud-project-form">
           <label class="cloud-project-field cloud-project-field--wide">
-            <span>專案鍵</span>
-            <input type="text" data-project-field="sheetProjectKey" list="sheet-project-key-history" autocomplete="off" placeholder="default" />
-            <datalist id="sheet-project-key-history" data-project-project-key-history></datalist>
-            <small>會套用到 Google Sheet 共編。開啟會切換並從雲端拉回；新建會以目前內容作為起點建立專案。</small>
-          </label>
-          <label class="cloud-project-field cloud-project-field--wide">
             <span>專案名稱</span>
             <input type="text" data-project-field="sheetProjectName" autocomplete="off" placeholder="未命名專案" />
-            <small>會顯示在雲端專案清單；可以留空，系統會使用目前文件標題或專案鍵。</small>
+            <small>會顯示在雲端專案清單；可以留空，系統會使用目前文件標題自動生成專案鍵。</small>
           </label>
         </div>
         <div class="cloud-project-actions">
-          <button type="button" data-project-action="open">開啟專案</button>
+          <button type="button" data-project-action="open">開啟選取專案</button>
           <button type="button" data-project-action="create">建立新專案</button>
           <button type="button" class="cloud-project-danger" data-project-action="delete">刪除雲端資料</button>
           <button type="button" data-project-action="close">關閉</button>
@@ -532,9 +541,7 @@ class CloudSyncManager {
 
     document.body.appendChild(this.projectOverlay);
     this.projectPanel = this.projectOverlay.querySelector('.cloud-project-panel');
-    this.projectProjectKeyInput = this.projectOverlay.querySelector('[data-project-field="sheetProjectKey"]');
     this.projectProjectNameInput = this.projectOverlay.querySelector('[data-project-field="sheetProjectName"]');
-    this.projectProjectKeyHistory = this.projectOverlay.querySelector('[data-project-project-key-history]');
     this.projectRemoteProjectList = this.projectOverlay.querySelector('[data-project-remote-list]');
     this.projectCatalogStatus = this.projectOverlay.querySelector('[data-project-catalog-status]');
     this.projectHint = this.projectOverlay.querySelector('.cloud-project-status');
@@ -563,21 +570,27 @@ class CloudSyncManager {
       } else if (action === 'select-project') {
         const projectKey = sanitizeString(actionButton.dataset.projectKey, 'default');
         if (projectKey) {
-          this.projectProjectKeyInput.value = projectKey;
+          const selectedProject = this.sheetProjectCatalog.find((project) => project.projectKey === projectKey) || null;
+          this.projectSelectedProjectKey = projectKey;
+          if (this.projectProjectNameInput && selectedProject) {
+            this.projectProjectNameInput.value = selectedProject.projectName || selectedProject.title || '';
+          }
+          this.config = {
+            ...this.config,
+            sheetProjectKey: projectKey,
+          };
           this.updateProjectDialogStatus();
           this.renderSheetProjectCatalog();
-          this.projectProjectKeyInput?.focus?.();
-          this.projectProjectKeyInput?.select?.();
         }
       }
     });
-    this.projectProjectKeyInput?.addEventListener('input', () => {
+    this.projectProjectNameInput?.addEventListener('input', () => {
       this.updateProjectDialogStatus();
     });
-    this.projectProjectKeyInput?.addEventListener('keydown', (event) => {
+    this.projectProjectNameInput?.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
         event.preventDefault();
-        this.applyProjectSelection();
+        this.createProjectSelection();
       } else if (event.key === 'Escape') {
         event.preventDefault();
         this.closeProjectDialog();
@@ -588,7 +601,6 @@ class CloudSyncManager {
         this.closeProjectDialog();
       }
     });
-    this.renderProjectKeyHistory();
     this.renderSheetProjectCatalog();
   }
 
@@ -599,13 +611,14 @@ class CloudSyncManager {
   }
 
   fillProjectDialogFromConfig() {
-    if (this.projectProjectKeyInput) {
-      this.projectProjectKeyInput.value = sanitizeString(this.config.sheetProjectKey, 'default');
-    }
     if (this.projectProjectNameInput) {
       const fallbackTitle = store.getDocumentSnapshot?.()?.meta?.title || '';
       this.projectProjectNameInput.value = sanitizeString(this.config.sheetProjectName, '') || sanitizeString(fallbackTitle, '');
     }
+    this.projectSelectedProjectKey = sanitizeString(this.config.sheetProjectKey, '') || resolveSheetProjectKey(
+      this.config,
+      store.getDocumentSnapshot?.()?.meta?.title || 'project'
+    );
   }
 
   updateProjectDialogStatus() {
@@ -618,14 +631,17 @@ class CloudSyncManager {
       return;
     }
 
-    const projectKey = sanitizeString(this.projectProjectKeyInput?.value || this.config.sheetProjectKey, 'default');
-    const projectName = sanitizeString(this.projectProjectNameInput?.value || this.config.sheetProjectName || store.getDocumentSnapshot?.()?.meta?.title || projectKey, '');
+    const projectName = sanitizeString(this.projectProjectNameInput?.value || this.config.sheetProjectName || store.getDocumentSnapshot?.()?.meta?.title || '', '');
+    const projectKey = sanitizeString(
+      this.projectSelectedProjectKey || this.config.sheetProjectKey || resolveSheetProjectKey({ sheetProjectName: projectName }, projectName || 'project'),
+      'default'
+    );
     if (this.config.provider === 'sheets') {
-      this.projectHint.textContent = `目前使用 Google Sheet 共編，專案鍵：${projectKey || 'default'}，名稱：${projectName || '未命名專案'}`;
+      this.projectHint.textContent = `目前使用 Google Sheet 共編，專案名稱：${projectName || '未命名專案'}，專案鍵會自動生成：${projectKey}`;
       return;
     }
 
-    this.projectHint.textContent = `目前不是 Google Sheet 共編模式，但仍可先保存專案鍵：${projectKey || 'default'}，名稱：${projectName || '未命名專案'}`;
+    this.projectHint.textContent = `目前不是 Google Sheet 共編模式，但仍可先保存專案名稱：${projectName || '未命名專案'}，專案鍵會自動生成：${projectKey}`;
   }
 
   normalizeSheetProjectCatalog(response) {
@@ -673,16 +689,26 @@ class CloudSyncManager {
       return;
     }
 
-    const currentProjectKey = sanitizeString(this.projectProjectKeyInput?.value || this.config.sheetProjectKey, 'default');
+    const currentProjectKey = sanitizeString(
+      this.projectSelectedProjectKey || this.config.sheetProjectKey || resolveSheetProjectKey(this.config, store.getDocumentSnapshot?.()?.meta?.title || 'project'),
+      'default'
+    );
     const projects = Array.isArray(this.sheetProjectCatalog) ? this.sheetProjectCatalog : [];
+    const hasCurrentProject = projects.some((project) => project.projectKey === currentProjectKey);
+    const effectiveProjectKey = hasCurrentProject
+      ? currentProjectKey
+      : sanitizeString(projects[0]?.projectKey, '');
+    if (!hasCurrentProject && effectiveProjectKey) {
+      this.projectSelectedProjectKey = effectiveProjectKey;
+    }
 
     if (this.projectCatalogStatus) {
       if (this.sheetProjectCatalogLoading) {
         this.projectCatalogStatus.textContent = '正在載入雲端專案清單...';
       } else if (projects.length) {
-        this.projectCatalogStatus.textContent = `已載入 ${projects.length} 個雲端專案。點一下可帶入專案鍵。`;
+        this.projectCatalogStatus.textContent = `已載入 ${projects.length} 個雲端專案。點一下可選取專案。`;
       } else {
-        this.projectCatalogStatus.textContent = '找不到雲端專案清單，仍可手動輸入專案鍵。';
+        this.projectCatalogStatus.textContent = '找不到雲端專案清單，仍可建立新專案。';
       }
     }
 
@@ -696,7 +722,7 @@ class CloudSyncManager {
     }
 
     this.projectRemoteProjectList.innerHTML = projects.map((project) => {
-      const selected = project.projectKey === currentProjectKey ? ' is-active' : '';
+      const selected = project.projectKey === (effectiveProjectKey || currentProjectKey) ? ' is-active' : '';
       const updatedAt = project.updatedAt ? formatClockStamp(project.updatedAt) : '未記錄';
       const projectName = project.projectName || project.title || project.projectKey;
       return `
@@ -704,9 +730,13 @@ class CloudSyncManager {
           <strong>${escapeHtml(projectName)}</strong>
           <span>${escapeHtml(project.projectKey)}</span>
           <small>revision ${escapeHtml(String(project.revision || 0))} · ${escapeHtml(updatedAt)}</small>
-        </button>
+      </button>
       `;
     }).join('');
+
+    if (!this.projectSelectedProjectKey && projects[0]) {
+      this.projectSelectedProjectKey = projects[0].projectKey;
+    }
   }
 
   async loadSheetProjectCatalog({ force = false } = {}) {
@@ -729,7 +759,7 @@ class CloudSyncManager {
       const response = await requestJsonp(buildSheetRequestUrl({
         baseUrl: this.config.sheetWebAppUrl,
         action: 'projects',
-        projectKey: sanitizeString(this.config.sheetProjectKey, 'default'),
+        projectKey: resolveSheetProjectKey(this.config, store.getDocumentSnapshot?.()?.meta?.title || 'project'),
         clientId: this.sheetClientId,
         secret: this.config.sheetSecret,
       }));
@@ -756,21 +786,19 @@ class CloudSyncManager {
   }
 
   renderProjectKeyHistory() {
-    if (!this.projectProjectKeyHistory) {
-      return;
-    }
-
-    this.projectProjectKeyHistory.innerHTML = this.sheetProjectKeyHistory
-      .map((projectKey) => `<option value="${escapeHtml(projectKey)}"></option>`)
-      .join('');
+    // Legacy no-op: project keys are generated automatically now.
   }
 
   async applyProjectSelection() {
-    const nextProjectKey = sanitizeString(this.projectProjectKeyInput?.value, 'default');
-    const nextProjectName = sanitizeString(this.projectProjectNameInput?.value || this.config.sheetProjectName || store.getDocumentSnapshot?.()?.meta?.title || nextProjectKey, '');
+    const nextProjectName = sanitizeString(this.projectProjectNameInput?.value || this.config.sheetProjectName || store.getDocumentSnapshot?.()?.meta?.title || '', '');
+    const candidateProjectKey = sanitizeString(
+      this.projectSelectedProjectKey || this.config.sheetProjectKey || this.sheetProjectCatalog?.[0]?.projectKey || '',
+      ''
+    );
+    const nextProjectKey = candidateProjectKey;
     if (!nextProjectKey) {
-      this.setStatus('error', '請先輸入專案鍵');
-      this.appendSyncLog('error', 'project', '開啟專案失敗', '請先輸入專案鍵');
+      this.setStatus('error', '請先從雲端清單選取專案');
+      this.appendSyncLog('error', 'project', '開啟專案失敗', '請先從雲端清單選取專案');
       return false;
     }
 
@@ -791,8 +819,8 @@ class CloudSyncManager {
     this.updateProviderPanels();
     this.refreshTransportMode();
     this.closeProjectDialog();
-    this.setStatus('idle', `已切換專案鍵：${nextProjectKey}`);
-    this.appendSyncLog('info', 'project', '切換專案鍵', `projectKey=${nextProjectKey}`);
+    this.setStatus('idle', `已切換專案：${nextProjectName || nextProjectKey}`);
+    this.appendSyncLog('info', 'project', '切換專案', `projectKey=${nextProjectKey}`);
     const result = await this.pullNow({
       skipConfirm: true,
       silentOnMissing: true,
@@ -804,21 +832,12 @@ class CloudSyncManager {
   }
 
   async createProjectSelection() {
-    let nextProjectKey = sanitizeString(this.projectProjectKeyInput?.value, '');
-    let nextProjectName = sanitizeString(this.projectProjectNameInput?.value || this.config.sheetProjectName || store.getDocumentSnapshot?.()?.meta?.title || '', '');
-    if (!nextProjectKey) {
-      const stamp = new Date();
-      const mm = String(stamp.getMonth() + 1).padStart(2, '0');
-      const dd = String(stamp.getDate()).padStart(2, '0');
-      const hh = String(stamp.getHours()).padStart(2, '0');
-      const min = String(stamp.getMinutes()).padStart(2, '0');
-      nextProjectKey = `project_${stamp.getFullYear()}${mm}${dd}_${hh}${min}`;
-    }
-    if (!nextProjectName) {
-      nextProjectName = nextProjectKey;
-    }
+    const fallbackProjectName = sanitizeString(store.getDocumentSnapshot?.()?.meta?.title || '未命名專案', '') || '未命名專案';
+    const nextProjectName = sanitizeString(this.projectProjectNameInput?.value || this.config.sheetProjectName || fallbackProjectName, '') || fallbackProjectName;
+    const nextProjectKey = resolveSheetProjectKey({ sheetProjectName: nextProjectName }, nextProjectName || 'project');
 
     this.rememberSheetProjectKey(nextProjectKey);
+    this.projectSelectedProjectKey = nextProjectKey;
     this.config = {
       ...this.config,
       provider: 'sheets',
@@ -835,7 +854,7 @@ class CloudSyncManager {
     this.updateProviderPanels();
     this.refreshTransportMode();
     this.closeProjectDialog();
-    this.setStatus('idle', `已建立新專案：${nextProjectKey}`);
+    this.setStatus('idle', `已建立新專案：${nextProjectName || nextProjectKey}`);
     this.appendSyncLog('info', 'project', '建立新專案', `projectKey=${nextProjectKey}`);
     const result = await this.syncNow({ force: true });
     void this.loadSheetProjectCatalog({ force: true });
@@ -843,15 +862,18 @@ class CloudSyncManager {
   }
 
   async deleteCloudProjectSelection() {
-    const projectKey = sanitizeString(this.projectProjectKeyInput?.value || this.config.sheetProjectKey, 'default');
+    const projectKey = sanitizeString(
+      this.projectSelectedProjectKey || this.config.sheetProjectKey || this.sheetProjectCatalog?.[0]?.projectKey || '',
+      'default'
+    );
     const projectName = sanitizeString(
       this.projectProjectNameInput?.value || this.config.sheetProjectName || store.getDocumentSnapshot?.()?.meta?.title || projectKey,
       ''
     );
 
     if (!projectKey) {
-      this.setStatus('error', '請先輸入專案鍵');
-      this.appendSyncLog('error', 'project', '刪除雲端資料失敗', '請先輸入專案鍵');
+      this.setStatus('error', '請先從清單選取專案');
+      this.appendSyncLog('error', 'project', '刪除雲端資料失敗', '請先從清單選取專案');
       return false;
     }
 
@@ -984,10 +1006,6 @@ class CloudSyncManager {
                 <input type="text" data-cloud-field="sheetWebAppUrl" autocomplete="off" placeholder="https://script.google.com/macros/s/..." />
               </label>
               <label class="cloud-sync-field">
-                <span>專案鍵</span>
-                <input type="text" data-cloud-field="sheetProjectKey" autocomplete="off" placeholder="default" />
-              </label>
-              <label class="cloud-sync-field">
                 <span>裝置名稱</span>
                 <input type="text" data-cloud-field="sheetClientName" autocomplete="off" placeholder="Alice" />
               </label>
@@ -1052,7 +1070,6 @@ class CloudSyncManager {
       path: this.overlay?.querySelector('[data-cloud-field="path"]') || null,
       token: this.overlay?.querySelector('[data-cloud-field="token"]') || null,
       sheetWebAppUrl: this.overlay?.querySelector('[data-cloud-field="sheetWebAppUrl"]') || null,
-      sheetProjectKey: this.overlay?.querySelector('[data-cloud-field="sheetProjectKey"]') || null,
       sheetClientName: this.overlay?.querySelector('[data-cloud-field="sheetClientName"]') || null,
       sheetSecret: this.overlay?.querySelector('[data-cloud-field="sheetSecret"]') || null,
       sheetPollIntervalMs: this.overlay?.querySelector('[data-cloud-field="sheetPollIntervalMs"]') || null,
@@ -1096,9 +1113,6 @@ class CloudSyncManager {
     if (this.inputs.sheetWebAppUrl) {
       this.inputs.sheetWebAppUrl.value = config.sheetWebAppUrl || '';
     }
-    if (this.inputs.sheetProjectKey) {
-      this.inputs.sheetProjectKey.value = config.sheetProjectKey || 'default';
-    }
     if (this.inputs.sheetClientName) {
       this.inputs.sheetClientName.value = config.sheetClientName || '';
     }
@@ -1139,7 +1153,6 @@ class CloudSyncManager {
       autoSync: Boolean(this.inputs.autoSync?.checked),
       restoreOnStartupWhenEmpty: Boolean(this.inputs.restoreOnStartupWhenEmpty?.checked),
       sheetWebAppUrl: sanitizeString(this.inputs.sheetWebAppUrl?.value),
-      sheetProjectKey: sanitizeString(this.inputs.sheetProjectKey?.value, 'default'),
       sheetClientName: sanitizeString(this.inputs.sheetClientName?.value),
       sheetSecret: sanitizeString(this.inputs.sheetSecret?.value),
       sheetPollIntervalMs: Number.isFinite(Number(this.inputs.sheetPollIntervalMs?.value))
@@ -1150,7 +1163,7 @@ class CloudSyncManager {
 
   isConfigReady() {
     if (this.config.provider === 'sheets') {
-      return Boolean(this.config.sheetWebAppUrl && this.config.sheetProjectKey);
+      return Boolean(this.config.sheetWebAppUrl && resolveSheetProjectKey(this.config, store.getDocumentSnapshot?.()?.meta?.title || 'project'));
     }
 
     return Boolean(
@@ -1458,7 +1471,7 @@ class CloudSyncManager {
     try {
       const payload = buildSheetCommitPayload({
         patch,
-        projectKey: this.config.sheetProjectKey,
+        projectKey: resolveSheetProjectKey(this.config, store.getDocumentSnapshot?.()?.meta?.title || 'project'),
         projectName: sanitizeString(this.config.sheetProjectName || store.getDocumentSnapshot()?.meta?.title || this.config.sheetProjectKey, ''),
         clientId: this.sheetClientId,
         clientName: resolveSheetClientName(this.config, `NodeNote-${this.sheetClientId.slice(-4)}`),
@@ -1469,13 +1482,13 @@ class CloudSyncManager {
         version: CLOUD_SYNC_VERSION,
       });
 
-      const requestUrl = buildSheetRequestUrl({
-        baseUrl: this.config.sheetWebAppUrl,
-        action: 'commit',
-        projectKey: this.config.sheetProjectKey,
-        clientId: this.sheetClientId,
-        secret: this.config.sheetSecret,
-      });
+        const requestUrl = buildSheetRequestUrl({
+          baseUrl: this.config.sheetWebAppUrl,
+          action: 'commit',
+          projectKey: resolveSheetProjectKey(this.config, store.getDocumentSnapshot?.()?.meta?.title || 'project'),
+          clientId: this.sheetClientId,
+          secret: this.config.sheetSecret,
+        });
 
       await postNoCors(requestUrl, payload);
 
@@ -1530,13 +1543,13 @@ class CloudSyncManager {
     this.appendSyncLog('info', 'sheet-verify', '開始驗證 Google Sheet 寫入');
 
     try {
-      const response = await requestJsonp(buildSheetRequestUrl({
-        baseUrl: this.config.sheetWebAppUrl,
-        action: 'state',
-        projectKey: this.config.sheetProjectKey,
-        clientId: this.sheetClientId,
-        secret: this.config.sheetSecret,
-        extraParams: {
+        const response = await requestJsonp(buildSheetRequestUrl({
+          baseUrl: this.config.sheetWebAppUrl,
+          action: 'state',
+          projectKey: resolveSheetProjectKey(this.config, store.getDocumentSnapshot?.()?.meta?.title || 'project'),
+          clientId: this.sheetClientId,
+          secret: this.config.sheetSecret,
+          extraParams: {
           revision: this.sheetLastRevision || 0,
         },
       }));
@@ -1614,13 +1627,13 @@ class CloudSyncManager {
     this.updateStatusBadge('Sheet polling...');
 
     try {
-      const response = await requestJsonp(buildSheetRequestUrl({
-        baseUrl: this.config.sheetWebAppUrl,
-        action: 'state',
-        projectKey: this.config.sheetProjectKey,
-        clientId: this.sheetClientId,
-        secret: this.config.sheetSecret,
-        extraParams: {
+        const response = await requestJsonp(buildSheetRequestUrl({
+          baseUrl: this.config.sheetWebAppUrl,
+          action: 'state',
+          projectKey: resolveSheetProjectKey(this.config, store.getDocumentSnapshot?.()?.meta?.title || 'project'),
+          clientId: this.sheetClientId,
+          secret: this.config.sheetSecret,
+          extraParams: {
           revision: this.sheetLastRevision || 0,
         },
       }));
@@ -1767,13 +1780,13 @@ class CloudSyncManager {
     this.appendSyncLog('info', 'sheet-pull', '開始從 Google Sheet 拉回內容');
 
     try {
-      const response = await requestJsonp(buildSheetRequestUrl({
-        baseUrl: this.config.sheetWebAppUrl,
-        action: 'state',
-        projectKey: this.config.sheetProjectKey,
-        clientId: this.sheetClientId,
-        secret: this.config.sheetSecret,
-      }));
+        const response = await requestJsonp(buildSheetRequestUrl({
+          baseUrl: this.config.sheetWebAppUrl,
+          action: 'state',
+          projectKey: resolveSheetProjectKey(this.config, store.getDocumentSnapshot?.()?.meta?.title || 'project'),
+          clientId: this.sheetClientId,
+          secret: this.config.sheetSecret,
+        }));
 
       const { remoteDocument, remoteRevision, updatedAt, editedAt, spreadsheetId, spreadsheetUrl, mergedDocument } = mergeSheetRemoteDocument({
         response,
@@ -1900,7 +1913,7 @@ class CloudSyncManager {
       baseRevision: this.sheetLastRevision || 0,
       clientId: this.sheetClientId,
       clientName: sanitizeString(this.config.sheetClientName, 'NodeNote'),
-      projectKey: sanitizeString(this.config.sheetProjectKey, 'default'),
+      projectKey: resolveSheetProjectKey(this.config, store.getDocumentSnapshot?.()?.meta?.title || 'project'),
       document: store.getDocumentSnapshot(),
     };
   }
