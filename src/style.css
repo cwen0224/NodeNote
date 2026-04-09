@@ -568,11 +568,13 @@ button:hover {
 }
 
 #minimap.is-collapsed {
-  width: 56px;
-  height: 56px;
-  border-radius: 18px;
+  width: 76px;
+  height: 34px;
+  border-radius: 999px;
   padding: 0;
   cursor: pointer;
+  background: linear-gradient(180deg, rgba(17, 24, 39, 0.88), rgba(30, 41, 59, 0.9));
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
 }
 
 #minimap.is-collapsed .minimap-panel {
@@ -610,6 +612,24 @@ button:hover {
   -webkit-touch-callout: none;
 }
 
+#minimap.is-collapsed .minimap-toggle {
+  top: 0;
+  right: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(31, 41, 55, 0.98), rgba(17, 24, 39, 0.98));
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: none;
+  box-shadow: none;
+  opacity: 1;
+  transform: none;
+  filter: none;
+}
+
 .minimap-toggle:hover,
 .minimap-toggle:focus-visible {
   opacity: 1;
@@ -617,6 +637,15 @@ button:hover {
   transform: scale(1.12);
   filter: drop-shadow(0 2px 8px rgba(248, 113, 113, 0.24));
   outline: none;
+}
+
+#minimap.is-collapsed .minimap-toggle:hover,
+#minimap.is-collapsed .minimap-toggle:focus-visible {
+  background: linear-gradient(180deg, rgba(37, 46, 66, 1), rgba(24, 33, 48, 1));
+  color: #ffffff;
+  transform: none;
+  filter: none;
+  box-shadow: none;
 }
 
 .minimap-panel {

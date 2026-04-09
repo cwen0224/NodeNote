@@ -457,6 +457,7 @@ class Renderer {
     this.minimap.classList.toggle('is-collapsed', Boolean(collapsed));
     if (this.minimapToggle) {
       this.minimapToggle.setAttribute('aria-expanded', String(!collapsed));
+      this.minimapToggle.textContent = collapsed ? '地圖' : '×';
       this.minimapToggle.setAttribute('aria-label', collapsed ? '展開縮圖導覽' : '收合縮圖導覽');
       this.minimapToggle.title = collapsed ? '展開縮圖導覽' : '收合縮圖導覽';
     }
