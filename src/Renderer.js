@@ -53,6 +53,7 @@ class Renderer {
     this.pendingVisibilityCheck = false;
     this.connectionRouteCache = new Map();
     this.pendingOrphanConnections = [];
+    this.orphanBlockDragCleanup = null;
 
     this.setupMinimapEvents();
 
@@ -923,8 +924,9 @@ class Renderer {
       nodeEl.dataset.orphanTargetPortSide = entry.targetPortSide || 'left';
       nodeEl.style.width = `${width}px`;
       nodeEl.style.height = `${height}px`;
-      nodeEl.style.left = `${Math.round(entry.x - width / 2)}px`;
-      nodeEl.style.top = `${Math.round(entry.y - height / 2)}px`;
+      const center = entry.orphanedTargetCenter || entry.center || { x: entry.x, y: entry.y };
+      nodeEl.style.left = `${Math.round((Number(center?.x) || entry.x || 0) - width / 2)}px`;
+      nodeEl.style.top = `${Math.round((Number(center?.y) || entry.y || 0) - height / 2)}px`;
       nodeEl.innerHTML = `
         <input class="orphan-connection-input" type="text" value="${this.escapeHtml(entry.labelText)}" aria-label="連線名稱" spellcheck="false" />
         <div class="port right connection-orphan-port"></div>
@@ -932,6 +934,43 @@ class Renderer {
 
       const portEl = nodeEl.querySelector('.connection-orphan-port');
       const inputEl = nodeEl.querySelector('.orphan-connection-input');
+      const startReconnectFromBlock = (event) => {
+        if (event.target?.closest?.('.orphan-connection-input')) {
+          return;
+        }
+        if (event.target?.closest?.('.connection-orphan-port')) {
+          connectionManager.beginDrawingFromPort(portEl, event);
+          return;
+        }
+        const started = connectionManager.beginOrphanBlockDrag({
+          sourceId: entry.sourceId,
+          key: entry.key,
+          nodeEl,
+          inputEl,
+          event,
+        });
+        if (started) {
+          const moveDrag = (moveEvent) => {
+            connectionManager.updateOrphanBlockDrag(moveEvent);
+          };
+          const endDrag = (endEvent) => {
+            connectionManager.finishOrphanBlockDrag(endEvent);
+            window.removeEventListener('mousemove', moveDrag);
+            window.removeEventListener('mouseup', endDrag);
+            window.removeEventListener('pointermove', moveDrag);
+            window.removeEventListener('pointerup', endDrag);
+            window.removeEventListener('pointercancel', endDrag);
+          };
+          if (event.pointerType === 'touch' || event.pointerType === 'pen') {
+            window.addEventListener('pointermove', moveDrag, { passive: false });
+            window.addEventListener('pointerup', endDrag);
+            window.addEventListener('pointercancel', endDrag);
+          } else {
+            window.addEventListener('mousemove', moveDrag);
+            window.addEventListener('mouseup', endDrag);
+          }
+        }
+      };
       if (inputEl) {
         inputEl.addEventListener('focus', () => {
           window.requestAnimationFrame(() => inputEl.select?.());
@@ -956,6 +995,17 @@ class Renderer {
           connectionManager.renameConnectionKey(entry.sourceId, entry.key, nextKey);
         });
       }
+
+      nodeEl.addEventListener('mousedown', startReconnectFromBlock);
+      nodeEl.addEventListener('pointerdown', (event) => {
+        if (!event?.pointerType) {
+          return;
+        }
+        if (event.pointerType !== 'touch' && event.pointerType !== 'pen') {
+          return;
+        }
+        startReconnectFromBlock(event);
+      });
 
       this.nodeLayer.appendChild(nodeEl);
     });
@@ -983,15 +1033,9 @@ class Renderer {
     const minSpacing = Math.max(28, Math.min(48, Math.round((route?.distance || totalLength) * 0.12)));
     const startOffset = Math.min(24, Math.max(12, Math.round(minSpacing * 0.45)));
     const endOffset = Math.min(24, Math.max(12, Math.round(minSpacing * 0.45)));
-    const centerGapStart = totalLength * 0.43;
-    const centerGapEnd = totalLength * 0.57;
     const sampleDelta = Math.max(6, Math.min(14, Math.round(minSpacing * 0.25)));
 
     for (let offset = startOffset; offset < totalLength - endOffset; offset += minSpacing) {
-      if (offset >= centerGapStart && offset <= centerGapEnd) {
-        continue;
-      }
-
       let currentPoint = null;
       let nextPoint = null;
       try {

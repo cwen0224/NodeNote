@@ -643,15 +643,20 @@ button:hover {
 }
 
 .orphan-connection-node {
-  position: absolute;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px 10px 14px;
-  border-radius: 18px;
-  cursor: text;
-  opacity: 0.98;
-  box-shadow: 0 0 0 1px rgba(88, 166, 255, 0.32), 0 14px 34px rgba(0, 0, 0, 0.42);
+    position: absolute;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px 10px 14px;
+    border-radius: 18px;
+    cursor: grab;
+    opacity: 0.98;
+    box-shadow: 0 0 0 1px rgba(88, 166, 255, 0.32), 0 14px 34px rgba(0, 0, 0, 0.42);
+}
+
+.orphan-connection-node.is-dragging {
+    cursor: grabbing;
+    opacity: 1;
 }
 
 .orphan-connection-node .orphan-connection-input {

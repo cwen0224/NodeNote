@@ -18,6 +18,7 @@ class ConnectionManager {
     this.svgLayer = null;
     this.historyNames = new Set(['next', 'on_click', 'trigger', 'success', 'fail']);
     this.drawPointerId = null;
+    this.orphanDragState = null;
   }
 
   init() {
@@ -89,12 +90,16 @@ class ConnectionManager {
   }
 
   startDrawing(e) {
-    this.isDrawing = true;
     const portEl = e.target.closest?.('.port');
     if (!portEl) {
       this.isDrawing = false;
       return;
     }
+    this.beginDrawingFromPort(portEl, e);
+  }
+
+  beginDrawingFromPort(portEl, e) {
+    this.isDrawing = true;
     const labelGroup = portEl.closest?.('.connection-label-group');
     const orphanNodeEl = portEl.closest?.('.orphan-connection-node');
     const reconnectSourceId = labelGroup?.dataset?.sourceId || orphanNodeEl?.dataset?.orphanSourceId || '';
@@ -194,6 +199,106 @@ class ConnectionManager {
     this.sourceNodeId = null;
     this.sourcePortEl = null;
     this.reconnectSource = null;
+  }
+
+  updateOrphanConnectionCenter(sourceId, key, x, y) {
+    const node = store.state.nodes?.[sourceId];
+    if (!node || !node.params || !Object.prototype.hasOwnProperty.call(node.params, key)) {
+      return false;
+    }
+
+    const currentValue = node.params[key];
+    node.params[key] = {
+      ...(typeof currentValue === 'object' && currentValue ? currentValue : {}),
+      targetId: null,
+      orphanedTargetCenter: {
+        x: Number.isFinite(x) ? x : 0,
+        y: Number.isFinite(y) ? y : 0,
+      },
+      orphanedTargetLabel: currentValue?.orphanedTargetLabel || currentValue?.label || '',
+    };
+    delete node.params[key].orphanedTargetId;
+    return true;
+  }
+
+  beginOrphanBlockDrag({ sourceId, key, nodeEl, inputEl, event }) {
+    if (!sourceId || !key || !nodeEl) {
+      return false;
+    }
+    if (event?.target?.closest?.('.orphan-connection-input')) {
+      return false;
+    }
+    if (event?.target?.closest?.('.connection-orphan-port')) {
+      return false;
+    }
+
+    const startX = Number.parseFloat(nodeEl.style.left || '0') || 0;
+    const startY = Number.parseFloat(nodeEl.style.top || '0') || 0;
+    const startClientX = Number.isFinite(event?.clientX) ? event.clientX : 0;
+    const startClientY = Number.isFinite(event?.clientY) ? event.clientY : 0;
+    const pointerId = isTouchLikePointer(event) ? event.pointerId : null;
+
+    this.orphanDragState = {
+      sourceId,
+      key,
+      nodeEl,
+      inputEl,
+      startX,
+      startY,
+      startClientX,
+      startClientY,
+      pointerId,
+      width: Number.parseFloat(nodeEl.style.width || '0') || nodeEl.getBoundingClientRect?.().width || 140,
+      height: Number.parseFloat(nodeEl.style.height || '0') || nodeEl.getBoundingClientRect?.().height || 66,
+    };
+
+    nodeEl.classList.add('is-dragging');
+    try {
+      nodeEl.setPointerCapture?.(pointerId);
+    } catch {
+      // Ignore capture failures.
+    }
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    return true;
+  }
+
+  updateOrphanBlockDrag(event) {
+    const drag = this.orphanDragState;
+    if (!drag) {
+      return;
+    }
+    if (drag.pointerId !== null && event?.pointerId !== drag.pointerId) {
+      return;
+    }
+
+    const dx = (Number.isFinite(event?.clientX) ? event.clientX : drag.startClientX) - drag.startClientX;
+    const dy = (Number.isFinite(event?.clientY) ? event.clientY : drag.startClientY) - drag.startClientY;
+    const nextLeft = drag.startX + dx;
+    const nextTop = drag.startY + dy;
+    drag.nodeEl.style.left = `${Math.round(nextLeft)}px`;
+    drag.nodeEl.style.top = `${Math.round(nextTop)}px`;
+    this.updateOrphanConnectionCenter(
+      drag.sourceId,
+      drag.key,
+      nextLeft + (drag.width / 2),
+      nextTop + (drag.height / 2)
+    );
+  }
+
+  finishOrphanBlockDrag(event) {
+    const drag = this.orphanDragState;
+    if (!drag) {
+      return;
+    }
+    if (drag.pointerId !== null && event?.pointerId !== drag.pointerId) {
+      return;
+    }
+
+    drag.nodeEl.classList.remove('is-dragging');
+    store.emit('connections:updated');
+    store.saveHistory();
+    this.orphanDragState = null;
   }
 
   cancelDrawing() {
