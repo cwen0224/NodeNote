@@ -86,6 +86,31 @@ const LEGACY_SHEET_WEB_APP_URLS = new Set([
 const SYNC_LOG_STORAGE_KEY = 'nodenote.cloudsync.logs.v1';
 const MAX_SYNC_LOG_ENTRIES = 80;
 
+function isEffectivelyEmptyDocument(document) {
+  if (!isPlainObject(document)) {
+    return true;
+  }
+
+  const nodes = isPlainObject(document.nodes) ? Object.keys(document.nodes) : [];
+  const folders = isPlainObject(document.folders) ? Object.keys(document.folders) : [];
+  const edges = Array.isArray(document.edges) ? document.edges : [];
+  const assets = Array.isArray(document.assets) ? document.assets : [];
+  const meta = isPlainObject(document.meta) ? document.meta : {};
+  const title = typeof meta.title === 'string' ? meta.title.trim() : '';
+  const rootFolderId = typeof document.rootFolderId === 'string' && document.rootFolderId
+    ? document.rootFolderId
+    : 'folder_root';
+
+  return (
+    nodes.length === 0 &&
+    edges.length === 0 &&
+    assets.length === 0 &&
+    folders.length === 1 &&
+    folders[0] === rootFolderId &&
+    (!title || title === 'Untitled')
+  );
+}
+
 class CloudSyncManager {
   constructor() {
     this.config = this.loadConfig();
@@ -126,9 +151,18 @@ class CloudSyncManager {
     this.applyStateToUI();
     this.refreshTransportMode();
     this.appendSyncLog('info', 'init', '同步管理器啟動', '本機同步日誌已就緒');
-    if (this.config.restoreOnStartupWhenEmpty && this.isConfigReady() && !persistenceManager.wasRestored()) {
+    const storedSnapshot = persistenceManager.getStoredSnapshot();
+    const shouldAutoRestore = this.isConfigReady()
+      && !persistenceManager.wasRestored()
+      && (
+        this.config.restoreOnStartupWhenEmpty
+        || !storedSnapshot
+        || isEffectivelyEmptyDocument(storedSnapshot.document)
+      );
+
+    if (shouldAutoRestore) {
       queueMicrotask(() => {
-        this.pullNow({ skipConfirm: true });
+        this.pullNow({ skipConfirm: true, silentOnMissing: true });
       });
     }
     this.initialized = true;
@@ -1048,7 +1082,7 @@ class CloudSyncManager {
     }
   }
 
-  async pullSheetNow({ skipConfirm = false } = {}) {
+  async pullSheetNow({ skipConfirm = false, silentOnMissing = false } = {}) {
     if (!this.isConfigReady()) {
       this.setStatus('error', '請先完成 Google Sheet 設定');
       this.appendSyncLog('error', 'sheet-pull', 'Google Sheet 拉回失敗', '請先完成 Google Sheet 設定');
@@ -1080,6 +1114,12 @@ class CloudSyncManager {
       });
 
       if (!remoteDocument) {
+        if (silentOnMissing) {
+          this.setStatus('idle', 'Google Sheet 尚未有內容');
+          this.appendSyncLog('info', 'sheet-pull', 'Google Sheet 尚無內容', '保留目前工作區');
+          return false;
+        }
+
         this.setStatus('error', 'Google Sheet 沒有找到內容，請先完成一次同步');
         this.appendSyncLog('error', 'sheet-pull', 'Google Sheet 拉回失敗', 'Google Sheet 沒有找到內容，請先完成一次同步');
         return false;
@@ -1339,9 +1379,9 @@ class CloudSyncManager {
     }
   }
 
-  async pullNow({ skipConfirm = false } = {}) {
+  async pullNow({ skipConfirm = false, silentOnMissing = false } = {}) {
     if (this.config.provider === 'sheets') {
-      return this.pullSheetNow({ skipConfirm });
+      return this.pullSheetNow({ skipConfirm, silentOnMissing });
     }
 
     if (!this.isConfigReady()) {
