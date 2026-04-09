@@ -723,6 +723,7 @@ class Renderer {
   renderConnections() {
     if (!this.svgLayer) return;
     this.svgLayer.innerHTML = '';
+    const labelEntries = [];
     
     // Draw all active connections from nodes.params
     Object.values(store.state.nodes).forEach(sourceNode => {
@@ -747,7 +748,7 @@ class Renderer {
         const sY = sourcePoint.y;
         const tX = targetPoint.x;
         const tY = targetPoint.y;
-        this.drawOrthogonalPath(
+        const labelEntry = this.drawOrthogonalPath(
           sX,
           sY,
           tX,
@@ -760,8 +761,13 @@ class Renderer {
           sourceRect,
           targetRect
         );
+        if (labelEntry) {
+          labelEntries.push(labelEntry);
+        }
       });
     });
+
+    this.layoutConnectionLabels(labelEntries);
   }
 
   buildRoundedOrthogonalPath(points = [], radius = 18) {
@@ -811,21 +817,19 @@ class Renderer {
       // If SVG measurement fails, fall back to the geometric midpoint.
     }
 
+    const midX = labelPoint.x;
+    const midY = labelPoint.y;
+    const labelWidth = Math.max(58, Math.min(192, labelText.length * 12 + 34));
+    const labelHeight = 29;
+    const tangent = this.getConnectionLabelTangent(path, labelPoint) || { x: 0, y: -1 };
+    const normal = this.normalizeVector({ x: -tangent.y, y: tangent.x }) || { x: 0, y: -1 };
+
     const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
     group.setAttribute("class", "connection-label-group");
     group.dataset.sourceId = sourceId || '';
     group.dataset.connectionKey = key || '';
 
-    const midX = labelPoint.x;
-    const midY = labelPoint.y;
-    const labelWidth = Math.max(58, Math.min(192, labelText.length * 12 + 34));
-    const labelHeight = 29;
-    const labelLeft = midX - labelWidth / 2;
-    const labelTop = midY - labelHeight / 2;
-
     const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    rect.setAttribute("x", String(labelLeft));
-    rect.setAttribute("y", String(labelTop));
     rect.setAttribute("width", String(labelWidth));
     rect.setAttribute("height", String(labelHeight));
     rect.setAttribute("rx", "16");
@@ -833,8 +837,6 @@ class Renderer {
     rect.setAttribute("class", "connection-label-box");
 
     const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    text.setAttribute("x", String(midX));
-    text.setAttribute("y", String(midY + 0.5));
     text.setAttribute("text-anchor", "middle");
     text.setAttribute("dominant-baseline", "middle");
     text.setAttribute("class", "connection-label");
@@ -845,7 +847,6 @@ class Renderer {
     deleteBtn.setAttribute("role", "button");
     deleteBtn.setAttribute("tabindex", "0");
     deleteBtn.setAttribute("aria-label", `刪除連線 ${labelText}`);
-    deleteBtn.setAttribute("transform", `translate(${labelLeft + labelWidth}, ${labelTop})`);
 
     const setDeleteHover = (isHovered) => {
       deleteBtn.classList.toggle("is-hovered", isHovered);
@@ -906,6 +907,203 @@ class Renderer {
     text.setAttribute("pointer-events", "none");
     group.append(rect, text, deleteBtn);
     this.svgLayer.appendChild(group);
+
+    return {
+      group,
+      rect,
+      text,
+      deleteBtn,
+      labelWidth,
+      labelHeight,
+      midX,
+      midY,
+      normal,
+      tangent,
+      labelText,
+    };
+  }
+
+  normalizeVector(vector = {}) {
+    const x = Number.isFinite(vector.x) ? vector.x : 0;
+    const y = Number.isFinite(vector.y) ? vector.y : 0;
+    const length = Math.hypot(x, y);
+    if (!length) {
+      return null;
+    }
+    return {
+      x: x / length,
+      y: y / length,
+    };
+  }
+
+  getConnectionLabelTangent(path, labelPoint) {
+    if (!path || typeof path.getTotalLength !== 'function' || typeof path.getPointAtLength !== 'function') {
+      return null;
+    }
+
+    let totalLength = 0;
+    try {
+      totalLength = path.getTotalLength();
+    } catch {
+      return null;
+    }
+
+    if (!Number.isFinite(totalLength) || totalLength <= 0) {
+      return null;
+    }
+
+    const sampleLength = Math.max(2, Math.min(16, totalLength * 0.08));
+    const midpoint = labelPoint || path.getPointAtLength(totalLength / 2);
+    if (!midpoint) {
+      return null;
+    }
+
+    let midpointLength = totalLength / 2;
+    try {
+      midpointLength = this.findPathLengthAtPoint(path, midpoint, totalLength);
+    } catch {
+      midpointLength = totalLength / 2;
+    }
+
+    const before = path.getPointAtLength(Math.max(0, midpointLength - sampleLength));
+    const after = path.getPointAtLength(Math.min(totalLength, midpointLength + sampleLength));
+    if (!before || !after) {
+      return null;
+    }
+
+    return this.normalizeVector({
+      x: after.x - before.x,
+      y: after.y - before.y,
+    });
+  }
+
+  findPathLengthAtPoint(path, point, totalLength) {
+    if (!path || !point || !Number.isFinite(totalLength) || totalLength <= 0) {
+      return totalLength / 2;
+    }
+
+    let closestLength = totalLength / 2;
+    let closestDistance = Infinity;
+    const step = Math.max(4, Math.min(16, totalLength / 24));
+
+    for (let offset = 0; offset <= totalLength; offset += step) {
+      const currentPoint = path.getPointAtLength(offset);
+      if (!currentPoint) {
+        continue;
+      }
+
+      const distance = Math.hypot(currentPoint.x - point.x, currentPoint.y - point.y);
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestLength = offset;
+      }
+    }
+
+    return closestLength;
+  }
+
+  boxesOverlap(a, b) {
+    return !(a.right <= b.left
+      || a.left >= b.right
+      || a.bottom <= b.top
+      || a.top >= b.bottom);
+  }
+
+  layoutConnectionLabels(labelEntries = []) {
+    if (!Array.isArray(labelEntries) || !labelEntries.length) {
+      return;
+    }
+
+    const placed = [];
+    const baseGap = 16;
+    const normalStep = 18;
+    const tangentStep = 18;
+    const maxIterations = 18;
+
+    const orderedEntries = [...labelEntries].sort((a, b) => {
+      const areaA = (a.labelWidth || 0) * (a.labelHeight || 0);
+      const areaB = (b.labelWidth || 0) * (b.labelHeight || 0);
+      if (areaA !== areaB) {
+        return areaB - areaA;
+      }
+      return String(a.labelText || '').localeCompare(String(b.labelText || ''));
+    });
+
+    orderedEntries.forEach((entry, index) => {
+      if (!entry?.group) {
+        return;
+      }
+
+      const tangent = entry.tangent || entry.normal || { x: 1, y: 0 };
+      const normal = entry.normal || { x: 0, y: -1 };
+      const candidateOffsets = [[0, 0]];
+      for (let ring = 1; ring <= maxIterations; ring += 1) {
+        const normalDistance = baseGap + (ring * normalStep);
+        const tangentDistance = ring * tangentStep;
+        candidateOffsets.push(
+          [0, normalDistance],
+          [0, -normalDistance],
+          [tangentDistance, 0],
+          [-tangentDistance, 0],
+          [tangentDistance, normalDistance],
+          [-tangentDistance, normalDistance],
+          [tangentDistance, -normalDistance],
+          [-tangentDistance, -normalDistance],
+        );
+      }
+
+      let chosenLayout = null;
+      let chosenBox = null;
+      let chosenScore = Infinity;
+
+      candidateOffsets.forEach(([tangentOffset, normalOffset]) => {
+        const centerX = entry.midX + (tangent.x * tangentOffset) + (normal.x * normalOffset);
+        const centerY = entry.midY + (tangent.y * tangentOffset) + (normal.y * normalOffset);
+        const box = {
+          left: centerX - (entry.labelWidth / 2),
+          top: centerY - (entry.labelHeight / 2),
+          right: centerX + (entry.labelWidth / 2),
+          bottom: centerY + (entry.labelHeight / 2),
+        };
+
+        const overlap = placed.reduce((sum, prev) => {
+          if (!this.boxesOverlap(box, prev.box)) {
+            return sum;
+          }
+          const ix = Math.max(0, Math.min(box.right, prev.box.right) - Math.max(box.left, prev.box.left));
+          const iy = Math.max(0, Math.min(box.bottom, prev.box.bottom) - Math.max(box.top, prev.box.top));
+          return sum + (ix * iy);
+        }, 0);
+        const distancePenalty = Math.abs(tangentOffset) + Math.abs(normalOffset) * 1.5;
+        const score = (overlap * 1000) + distancePenalty;
+
+        if (score < chosenScore) {
+          chosenScore = score;
+          chosenLayout = { centerX, centerY };
+          chosenBox = box;
+        }
+      });
+
+      if (!chosenLayout) {
+        chosenLayout = { centerX: entry.midX, centerY: entry.midY };
+        chosenBox = {
+          left: entry.midX - (entry.labelWidth / 2),
+          top: entry.midY - (entry.labelHeight / 2),
+          right: entry.midX + (entry.labelWidth / 2),
+          bottom: entry.midY + (entry.labelHeight / 2),
+        };
+      }
+
+      placed.push({ box: chosenBox });
+
+      const left = chosenLayout.centerX - (entry.labelWidth / 2);
+      const top = chosenLayout.centerY - (entry.labelHeight / 2);
+      entry.rect.setAttribute('x', String(left));
+      entry.rect.setAttribute('y', String(top));
+      entry.text.setAttribute('x', String(chosenLayout.centerX));
+      entry.text.setAttribute('y', String(chosenLayout.centerY + 0.5));
+      entry.deleteBtn.setAttribute('transform', `translate(${left + entry.labelWidth}, ${top})`);
+    });
   }
 
   appendConnectionDirectionTrail(path, route) {
