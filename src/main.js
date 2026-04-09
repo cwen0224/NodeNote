@@ -9,6 +9,7 @@ import { persistenceManager } from './PersistenceManager.js';
 import { cloudSyncManager } from './CloudSyncManager.js';
 import { store } from './StateStore.js';
 import { getNodeNotePrompt } from './core/aiPrompt.js';
+import { registerPwa } from './pwa.js';
 
 const sysDiag = document.getElementById('sys-diag');
 const diagStatus = document.getElementById('diag-status');
@@ -215,6 +216,9 @@ const initApp = () => {
 
     updateDiag("READY");
     collapseDiag();
+    registerPwa().catch((error) => {
+      console.warn('PWA registration failed', error);
+    });
     console.log("NodeNote initialized: All modules ready.");
   } catch (err) {
     if (sysDiag) {
