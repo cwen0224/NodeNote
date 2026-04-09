@@ -67,7 +67,7 @@ export async function commitGitHubSnapshot({
 }) {
   const endpoint = buildGitHubEndpointUrl({ owner, repo, path });
   const body = {
-    message: `NodeNote autosave ${new Date(snapshot.savedAt || Date.now()).toISOString()}`,
+    message: `NodeNote autosave ${new Date(snapshot.editedAt || snapshot.savedAt || Date.now()).toISOString()}`,
     content: encodeUtf8Base64(JSON.stringify(snapshot, null, 2)),
     branch,
   };

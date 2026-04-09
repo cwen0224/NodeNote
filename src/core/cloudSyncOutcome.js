@@ -9,6 +9,7 @@ function assignIfPresent(target, key, value) {
 export function buildCloudSyncSuccessPatch({
   fingerprint = null,
   syncedAt = null,
+  editedAt = null,
   remoteRevision = null,
   remoteSha = null,
   spreadsheetUrl = null,
@@ -19,6 +20,7 @@ export function buildCloudSyncSuccessPatch({
   const patch = {};
   assignIfPresent(patch, 'lastFingerprint', fingerprint);
   assignIfPresent(patch, 'lastSyncedAt', syncedAt);
+  assignIfPresent(patch, 'lastEditedAt', editedAt || syncedAt);
   assignIfPresent(patch, 'lastRemoteRevision', remoteRevision);
   assignIfPresent(patch, 'lastRemoteSha', remoteSha);
   assignIfPresent(patch, 'spreadsheetUrl', spreadsheetUrl);

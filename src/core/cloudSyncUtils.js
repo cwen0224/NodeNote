@@ -206,11 +206,15 @@ export function normalizeCloudSnapshot(payload) {
 
   if (isPlainObject(payload.document)) {
     const workspace = normalizeWorkspaceSnapshot(payload.workspace, payload);
+    const editedAt = typeof payload.editedAt === 'string'
+      ? payload.editedAt
+      : (typeof payload.savedAt === 'string' ? payload.savedAt : null);
     return {
       schema: typeof payload.schema === 'string' ? payload.schema : 'nodenote.autosave',
       version: typeof payload.version === 'string' ? payload.version : '1.0.0',
       revision: Number.isFinite(payload.revision) ? payload.revision : 0,
       savedAt: typeof payload.savedAt === 'string' ? payload.savedAt : null,
+      editedAt,
       document: normalizeDocument(payload.document),
       workspace,
       navigation: workspace.navigation,
@@ -229,6 +233,7 @@ export function normalizeCloudSnapshot(payload) {
       version: '1.0.0',
       revision: 0,
       savedAt: null,
+      editedAt: null,
       document: normalizeDocument(payload),
       workspace: {
         navigation: null,

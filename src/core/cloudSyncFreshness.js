@@ -14,20 +14,21 @@ function formatTimestamp(value) {
 }
 
 export function resolveCloudSyncFreshness({
+  localEditedAt = null,
+  remoteEditedAt = null,
   localSavedAt = null,
   remoteSavedAt = null,
-  toleranceMs = 15000,
 } = {}) {
-  const localTime = parseTimestamp(localSavedAt);
-  const remoteTime = parseTimestamp(remoteSavedAt);
+  const localTime = parseTimestamp(localEditedAt || localSavedAt);
+  const remoteTime = parseTimestamp(remoteEditedAt || remoteSavedAt);
   const hasLocalTime = Number.isFinite(localTime);
   const hasRemoteTime = Number.isFinite(remoteTime);
 
   const result = {
     winner: 'unknown',
     shouldApplyRemote: true,
-    localSavedAt: formatTimestamp(localSavedAt),
-    remoteSavedAt: formatTimestamp(remoteSavedAt),
+    localEditedAt: formatTimestamp(localEditedAt || localSavedAt),
+    remoteEditedAt: formatTimestamp(remoteEditedAt || remoteSavedAt),
     deltaMs: null,
     reason: 'timestamp-unavailable',
   };
@@ -53,17 +54,10 @@ export function resolveCloudSyncFreshness({
   const deltaMs = remoteTime - localTime;
   result.deltaMs = deltaMs;
 
-  if (Math.abs(deltaMs) <= Math.max(0, Number(toleranceMs) || 0)) {
-    result.winner = deltaMs > 0 ? 'remote' : 'local';
-    result.shouldApplyRemote = false;
-    result.reason = deltaMs > 0 ? 'remote-within-tolerance' : 'local-within-tolerance';
-    return result;
-  }
-
-  if (deltaMs > 0) {
+  if (deltaMs >= 0) {
     result.winner = 'remote';
     result.shouldApplyRemote = true;
-    result.reason = 'remote-newer';
+    result.reason = deltaMs === 0 ? 'remote-equal' : 'remote-newer';
     return result;
   }
 

@@ -162,11 +162,13 @@ class PersistenceManager {
   }
 
   createSnapshot() {
+    const editedAt = new Date().toISOString();
     return {
       schema: AUTOSAVE_SCHEMA,
       version: AUTOSAVE_VERSION,
       revision: this.revision + 1,
-      savedAt: new Date().toISOString(),
+      savedAt: editedAt,
+      editedAt,
       document: store.getDocumentSnapshot(),
       workspace: createWorkspaceSnapshot(),
     };

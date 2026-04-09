@@ -12,6 +12,10 @@ export function applyCloudSyncStatePatch(state = {}, patch = {}) {
     target.lastSyncedAt = safePatch.lastSyncedAt;
   }
 
+  if (Object.prototype.hasOwnProperty.call(safePatch, 'lastEditedAt')) {
+    target.lastEditedAt = safePatch.lastEditedAt;
+  }
+
   if (Object.prototype.hasOwnProperty.call(safePatch, 'lastRemoteRevision')) {
     target.lastRemoteRevision = safePatch.lastRemoteRevision;
   }

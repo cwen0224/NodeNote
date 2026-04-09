@@ -10,6 +10,7 @@ export function normalizeSheetResponse(response = {}, { fallbackRevision = 0 } =
   const remoteDocument = response?.document ? normalizeDocument(response.document) : null;
   const remoteRevision = Number.isFinite(response?.revision) ? response.revision : fallbackRevision;
   const updatedAt = sanitizeString(response?.updatedAt, '') || null;
+  const editedAt = sanitizeString(response?.editedAt, '') || updatedAt;
   const spreadsheetId = sanitizeString(response?.spreadsheetId, '') || null;
   const spreadsheetUrl = sanitizeString(response?.spreadsheetUrl, '') || null;
 
@@ -17,6 +18,7 @@ export function normalizeSheetResponse(response = {}, { fallbackRevision = 0 } =
     remoteDocument,
     remoteRevision,
     updatedAt,
+    editedAt,
     spreadsheetId,
     spreadsheetUrl,
   };

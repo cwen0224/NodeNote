@@ -60,6 +60,7 @@ export function buildSheetCommitPayload({
   secret = '',
   baseRevision = 0,
   savedAt = new Date().toISOString(),
+  editedAt = savedAt,
   version = '1.0.0',
 } = {}) {
   return {
@@ -72,6 +73,7 @@ export function buildSheetCommitPayload({
     secret: sanitizeText(secret),
     baseRevision,
     savedAt,
+    editedAt,
     patch,
   };
 }

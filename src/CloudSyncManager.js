@@ -250,6 +250,7 @@ class CloudSyncManager {
   loadState() {
     const defaults = {
       lastSyncedAt: null,
+      lastEditedAt: null,
       lastError: null,
       lastRemoteSha: null,
       spreadsheetUrl: null,
@@ -1183,6 +1184,7 @@ class CloudSyncManager {
         secret: this.config.sheetSecret,
         baseRevision: this.sheetLastRevision || 0,
         savedAt: snapshot?.savedAt || new Date().toISOString(),
+        editedAt: snapshot?.editedAt || snapshot?.savedAt || new Date().toISOString(),
         version: CLOUD_SYNC_VERSION,
       });
 
@@ -1200,7 +1202,7 @@ class CloudSyncManager {
       finishCloudSyncSuccess(this, {
         patch: {
           fingerprint: buildDocumentFingerprint(currentDocument),
-          syncedAt: snapshot?.savedAt || new Date().toISOString(),
+          syncedAt: snapshot?.editedAt || snapshot?.savedAt || new Date().toISOString(),
           syncCountDelta: 1,
         },
         statusMessage: 'Google Sheet 同步已送出',
@@ -1258,7 +1260,7 @@ class CloudSyncManager {
         },
       }));
 
-      const { remoteDocument, remoteRevision, updatedAt, spreadsheetId, spreadsheetUrl } = normalizeSheetResponse(response, {
+      const { remoteDocument, remoteRevision, updatedAt, editedAt, spreadsheetId, spreadsheetUrl } = normalizeSheetResponse(response, {
         fallbackRevision: this.sheetLastRevision || 0,
       });
 
@@ -1281,7 +1283,7 @@ class CloudSyncManager {
       finishCloudSyncSuccess(this, {
         patch: {
           fingerprint: buildDocumentFingerprint(remoteDocument),
-          syncedAt: updatedAt || new Date().toISOString(),
+          syncedAt: editedAt || updatedAt || new Date().toISOString(),
           remoteRevision: this.sheetLastRevision,
           spreadsheetId,
           spreadsheetUrl,
@@ -1338,7 +1340,7 @@ class CloudSyncManager {
         },
       }));
 
-      const { remoteDocument, remoteRevision, updatedAt, spreadsheetId, spreadsheetUrl, localPatch, mergedDocument, hasLocalChanges } =
+      const { remoteDocument, remoteRevision, updatedAt, editedAt, spreadsheetId, spreadsheetUrl, localPatch, mergedDocument, hasLocalChanges } =
         mergeSheetRemoteDocument({
           response,
           baselineDocument: this.sheetBaselineDocument || createDefaultDocument(),
@@ -1360,10 +1362,11 @@ class CloudSyncManager {
         return true;
       }
 
-      const localSavedAt = persistenceManager.getStoredSnapshot()?.savedAt || this.state.lastSyncedAt || null;
+      const localSnapshot = persistenceManager.getStoredSnapshot();
+      const localEditedAt = localSnapshot?.editedAt || localSnapshot?.savedAt || this.state.lastSyncedAt || null;
       const freshness = resolveCloudSyncFreshness({
-        localSavedAt,
-        remoteSavedAt: updatedAt,
+        localEditedAt,
+        remoteEditedAt: editedAt || updatedAt,
       });
 
       if (!freshness.shouldApplyRemote) {
@@ -1372,17 +1375,17 @@ class CloudSyncManager {
         finishCloudSyncIdle(this, {
           patch: {
             remoteRevision,
-            syncedAt: updatedAt || new Date().toISOString(),
+            syncedAt: editedAt || updatedAt || new Date().toISOString(),
             spreadsheetId,
             spreadsheetUrl,
           },
           statusMessage: '本機內容較新，保留本機版本',
-          statusDetail: localSavedAt
-            ? `本機 ${localSavedAt} / 雲端 ${updatedAt || 'unknown'}`
-            : `雲端 ${updatedAt || 'unknown'}`,
+          statusDetail: localEditedAt
+            ? `本機 ${localEditedAt} / 雲端 ${editedAt || updatedAt || 'unknown'}`
+            : `雲端 ${editedAt || updatedAt || 'unknown'}`,
           logScope: 'sheet-poll',
           logTitle: 'Google Sheet 輪詢保留本機版本',
-          logDetail: `local=${localSavedAt || 'unknown'} remote=${updatedAt || 'unknown'}`,
+          logDetail: `local=${localEditedAt || 'unknown'} remote=${editedAt || updatedAt || 'unknown'}`,
           logContext: {
             revision: remoteRevision,
             winner: freshness.winner,
@@ -1481,7 +1484,7 @@ class CloudSyncManager {
         secret: this.config.sheetSecret,
       }));
 
-      const { remoteDocument, remoteRevision, updatedAt, spreadsheetId, spreadsheetUrl, mergedDocument } = mergeSheetRemoteDocument({
+      const { remoteDocument, remoteRevision, updatedAt, editedAt, spreadsheetId, spreadsheetUrl, mergedDocument } = mergeSheetRemoteDocument({
         response,
         baselineDocument: this.sheetBaselineDocument || createDefaultDocument(),
         currentDocument: store.getDocumentSnapshot(),
@@ -1508,12 +1511,13 @@ class CloudSyncManager {
         return false;
       }
 
-      const localSavedAt = persistenceManager.getStoredSnapshot()?.savedAt || this.state.lastSyncedAt || null;
+      const localSnapshot = persistenceManager.getStoredSnapshot();
+      const localEditedAt = localSnapshot?.editedAt || localSnapshot?.savedAt || this.state.lastSyncedAt || null;
       const freshness = preferRemote
         ? { shouldApplyRemote: true, winner: 'remote' }
         : resolveCloudSyncFreshness({
-            localSavedAt,
-            remoteSavedAt: updatedAt,
+            localEditedAt,
+            remoteEditedAt: editedAt || updatedAt,
           });
 
       if (!freshness.shouldApplyRemote) {
@@ -1526,12 +1530,12 @@ class CloudSyncManager {
             spreadsheetUrl,
           },
           statusMessage: '本機內容較新，保留本機版本',
-          statusDetail: localSavedAt
-            ? `本機 ${localSavedAt} / 雲端 ${updatedAt || 'unknown'}`
-            : `雲端 ${updatedAt || 'unknown'}`,
+          statusDetail: localEditedAt
+            ? `本機 ${localEditedAt} / 雲端 ${editedAt || updatedAt || 'unknown'}`
+            : `雲端 ${editedAt || updatedAt || 'unknown'}`,
           logScope: 'sheet-pull',
           logTitle: 'Google Sheet 拉回保留本機版本',
-          logDetail: `local=${localSavedAt || 'unknown'} remote=${updatedAt || 'unknown'}`,
+          logDetail: `local=${localEditedAt || 'unknown'} remote=${editedAt || updatedAt || 'unknown'}`,
           logContext: {
             revision: remoteRevision,
             winner: freshness.winner,
@@ -1558,7 +1562,7 @@ class CloudSyncManager {
         patch: {
           remoteRevision: this.sheetLastRevision,
           fingerprint: buildDocumentFingerprint(mergedDocument),
-          syncedAt: updatedAt || new Date().toISOString(),
+          syncedAt: editedAt || updatedAt || new Date().toISOString(),
           spreadsheetId,
           spreadsheetUrl,
         },
@@ -1824,26 +1828,27 @@ class CloudSyncManager {
         throw new Error('雲端檔案不是有效的 NodeNote 快照');
       }
 
-      const localSavedAt = persistenceManager.getStoredSnapshot()?.savedAt || this.state.lastSyncedAt || null;
+      const localSnapshot = persistenceManager.getStoredSnapshot();
+      const localEditedAt = localSnapshot?.editedAt || localSnapshot?.savedAt || this.state.lastSyncedAt || null;
       const bootstrapHydration = this.sheetHydrationState === 'pending';
       const freshness = resolveCloudSyncFreshness({
-        localSavedAt,
-        remoteSavedAt: snapshot.savedAt,
+        localEditedAt,
+        remoteEditedAt: snapshot.editedAt || snapshot.savedAt,
       });
 
       if (!bootstrapHydration && !freshness.shouldApplyRemote) {
         this.setStatus(
           'idle',
           '本機內容較新，保留本機版本',
-          localSavedAt
-            ? `本機 ${localSavedAt} / 雲端 ${snapshot.savedAt || 'unknown'}`
-            : `雲端 ${snapshot.savedAt || 'unknown'}`
+          localEditedAt
+            ? `本機 ${localEditedAt} / 雲端 ${snapshot.editedAt || snapshot.savedAt || 'unknown'}`
+            : `雲端 ${snapshot.editedAt || snapshot.savedAt || 'unknown'}`
         );
         this.appendSyncLog(
           'info',
           'github-pull',
           'GitHub 拉回保留本機版本',
-          `local=${localSavedAt || 'unknown'} remote=${snapshot.savedAt || 'unknown'}`,
+          `local=${localEditedAt || 'unknown'} remote=${snapshot.editedAt || snapshot.savedAt || 'unknown'}`,
           {
             winner: freshness.winner,
           }
@@ -1880,7 +1885,7 @@ class CloudSyncManager {
         patch: {
           fingerprint,
           remoteSha: remote.sha || null,
-          syncedAt: snapshot.savedAt || new Date().toISOString(),
+          syncedAt: snapshot.editedAt || snapshot.savedAt || new Date().toISOString(),
         },
         statusMessage: '雲端拉回完成',
         statusDetail: `上次同步 ${formatClockStamp(this.state.lastSyncedAt)}`,
