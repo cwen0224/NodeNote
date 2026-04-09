@@ -813,60 +813,181 @@ class NodeManager {
       return false;
     }
 
-    const deletedEntities = new Map();
-    uniqueIds.forEach((id) => {
-      const entity = store.getEntityById?.(id) || currentDocument.nodes[id] || currentDocument.folders?.[id];
-      if (entity) {
-        deletedEntities.set(id, deepClone(entity));
+    const getLinkTargetId = (linkValue) => {
+      if (isPlainObject(linkValue)) {
+        return typeof linkValue.targetId === 'string' ? linkValue.targetId : null;
       }
-    });
-
-    uniqueIds.forEach((id) => {
-      const entity = store.getEntityById?.(id) || currentDocument.nodes[id];
-      if (entity?.type === 'folder') {
-        store.removeFolderRecursive(id);
-      } else {
-        store.removeNodeFromFolder(id);
-      }
-    });
-
-    const allEntities = {
-      ...(store.document.nodes || {}),
-      ...(store.document.folders || {}),
+      return typeof linkValue === 'string' ? linkValue : null;
     };
 
-    Object.values(allEntities).forEach((node) => {
-      if (!node.params) {
+    const allEntities = () => ({
+      ...(store.document.nodes || {}),
+      ...(store.document.folders || {}),
+    });
+
+    const replaceEntityLinkTarget = (entity, fromId, toId) => {
+      if (!isPlainObject(entity?.params)) {
+        return false;
+      }
+
+      let changed = false;
+      Object.entries(entity.params).forEach(([key, linkValue]) => {
+        const targetId = getLinkTargetId(linkValue);
+        if (targetId !== fromId) {
+          return;
+        }
+
+        if (isPlainObject(linkValue)) {
+          entity.params[key] = {
+            ...deepClone(linkValue),
+            targetId: toId,
+          };
+          if (entity.params[key].groupedTargetId === fromId) {
+            entity.params[key].groupedTargetId = toId;
+          }
+          if (entity.params[key].originNodeId === fromId) {
+            entity.params[key].originNodeId = toId;
+          }
+        } else {
+          entity.params[key] = toId;
+        }
+        changed = true;
+      });
+
+      return changed;
+    };
+
+    const hasConnections = (nodeId) => Object.values(allEntities()).some((entity) => {
+      if (!isPlainObject(entity?.params)) {
+        return false;
+      }
+
+      return Object.values(entity.params).some((linkValue) => getLinkTargetId(linkValue) === nodeId);
+    });
+
+    const deletionIds = new Set();
+    const deletionFolderIds = new Set();
+    const replacementMap = new Map();
+
+    uniqueIds.forEach((id) => {
+      const entity = store.getEntityById?.(id) || currentDocument.nodes[id] || currentDocument.folders?.[id];
+      if (!entity) {
+        return;
+      }
+
+      if (entity.type === 'folder') {
+        deletionFolderIds.add(id);
+        return;
+      }
+
+      if (!isDumiNodeId(id) && hasConnections(id)) {
+        const existingIds = new Set([
+          ...Object.keys(store.document.nodes || {}),
+          ...Object.keys(store.document.folders || {}),
+          ...replacementMap.values(),
+        ]);
+        const nextId = createNodeId(existingIds, 'dumi');
+        replacementMap.set(id, nextId);
+        return;
+      }
+
+      deletionIds.add(id);
+    });
+
+    if (!deletionIds.size && !deletionFolderIds.size && !replacementMap.size) {
+      return false;
+    }
+
+    replacementMap.forEach((nextId, oldId) => {
+      const node = store.document.nodes?.[oldId];
+      if (!node) {
+        return;
+      }
+
+      const previousLabel = getNodeLabel(node) || oldId;
+      const parentFolderId = node.folderId || store.getRootFolderId?.() || store.document.rootFolderId || 'folder_root';
+      const parentFolder = store.document.folders?.[parentFolderId];
+
+      node.id = nextId;
+      node.title = previousLabel;
+      node.content = '';
+      const size = resolveNodeSize(node);
+      node.size = {
+        width: size.width,
+        height: size.height,
+      };
+
+      store.document.nodes[nextId] = node;
+      delete store.document.nodes[oldId];
+
+      if (parentFolder && Array.isArray(parentFolder.children)) {
+        parentFolder.children = parentFolder.children.map((child) => {
+          if (child.kind === 'node' && child.id === oldId) {
+            return { ...child, id: nextId };
+          }
+          return child;
+        });
+      }
+
+      const folder = parentFolder;
+      if (folder?.entryNodeId === oldId) {
+        folder.entryNodeId = nextId;
+      }
+    });
+
+    replacementMap.forEach((nextId, oldId) => {
+      Object.values(allEntities()).forEach((entity) => {
+        if (!entity || entity.id === nextId) {
+          return;
+        }
+        replaceEntityLinkTarget(entity, oldId, nextId);
+      });
+    });
+
+    deletionIds.forEach((id) => {
+      store.removeNodeFromFolder(id);
+    });
+
+    deletionFolderIds.forEach((id) => {
+      store.removeFolderRecursive(id);
+    });
+
+    const removedIds = new Set([...deletionIds, ...deletionFolderIds]);
+    Object.values(allEntities()).forEach((entity) => {
+      if (!isPlainObject(entity?.params)) {
         return;
       }
 
       let changed = false;
-      Object.entries(node.params).forEach(([key, linkValue]) => {
-        const targetId = typeof linkValue === 'string' ? linkValue : linkValue?.targetId;
-        if (uniqueIds.includes(targetId)) {
-          if (node && !uniqueIds.includes(node.id)) {
-            delete node.params[key];
-            changed = true;
-            return;
-          }
-          delete node.params[key];
-          changed = true;
+      Object.entries(entity.params).forEach(([key, linkValue]) => {
+        const targetId = getLinkTargetId(linkValue);
+        if (!removedIds.has(targetId)) {
+          return;
         }
+
+        delete entity.params[key];
+        changed = true;
       });
 
-      if (changed && Object.keys(node.params).length === 0) {
-        delete node.params;
+      if (changed && Object.keys(entity.params).length === 0) {
+        delete entity.params;
       }
     });
 
-    const nextSelection = (store.state.selection?.nodeIds || []).filter((id) => !uniqueIds.includes(id));
+    const nextSelection = (store.state.selection?.nodeIds || [])
+      .map((id) => replacementMap.get(id) || id)
+      .filter((id) => !removedIds.has(id) && store.getEntityById?.(id));
     store.setSelectionNodeIds(nextSelection);
 
-    if (uniqueIds.includes(store.state.interaction?.lastActiveNodeId)) {
+    const lastActive = store.state.interaction?.lastActiveNodeId;
+    const mappedLastActive = replacementMap.get(lastActive) || lastActive;
+    if (removedIds.has(mappedLastActive)) {
       const fallbackId = nextSelection[0]
         || Object.keys(store.getCurrentDocument().nodes || {})[0]
         || null;
       store.setLastActiveNode(fallbackId);
+    } else if (mappedLastActive && store.getEntityById?.(mappedLastActive)) {
+      store.setLastActiveNode(mappedLastActive);
     }
 
     store.emit('nodes:updated', store.getCurrentDocument().nodes);
