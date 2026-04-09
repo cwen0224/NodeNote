@@ -40,6 +40,9 @@ class NodeManager {
     this.viewport = document.getElementById('viewport');
     this.nodeLayer = document.getElementById('node-layer');
     this.setupEvents();
+    store.on('document:updated', () => {
+      this.pruneDanglingDumiNodes();
+    });
   }
 
   setupEvents() {
@@ -455,6 +458,72 @@ class NodeManager {
     store.emit('connections:updated');
     store.saveHistory();
     return true;
+  }
+
+  hasNodeConnections(nodeId) {
+    if (typeof nodeId !== 'string' || !nodeId) {
+      return false;
+    }
+
+    const allEntities = {
+      ...(store.document.nodes || {}),
+      ...(store.document.folders || {}),
+    };
+
+    return Object.values(allEntities).some((entity) => {
+      if (!isPlainObject(entity?.params)) {
+        return false;
+      }
+
+      return Object.values(entity.params).some((linkValue) => {
+        const targetId = isPlainObject(linkValue) ? linkValue.targetId : linkValue;
+        return targetId === nodeId;
+      });
+    });
+  }
+
+  pruneDanglingDumiNodes({ skipId = null, saveHistory = true, emitChanges = true } = {}) {
+    const currentDocument = typeof store.getCurrentDocument === 'function'
+      ? store.getCurrentDocument()
+      : null;
+    if (!currentDocument?.nodes) {
+      return [];
+    }
+
+    const removableIds = Object.values(currentDocument.nodes)
+      .filter((node) => isDumiNodeId(node?.id) && node.id !== skipId)
+      .filter((node) => !this.hasNodeConnections(node.id))
+      .map((node) => node.id);
+
+    if (!removableIds.length) {
+      return [];
+    }
+
+    removableIds.forEach((nodeId) => {
+      store.removeNodeFromFolder(nodeId);
+    });
+
+    if (emitChanges) {
+      const nextSelection = (store.state.selection?.nodeIds || [])
+        .filter((id) => !removableIds.includes(id));
+      store.setSelectionNodeIds(nextSelection);
+
+      const lastActive = store.state.interaction?.lastActiveNodeId;
+      if (removableIds.includes(lastActive)) {
+        const fallbackId = nextSelection[0]
+          || Object.keys(store.getCurrentDocument().nodes || {})[0]
+          || null;
+        store.setLastActiveNode(fallbackId);
+      }
+
+      store.emit('nodes:updated', store.getCurrentDocument().nodes);
+      store.emit('connections:updated');
+      if (saveHistory) {
+        store.saveHistory();
+      }
+    }
+
+    return removableIds;
   }
 
   createNode(x, y) {
@@ -973,6 +1042,9 @@ class NodeManager {
         delete entity.params;
       }
     });
+
+    const prunedDumiIds = this.pruneDanglingDumiNodes({ saveHistory: false, emitChanges: false });
+    prunedDumiIds.forEach((id) => removedIds.add(id));
 
     const nextSelection = (store.state.selection?.nodeIds || [])
       .map((id) => replacementMap.get(id) || id)
