@@ -906,7 +906,6 @@ class Renderer {
     rect.setAttribute("pointer-events", "none");
     text.setAttribute("pointer-events", "none");
     group.append(rect, text, deleteBtn);
-    this.svgLayer.appendChild(group);
 
     return {
       group,
@@ -1103,6 +1102,7 @@ class Renderer {
       entry.text.setAttribute('x', String(chosenLayout.centerX));
       entry.text.setAttribute('y', String(chosenLayout.centerY + 0.5));
       entry.deleteBtn.setAttribute('transform', `translate(${left + entry.labelWidth}, ${top})`);
+      this.svgLayer.appendChild(entry.group);
     });
   }
 
