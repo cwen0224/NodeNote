@@ -27,6 +27,7 @@ class InputController {
     this.touchGesture = null;
     this.touchPan = null;
     this.touchPinch = null;
+    this.touchTwoFingerTap = null;
     
     // Zoom configurations
     this.minScale = 0.1;
@@ -179,17 +180,26 @@ class InputController {
     this.touchPointers.set(event.pointerId, {
       x: event.clientX,
       y: event.clientY,
+      startX: event.clientX,
+      startY: event.clientY,
+      startedAt: typeof performance !== 'undefined' ? performance.now() : Date.now(),
     });
 
     this.viewport?.setPointerCapture?.(event.pointerId);
 
     if (this.touchPointers.size >= 2) {
+      if (this.touchPointers.size === 2) {
+        this.touchTwoFingerTap = this.createTouchTwoFingerTapState();
+      } else {
+        this.touchTwoFingerTap = null;
+      }
       this.touchGesture = 'pinch';
       this.touchPinch = this.createTouchPinchState();
       this.touchPan = null;
       return;
     }
 
+    this.touchTwoFingerTap = null;
     store.clearSelection();
     this.touchGesture = 'pan';
     this.touchPan = {
@@ -205,10 +215,28 @@ class InputController {
 
   updateTouchGesture(event) {
     event.preventDefault();
+    const previousPoint = this.touchPointers.get(event.pointerId);
     this.touchPointers.set(event.pointerId, {
       x: event.clientX,
       y: event.clientY,
+      startX: previousPoint?.startX ?? event.clientX,
+      startY: previousPoint?.startY ?? event.clientY,
+      startedAt: previousPoint?.startedAt ?? (typeof performance !== 'undefined' ? performance.now() : Date.now()),
     });
+
+    if (this.touchTwoFingerTap) {
+      const movedTooFar = [...this.touchPointers.entries()].some(([pointerId, point]) => {
+        if (!this.touchTwoFingerTap.pointerIds.includes(pointerId)) {
+          return false;
+        }
+        const dx = (point.x || 0) - (point.startX || 0);
+        const dy = (point.y || 0) - (point.startY || 0);
+        return Math.hypot(dx, dy) > this.touchTwoFingerTap.maxMove;
+      });
+      if (movedTooFar) {
+        this.touchTwoFingerTap.cancelled = true;
+      }
+    }
 
     if (this.touchPointers.size >= 2) {
       if (!this.touchPinch || !this.touchGesture || this.touchGesture !== 'pinch') {
@@ -278,6 +306,11 @@ class InputController {
     event.preventDefault();
 
     if (this.touchPointers.size >= 2) {
+      if (this.touchPointers.size === 2 && !this.touchTwoFingerTap?.cancelled) {
+        this.touchTwoFingerTap = this.touchTwoFingerTap || this.createTouchTwoFingerTapState();
+      } else if (this.touchPointers.size > 2) {
+        this.touchTwoFingerTap = null;
+      }
       this.touchGesture = 'pinch';
       this.touchPinch = this.createTouchPinchState();
       this.touchPan = null;
@@ -300,9 +333,54 @@ class InputController {
       return;
     }
 
+    this.maybeCreateTouchTwoFingerNode(event);
     this.touchGesture = null;
     this.touchPan = null;
     this.touchPinch = null;
+    this.touchTwoFingerTap = null;
+  }
+
+  createTouchTwoFingerTapState() {
+    const entries = [...this.touchPointers.entries()];
+    if (entries.length !== 2) {
+      return null;
+    }
+
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const pointerIds = entries.map(([pointerId]) => pointerId);
+    const points = entries.map(([, point]) => point);
+    const startCenter = {
+      x: (points[0].startX + points[1].startX) / 2,
+      y: (points[0].startY + points[1].startY) / 2,
+    };
+
+    return {
+      pointerIds,
+      startAt: Math.min(points[0].startedAt || now, points[1].startedAt || now),
+      startCenter,
+      maxMove: 18,
+      maxDuration: 420,
+      cancelled: false,
+    };
+  }
+
+  maybeCreateTouchTwoFingerNode(event) {
+    const tapState = this.touchTwoFingerTap;
+    if (!tapState || tapState.cancelled || tapState.pointerIds.length !== 2) {
+      return false;
+    }
+
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const duration = now - (tapState.startAt || now);
+    if (!Number.isFinite(duration) || duration > tapState.maxDuration) {
+      return false;
+    }
+
+    const { x, y, scale } = store.getTransform();
+    const worldX = (tapState.startCenter.x - x) / scale;
+    const worldY = (tapState.startCenter.y - y) / scale;
+    nodeManager.createNode(worldX, worldY);
+    return true;
   }
 
   createTouchPinchState() {
