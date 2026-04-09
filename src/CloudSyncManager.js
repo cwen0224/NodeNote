@@ -172,7 +172,12 @@ class CloudSyncManager {
     if (shouldAutoRestore) {
       this.sheetHydrationState = 'pending';
       queueMicrotask(() => {
-        this.pullNow({ skipConfirm: true, silentOnMissing: true });
+        this.pullNow({
+          skipConfirm: true,
+          silentOnMissing: true,
+          preferRemote: true,
+          hydrateViewport: true,
+        });
       });
     } else if (this.config.provider === 'sheets' && this.isConfigReady()) {
       this.sheetHydrationState = 'ready';
@@ -574,7 +579,12 @@ class CloudSyncManager {
     this.closeProjectDialog();
     this.setStatus('idle', `已切換專案鍵：${nextProjectKey}`);
     this.appendSyncLog('info', 'project', '切換專案鍵', `projectKey=${nextProjectKey}`);
-    return this.pullNow({ skipConfirm: true, silentOnMissing: true });
+    return this.pullNow({
+      skipConfirm: true,
+      silentOnMissing: true,
+      preferRemote: true,
+      hydrateViewport: true,
+    });
   }
 
   buildDialog() {
@@ -1419,6 +1429,7 @@ class CloudSyncManager {
         response,
         baselineDocument: this.sheetBaselineDocument || createDefaultDocument(),
         currentDocument: store.getDocumentSnapshot(),
+        preferRemote,
       });
 
       commitCloudSyncStatePatch(this, buildCloudSyncSuccessPatch({
@@ -1474,6 +1485,9 @@ class CloudSyncManager {
       store.replaceDocument(mergedDocument, { resetHistory: true, saveToHistory: false });
       if (previousPath.length) {
         store.restoreNavigation({ path: previousPath, viewportStack: [] });
+      }
+      if (hydrateViewport || preferRemote) {
+        renderer.fitGraphToViewport();
       }
       renderer.renderAll();
 
@@ -1710,9 +1724,9 @@ class CloudSyncManager {
     }
   }
 
-  async pullNow({ skipConfirm = false, silentOnMissing = false } = {}) {
+  async pullNow({ skipConfirm = false, silentOnMissing = false, preferRemote = false, hydrateViewport = false } = {}) {
     if (this.config.provider === 'sheets') {
-      return this.pullSheetNow({ skipConfirm, silentOnMissing });
+      return this.pullSheetNow({ skipConfirm, silentOnMissing, preferRemote, hydrateViewport });
     }
 
     if (!this.isConfigReady()) {
@@ -1790,6 +1804,10 @@ class CloudSyncManager {
       if (workspace.viewport) {
         store.setTransform(workspace.viewport.x, workspace.viewport.y, workspace.viewport.scale);
       } else {
+        renderer.fitGraphToViewport();
+      }
+
+      if (hydrateViewport || preferRemote) {
         renderer.fitGraphToViewport();
       }
 

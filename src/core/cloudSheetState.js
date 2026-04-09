@@ -26,6 +26,7 @@ export function mergeSheetRemoteDocument({
   response = {},
   baselineDocument = createDefaultDocument(),
   currentDocument = createDefaultDocument(),
+  preferRemote = false,
 } = {}) {
   const normalized = normalizeSheetResponse(response);
   const safeBaseline = isPlainObject(baselineDocument) ? baselineDocument : createDefaultDocument();
@@ -37,6 +38,15 @@ export function mergeSheetRemoteDocument({
       localPatch: null,
       hasLocalChanges: false,
       mergedDocument: null,
+    };
+  }
+
+  if (preferRemote) {
+    return {
+      ...normalized,
+      localPatch: null,
+      hasLocalChanges: false,
+      mergedDocument: normalized.remoteDocument,
     };
   }
 
