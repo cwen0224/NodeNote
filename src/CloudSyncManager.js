@@ -360,6 +360,22 @@ class CloudSyncManager {
     this.renderProjectKeyHistory();
   }
 
+  resetSheetSyncContext() {
+    this.sheetHydrationState = 'pending';
+    this.sheetBaselineDocument = null;
+    this.sheetLastRevision = 0;
+    this.sheetLastFingerprint = null;
+    this.pendingSnapshot = null;
+    this.skipNextAutosave = false;
+    commitCloudSyncStatePatch(this, {
+      lastRemoteRevision: 0,
+      lastFingerprint: null,
+      spreadsheetId: null,
+      spreadsheetUrl: null,
+      lastError: null,
+    });
+  }
+
   getGitHubProjectUrl() {
     const owner = sanitizeString(this.config.owner);
     const repo = sanitizeString(this.config.repo);
@@ -549,6 +565,7 @@ class CloudSyncManager {
       sheetProjectKey: nextProjectKey,
       sheetClientName: sanitizeString(this.config.sheetClientName, 'NodeNote'),
     };
+    this.resetSheetSyncContext();
     this.saveConfig();
     this.fillProjectDialogFromConfig();
     this.updateProjectDialogStatus();
