@@ -6,6 +6,15 @@ function isPlainObject(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+export function isSvgMarkupText(value = '') {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!text) {
+    return false;
+  }
+
+  return /^<svg[\s>]/i.test(text) || (text.includes('<svg') && text.includes('</svg>'));
+}
+
 function createAssetId(prefix = 'asset') {
   const randomPart = Math.random().toString(36).slice(2, 8);
   const timePart = Date.now().toString(36);
@@ -41,6 +50,7 @@ function requestToPromise(request) {
 
 export async function saveLocalImageAsset({
   dataUrl = '',
+  svgText = '',
   label = '',
   mimeType = '',
   width = 0,
@@ -48,7 +58,8 @@ export async function saveLocalImageAsset({
   source = 'clipboard',
 } = {}) {
   const normalizedDataUrl = typeof dataUrl === 'string' ? dataUrl.trim() : '';
-  if (!normalizedDataUrl) {
+  const normalizedSvgText = typeof svgText === 'string' ? svgText.trim() : '';
+  if (!normalizedDataUrl && !normalizedSvgText) {
     throw new Error('圖片資料不可為空。');
   }
 
@@ -56,6 +67,7 @@ export async function saveLocalImageAsset({
     id: createAssetId('image'),
     type: 'image',
     dataUrl: normalizedDataUrl,
+    svgText: normalizedSvgText,
     label: typeof label === 'string' ? label.trim() : '',
     mimeType: typeof mimeType === 'string' ? mimeType.trim() : '',
     width: Number.isFinite(width) ? width : 0,
@@ -72,6 +84,19 @@ export async function saveLocalImageAsset({
 
   await requestToPromise(db.transaction(STORE_NAME, 'readwrite').objectStore(STORE_NAME).put(record));
   return record;
+}
+
+export async function readBlobAsText(file) {
+  if (!(file instanceof Blob)) {
+    throw new Error('無法讀取文字資料。');
+  }
+
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error || new Error('文字資料讀取失敗。'));
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.readAsText(file);
+  });
 }
 
 export async function getLocalImageAsset(assetId = '') {

@@ -11,6 +11,7 @@ import { MAX_FOLDER_DEPTH } from './core/folderTheme.js';
 import { computeNodesBounds } from './core/selectionGeometry.js';
 import {
   deleteLocalImageAsset,
+  readBlobAsText,
   readImageFileAsDataUrl,
   saveLocalImageAsset,
 } from './core/localAssetStore.js';
@@ -1418,13 +1419,23 @@ class NodeManager {
     }
 
     const title = normalizeImageNodeTitle(imageFile.name || '圖片');
-    const dataUrl = await readImageFileAsDataUrl(imageFile);
-    const savedAsset = await saveLocalImageAsset({
-      dataUrl,
-      label: imageFile.name || title,
-      mimeType: imageFile.type || 'image/png',
-      source: 'clipboard',
-    });
+    const mimeType = imageFile.type || 'image/png';
+    const isSvg = mimeType === 'image/svg+xml'
+      || /\.svg$/i.test(String(imageFile.name || ''))
+      || (typeof imageFile.text === 'function' && String(imageFile.type || '').includes('svg'));
+    const savedAsset = isSvg
+      ? await saveLocalImageAsset({
+        svgText: await readBlobAsText(imageFile),
+        label: imageFile.name || title,
+        mimeType: 'image/svg+xml',
+        source: 'clipboard',
+      })
+      : await saveLocalImageAsset({
+        dataUrl: await readImageFileAsDataUrl(imageFile),
+        label: imageFile.name || title,
+        mimeType,
+        source: 'clipboard',
+      });
 
     const existingIds = new Set([
       ...Object.keys(store.document.nodes || {}),
@@ -1447,7 +1458,7 @@ class NodeManager {
         id: savedAsset.id,
         type: 'image',
         label: imageFile.name || title,
-        mimeType: imageFile.type || 'image/png',
+        mimeType: mimeType,
         localAssetId: savedAsset.id,
         storage: 'local',
         source: 'clipboard',

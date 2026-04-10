@@ -8,6 +8,10 @@ import {
   computeMarqueeWorldRect,
   hitTestNodesInWorldRect,
 } from './core/selectionGeometry.js';
+import {
+  isSvgMarkupText,
+  readBlobAsText,
+} from './core/localAssetStore.js';
 
 const isTouchLikePointer = (event) => event?.pointerType === 'touch' || event?.pointerType === 'pen';
 
@@ -81,6 +85,22 @@ class InputController {
       if (!imageFile && Array.isArray(event.clipboardData?.files) && event.clipboardData.files.length > 0) {
         imageFile = [...event.clipboardData.files].find((file) => file?.type?.startsWith('image/')) || null;
       }
+      if (!imageFile) {
+        const htmlText = event.clipboardData?.getData('text/html') || '';
+        const plainText = event.clipboardData?.getData('text/plain') || '';
+        const svgText = isSvgMarkupText(htmlText) ? htmlText : (isSvgMarkupText(plainText) ? plainText : '');
+        if (svgText) {
+          imageFile = new Blob([svgText], { type: 'image/svg+xml' });
+          try {
+            Object.defineProperty(imageFile, 'name', {
+              configurable: true,
+              value: 'pasted-svg.svg',
+            });
+          } catch {
+            // Ignore read-only name assignment.
+          }
+        }
+      }
 
       if (!imageFile) {
         return false;
@@ -107,10 +127,30 @@ class InputController {
         for (const clipboardItem of clipboardItems) {
           const imageType = clipboardItem.types.find((type) => type.startsWith('image/'));
           if (!imageType) {
+            const svgType = clipboardItem.types.find((type) => type === 'text/html' || type === 'text/plain');
+            if (!svgType) {
+              continue;
+            }
+
+            try {
+              const textBlob = await clipboardItem.getType(svgType);
+              const svgText = await readBlobAsText(textBlob);
+              if (isSvgMarkupText(svgText)) {
+                return new Blob([svgText], { type: 'image/svg+xml' });
+              }
+            } catch (error) {
+              console.warn('Read clipboard SVG text failed', error);
+            }
             continue;
           }
 
           const blob = await clipboardItem.getType(imageType);
+          if (blob instanceof Blob && (blob.type === 'image/svg+xml' || /\.svg$/i.test(blob.name || ''))) {
+            const svgText = await readBlobAsText(blob);
+            if (isSvgMarkupText(svgText)) {
+              return new Blob([svgText], { type: 'image/svg+xml' });
+            }
+          }
           if (blob instanceof Blob) {
             return blob;
           }

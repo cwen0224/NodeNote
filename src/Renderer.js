@@ -25,6 +25,8 @@ import { isDumiNodeId, resolveConnectionPortSides } from './core/connectionData.
 import { stripMarkdownFormatting } from './core/documentIO.js';
 import {
   getLocalImageAsset,
+  isSvgMarkupText,
+  readBlobAsText,
   readImageFileAsDataUrl,
   saveLocalImageAsset,
 } from './core/localAssetStore.js';
@@ -737,18 +739,27 @@ class Renderer {
 
           e.preventDefault();
           try {
-            const dataUrl = await readImageFileAsDataUrl(imageFile);
-            const savedAsset = await saveLocalImageAsset({
-              dataUrl,
-              label: imageFile.name || '貼入圖片',
-              mimeType: imageFile.type || 'image/png',
-              source: 'clipboard',
-            });
+            const mimeType = imageFile.type || 'image/png';
+            const isSvg = mimeType === 'image/svg+xml'
+              || /\.svg$/i.test(String(imageFile.name || ''));
+            const savedAsset = isSvg
+              ? await saveLocalImageAsset({
+                svgText: await readBlobAsText(imageFile),
+                label: imageFile.name || '貼入圖片',
+                mimeType: 'image/svg+xml',
+                source: 'clipboard',
+              })
+              : await saveLocalImageAsset({
+                dataUrl: await readImageFileAsDataUrl(imageFile),
+                label: imageFile.name || '貼入圖片',
+                mimeType,
+                source: 'clipboard',
+              });
             nodeManager.addNodeImageAsset(node.id, {
               id: savedAsset.id,
               type: 'image',
               label: imageFile.name || '貼入圖片',
-              mimeType: imageFile.type || 'image/png',
+              mimeType,
               localAssetId: savedAsset.id,
               storage: 'local',
               source: 'clipboard',
@@ -758,6 +769,36 @@ class Renderer {
             }
           } catch (error) {
             console.error('Paste image failed', error);
+          }
+          return;
+        }
+
+        const htmlText = e.clipboardData?.getData('text/html') || '';
+        const rawText = e.clipboardData?.getData('text/plain') || '';
+        const svgText = isSvgMarkupText(htmlText) ? htmlText : (isSvgMarkupText(rawText) ? rawText : '');
+        if (svgText) {
+          e.preventDefault();
+          try {
+            const savedAsset = await saveLocalImageAsset({
+              svgText,
+              label: '貼入 SVG',
+              mimeType: 'image/svg+xml',
+              source: 'clipboard',
+            });
+            nodeManager.addNodeImageAsset(node.id, {
+              id: savedAsset.id,
+              type: 'image',
+              label: '貼入 SVG',
+              mimeType: 'image/svg+xml',
+              localAssetId: savedAsset.id,
+              storage: 'local',
+              source: 'clipboard',
+            });
+            if (assetContainer) {
+              void this.renderNodeAssets(assetContainer, node);
+            }
+          } catch (error) {
+            console.error('Paste SVG failed', error);
           }
           return;
         }
@@ -999,8 +1040,18 @@ class Renderer {
 
       try {
         const localAsset = asset.localAssetId ? await getLocalImageAsset(asset.localAssetId) : null;
+        const svgText = typeof localAsset?.svgText === 'string' && localAsset.svgText.trim()
+          ? localAsset.svgText.trim()
+          : '';
         const dataUrl = localAsset?.dataUrl || asset.dataUrl || '';
-        if (dataUrl) {
+        if (svgText) {
+          const blob = new Blob([svgText], { type: 'image/svg+xml' });
+          const objectUrl = URL.createObjectURL(blob);
+          img.src = objectUrl;
+          img.addEventListener('load', () => URL.revokeObjectURL(objectUrl), { once: true });
+          img.addEventListener('error', () => URL.revokeObjectURL(objectUrl), { once: true });
+          figure.classList.remove('is-missing');
+        } else if (dataUrl) {
           img.src = dataUrl;
           figure.classList.remove('is-missing');
         } else {

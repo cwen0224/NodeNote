@@ -76,6 +76,9 @@ function normalizeAssetRecord(asset = {}, fallbackId = '') {
   if (Object.prototype.hasOwnProperty.call(next, 'dataUrl')) {
     delete next.dataUrl;
   }
+  if (Object.prototype.hasOwnProperty.call(next, 'svgText')) {
+    delete next.svgText;
+  }
   const candidateUrl = normalizeUrlLikeString(
     next.url
     || next.src
