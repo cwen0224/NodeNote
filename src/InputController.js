@@ -151,6 +151,10 @@ class InputController {
 
     // Wheel Zoom functionality (center on cursor)
     this.viewport.addEventListener('wheel', e => {
+      if (e.target instanceof Element && e.target.closest('.node')) {
+        return;
+      }
+
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault(); // Sometimes the browser zoom kicks in
       }
