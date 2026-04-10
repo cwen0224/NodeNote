@@ -125,7 +125,7 @@ class Renderer {
 
     this.viewport?.addEventListener('pointermove', (e) => {
       const now = performance.now();
-      store.setLastPointer(e.clientX, e.clientY);
+      store.setLastPointer(e.clientX, e.clientY, e.pointerType);
       this.pointerState = {
         previous: this.pointerState.current,
         current: { x: e.clientX, y: e.clientY, at: now },
@@ -672,7 +672,12 @@ class Renderer {
 
       div.classList.add('is-editing');
       store.setLastActiveNode(node.id);
-      this.focusViewportOnNode(node.id, { zoomTo: 1.25 });
+      const isTouchLikeInput = ['touch', 'pen'].includes(store.state.interaction?.lastPointer?.type)
+        || (typeof navigator !== 'undefined' && Number.isFinite(navigator.maxTouchPoints) && navigator.maxTouchPoints > 0);
+      this.focusViewportOnNode(node.id, {
+        zoomTo: 1.25,
+        focusYRatio: isTouchLikeInput ? 0.28 : 0.5,
+      });
       content.contentEditable = 'true';
       content.focus({ preventScroll: true });
 
@@ -1507,10 +1512,15 @@ class Renderer {
     const { scale } = store.getTransform();
     const zoomTo = Number.isFinite(options.zoomTo) ? Math.max(0.1, options.zoomTo) : scale;
     const nextScale = Math.max(scale, zoomTo);
-    const viewportWidth = this.viewport?.clientWidth ?? window.innerWidth;
-    const viewportHeight = this.viewport?.clientHeight ?? window.innerHeight;
-    const nextX = (viewportWidth / 2) - (center.x * nextScale);
-    const nextY = (viewportHeight / 2) - (center.y * nextScale);
+    const visualViewport = typeof window !== 'undefined' ? window.visualViewport : null;
+    const viewportWidth = visualViewport?.width ?? this.viewport?.clientWidth ?? window.innerWidth;
+    const viewportHeight = visualViewport?.height ?? this.viewport?.clientHeight ?? window.innerHeight;
+    const viewportOffsetLeft = visualViewport?.offsetLeft ?? 0;
+    const viewportOffsetTop = visualViewport?.offsetTop ?? 0;
+    const focusXRatio = Number.isFinite(options.focusXRatio) ? Math.max(0, Math.min(1, options.focusXRatio)) : 0.5;
+    const focusYRatio = Number.isFinite(options.focusYRatio) ? Math.max(0, Math.min(1, options.focusYRatio)) : 0.5;
+    const nextX = (viewportOffsetLeft + (viewportWidth * focusXRatio)) - (center.x * nextScale);
+    const nextY = (viewportOffsetTop + (viewportHeight * focusYRatio)) - (center.y * nextScale);
 
     store.setTransform(nextX, nextY, nextScale);
     return true;

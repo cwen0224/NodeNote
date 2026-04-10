@@ -237,6 +237,8 @@ class NodeManager {
       return;
     }
 
+    store.setLastPointer?.(e.clientX, e.clientY, e.pointerType);
+
     const nodeEl = e.target.closest('.node');
     if (!nodeEl) return;
     if (e.target.closest('.port')) return;

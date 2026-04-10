@@ -30,6 +30,7 @@ export function createDefaultSession() {
       lastPointer: {
         x: null,
         y: null,
+        type: null,
       },
     },
     ui: {

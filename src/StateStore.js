@@ -458,9 +458,10 @@ export class StateStore {
     this.session.interaction.lastActiveNodeAt = nodeId ? Date.now() : null;
   }
 
-  setLastPointer(clientX, clientY) {
+  setLastPointer(clientX, clientY, pointerType = null) {
     this.session.interaction.lastPointer.x = Number.isFinite(clientX) ? clientX : null;
     this.session.interaction.lastPointer.y = Number.isFinite(clientY) ? clientY : null;
+    this.session.interaction.lastPointer.type = typeof pointerType === 'string' ? pointerType : null;
   }
 
   setSelectionNodeIds(nodeIds = []) {
