@@ -56,6 +56,32 @@ class InputController {
       e.preventDefault();
     });
 
+    document.addEventListener('paste', async (e) => {
+      const target = e.target instanceof Element ? e.target : null;
+      if (target?.closest('input, textarea, [contenteditable="true"], [contenteditable="plaintext-only"]')) {
+        return;
+      }
+
+      const clipboardItems = Array.from(e.clipboardData?.items || []);
+      const imageItem = clipboardItems.find((item) => item.kind === 'file' && item.type?.startsWith('image/'));
+      if (!imageItem) {
+        return;
+      }
+
+      const imageFile = imageItem.getAsFile();
+      if (!imageFile) {
+        return;
+      }
+
+      e.preventDefault();
+      const anchorPoint = nodeManager.getPasteAnchorWorldPoint();
+      try {
+        await nodeManager.createImageNodeFromFile(imageFile, anchorPoint);
+      } catch (error) {
+        console.error('Paste image node failed', error);
+      }
+    });
+
     this.viewport.addEventListener('pointerdown', e => {
       if (!isTouchLikePointer(e)) {
         return;

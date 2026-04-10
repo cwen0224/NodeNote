@@ -9,7 +9,11 @@ import { createNodeId, materializeClipboardPayload } from './core/graphClipboard
 import { resolveNodeSize } from './core/nodeSizing.js';
 import { MAX_FOLDER_DEPTH } from './core/folderTheme.js';
 import { computeNodesBounds } from './core/selectionGeometry.js';
-import { deleteLocalImageAsset } from './core/localAssetStore.js';
+import {
+  deleteLocalImageAsset,
+  readImageFileAsDataUrl,
+  saveLocalImageAsset,
+} from './core/localAssetStore.js';
 import {
   createUniqueParamKey,
   deepClone,
@@ -37,6 +41,20 @@ function getNodeLocalAssetIds(node = {}) {
       return localAssetId || id;
     })
     .filter(Boolean))];
+}
+
+function normalizeImageNodeTitle(fileName = '') {
+  const trimmed = String(fileName || '').trim();
+  if (!trimmed) {
+    return '圖片';
+  }
+
+  const dotIndex = trimmed.lastIndexOf('.');
+  if (dotIndex > 0) {
+    return trimmed.slice(0, dotIndex) || '圖片';
+  }
+
+  return trimmed || '圖片';
 }
 
 class NodeManager {
@@ -1362,6 +1380,7 @@ class NodeManager {
     nextAsset.id = typeof nextAsset.id === 'string' && nextAsset.id ? nextAsset.id : `asset_${Date.now().toString(36)}`;
     nextAsset.type = typeof nextAsset.type === 'string' && nextAsset.type ? nextAsset.type : 'image';
     nextAsset.label = typeof nextAsset.label === 'string' ? nextAsset.label : '';
+    nextAsset.dataUrl = typeof nextAsset.dataUrl === 'string' ? nextAsset.dataUrl : '';
     nextAsset.storage = typeof nextAsset.storage === 'string' ? nextAsset.storage : 'local';
     nextAsset.localAssetId = typeof nextAsset.localAssetId === 'string' ? nextAsset.localAssetId : nextAsset.id;
     nextAsset.mimeType = typeof nextAsset.mimeType === 'string' ? nextAsset.mimeType : 'image/png';
@@ -1392,6 +1411,64 @@ class NodeManager {
     store.emit('nodes:updated', store.getCurrentDocument().nodes);
     store.saveHistory();
     return true;
+  }
+
+  async createImageNodeFromFile(imageFile, anchorWorldPoint = null) {
+    if (!(imageFile instanceof Blob)) {
+      return null;
+    }
+
+    const title = normalizeImageNodeTitle(imageFile.name || '圖片');
+    const dataUrl = await readImageFileAsDataUrl(imageFile);
+    const savedAsset = await saveLocalImageAsset({
+      dataUrl,
+      label: imageFile.name || title,
+      mimeType: imageFile.type || 'image/png',
+      source: 'clipboard',
+    });
+
+    const existingIds = new Set([
+      ...Object.keys(store.document.nodes || {}),
+      ...Object.keys(store.document.folders || {}),
+    ]);
+    const id = createNodeId(existingIds);
+    const folderId = typeof store.getCurrentFolderId === 'function'
+      ? store.getCurrentFolderId()
+      : (store.document.rootFolderId || 'folder_root');
+    const pastePoint = anchorWorldPoint || this.getPasteAnchorWorldPoint();
+    const node = {
+      id,
+      type: 'note',
+      folderId,
+      title,
+      x: pastePoint.x,
+      y: pastePoint.y,
+      content: '',
+      assets: [{
+        id: savedAsset.id,
+        type: 'image',
+        label: imageFile.name || title,
+        dataUrl,
+        mimeType: imageFile.type || 'image/png',
+        localAssetId: savedAsset.id,
+        storage: 'local',
+        source: 'clipboard',
+      }],
+      params: {},
+    };
+
+    const size = resolveNodeSize(node);
+    node.size = {
+      width: size.width,
+      height: size.height,
+    };
+
+    store.addNodeToFolder(node, folderId);
+    store.setSelectionNodeIds([id]);
+    store.setLastActiveNode(id);
+    store.emit('nodes:updated', store.getCurrentDocument().nodes);
+    store.saveHistory();
+    return node;
   }
 
   cleanupNodeLocalAssets(nodeOrId = null) {
