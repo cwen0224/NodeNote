@@ -56,6 +56,103 @@ class InputController {
       e.preventDefault();
     });
 
+    const shouldHandleBlankPaste = (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest('input, textarea, [contenteditable="true"], [contenteditable="plaintext-only"]')) {
+        return false;
+      }
+
+      const activeElement = document.activeElement;
+      if (activeElement && activeElement !== document.body) {
+        const activeEditable = activeElement instanceof Element
+          ? activeElement.closest('input, textarea, [contenteditable="true"], [contenteditable="plaintext-only"]')
+          : null;
+        if (activeEditable) {
+          return false;
+        }
+      }
+
+      return true;
+    };
+
+    const handleBlankAreaImagePaste = async (event) => {
+      const clipboardItems = Array.from(event.clipboardData?.items || []);
+      let imageFile = clipboardItems.find((item) => item.kind === 'file' && item.type?.startsWith('image/'))?.getAsFile?.() || null;
+      if (!imageFile && Array.isArray(event.clipboardData?.files) && event.clipboardData.files.length > 0) {
+        imageFile = [...event.clipboardData.files].find((file) => file?.type?.startsWith('image/')) || null;
+      }
+
+      if (!imageFile) {
+        return false;
+      }
+
+      event.preventDefault?.();
+      const anchorPoint = nodeManager.getPasteAnchorWorldPoint();
+      try {
+        await nodeManager.createImageNodeFromFile(imageFile, anchorPoint);
+        return true;
+      } catch (error) {
+        console.error('Paste image node failed', error);
+        return false;
+      }
+    };
+
+    const readClipboardImageFromNavigator = async () => {
+      if (!navigator.clipboard?.read) {
+        return null;
+      }
+
+      try {
+        const clipboardItems = await navigator.clipboard.read();
+        for (const clipboardItem of clipboardItems) {
+          const imageType = clipboardItem.types.find((type) => type.startsWith('image/'));
+          if (!imageType) {
+            continue;
+          }
+
+          const blob = await clipboardItem.getType(imageType);
+          if (blob instanceof Blob) {
+            return blob;
+          }
+        }
+      } catch (error) {
+        console.warn('Read clipboard image failed', error);
+      }
+
+      return null;
+    };
+
+    document.addEventListener('paste', async (e) => {
+      if (!shouldHandleBlankPaste(e)) {
+        return;
+      }
+
+      await handleBlankAreaImagePaste(e);
+    });
+
+    window.addEventListener('keydown', async (e) => {
+      if (!(e.ctrlKey || e.metaKey) || e.key?.toLowerCase?.() !== 'v') {
+        return;
+      }
+
+      if (!shouldHandleBlankPaste(e)) {
+        return;
+      }
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      const imageFile = await readClipboardImageFromNavigator();
+      if (imageFile) {
+        try {
+          const anchorPoint = nodeManager.getPasteAnchorWorldPoint();
+          await nodeManager.createImageNodeFromFile(imageFile, anchorPoint);
+        } catch (error) {
+          console.error('Paste image node failed', error);
+        }
+      }
+    }, true);
+
     document.addEventListener('paste', async (e) => {
       const target = e.target instanceof Element ? e.target : null;
       if (target?.closest('input, textarea, [contenteditable="true"], [contenteditable="plaintext-only"]')) {
