@@ -1385,6 +1385,9 @@ class NodeManager {
     nextAsset.localAssetId = typeof nextAsset.localAssetId === 'string' ? nextAsset.localAssetId : nextAsset.id;
     nextAsset.mimeType = typeof nextAsset.mimeType === 'string' ? nextAsset.mimeType : 'image/png';
     nextAsset.source = typeof nextAsset.source === 'string' ? nextAsset.source : 'clipboard';
+    if (nextAsset.mimeType === 'image/svg+xml') {
+      nextAsset.storage = 'local';
+    }
 
     const nextAssets = Array.isArray(entity.assets) ? entity.assets.slice() : [];
     nextAssets.push(nextAsset);

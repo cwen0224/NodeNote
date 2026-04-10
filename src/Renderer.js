@@ -730,6 +730,36 @@ class Renderer {
     if (content && !isFolderNode && !isDumiNode && !isImageNode) {
       content.addEventListener('paste', async (e) => {
         const clipboardItems = Array.from(e.clipboardData?.items || []);
+        const htmlText = e.clipboardData?.getData('text/html') || '';
+        const rawText = e.clipboardData?.getData('text/plain') || '';
+        const svgText = isSvgMarkupText(htmlText) ? htmlText : (isSvgMarkupText(rawText) ? rawText : '');
+        if (svgText) {
+          e.preventDefault();
+          try {
+            const savedAsset = await saveLocalImageAsset({
+              svgText,
+              label: '貼入 SVG',
+              mimeType: 'image/svg+xml',
+              source: 'clipboard',
+            });
+            nodeManager.addNodeImageAsset(node.id, {
+              id: savedAsset.id,
+              type: 'image',
+              label: '貼入 SVG',
+              mimeType: 'image/svg+xml',
+              localAssetId: savedAsset.id,
+              storage: 'local',
+              source: 'clipboard',
+            });
+            if (assetContainer) {
+              void this.renderNodeAssets(assetContainer, node);
+            }
+          } catch (error) {
+            console.error('Paste SVG failed', error);
+          }
+          return;
+        }
+
         const imageItem = clipboardItems.find((item) => item.kind === 'file' && item.type?.startsWith('image/'));
         if (imageItem) {
           const imageFile = imageItem.getAsFile();
@@ -769,36 +799,6 @@ class Renderer {
             }
           } catch (error) {
             console.error('Paste image failed', error);
-          }
-          return;
-        }
-
-        const htmlText = e.clipboardData?.getData('text/html') || '';
-        const rawText = e.clipboardData?.getData('text/plain') || '';
-        const svgText = isSvgMarkupText(htmlText) ? htmlText : (isSvgMarkupText(rawText) ? rawText : '');
-        if (svgText) {
-          e.preventDefault();
-          try {
-            const savedAsset = await saveLocalImageAsset({
-              svgText,
-              label: '貼入 SVG',
-              mimeType: 'image/svg+xml',
-              source: 'clipboard',
-            });
-            nodeManager.addNodeImageAsset(node.id, {
-              id: savedAsset.id,
-              type: 'image',
-              label: '貼入 SVG',
-              mimeType: 'image/svg+xml',
-              localAssetId: savedAsset.id,
-              storage: 'local',
-              source: 'clipboard',
-            });
-            if (assetContainer) {
-              void this.renderNodeAssets(assetContainer, node);
-            }
-          } catch (error) {
-            console.error('Paste SVG failed', error);
           }
           return;
         }
