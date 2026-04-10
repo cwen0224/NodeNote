@@ -601,14 +601,16 @@ class Renderer {
     div.style.top = `${node.y}px`;
     if (isFolderNode) {
       div.innerHTML = `
-        <div class="node-header">
-          <span class="node-id" title="${this.escapeHtml(nodeLabel)}">${this.escapeHtml(nodeLabel)}</span>
-          <div class="node-header-actions">
-            <button class="node-rename-btn" type="button" aria-label="編輯名稱">Aa</button>
-            <button class="node-folder-open-btn" type="button" aria-label="開啟資料夾">↗</button>
+        <div class="node-body node-body-folder">
+          <div class="node-header">
+            <span class="node-id" title="${this.escapeHtml(nodeLabel)}">${this.escapeHtml(nodeLabel)}</span>
+            <div class="node-header-actions">
+              <button class="node-rename-btn" type="button" aria-label="編輯名稱">Aa</button>
+              <button class="node-folder-open-btn" type="button" aria-label="開啟資料夾">↗</button>
+            </div>
           </div>
+          <div class="node-content node-folder-content" contenteditable="false" spellcheck="false"></div>
         </div>
-        <div class="node-content node-folder-content" contenteditable="false" spellcheck="false"></div>
         <button class="node-delete-btn" type="button" aria-label="刪除節點">×</button>
         <div class="port top"></div>
         <div class="port bottom"></div>
@@ -628,13 +630,15 @@ class Renderer {
       `;
     } else {
       div.innerHTML = `
-        <div class="node-header">
-          <span class="node-id" title="${this.escapeHtml(nodeLabel)}">${this.escapeHtml(nodeLabel)}</span>
-        </div>
-        <div class="node-content" contenteditable="false" spellcheck="false"></div>
-        <div class="node-footer-actions">
-          <button class="node-rename-btn" type="button" aria-label="編輯名稱">編輯標題</button>
-          <button class="node-edit-btn" type="button" aria-label="編輯節點">編輯文字</button>
+        <div class="node-body node-body-regular">
+          <div class="node-header">
+            <span class="node-id" title="${this.escapeHtml(nodeLabel)}">${this.escapeHtml(nodeLabel)}</span>
+          </div>
+          <div class="node-content" contenteditable="false" spellcheck="false"></div>
+          <div class="node-footer-actions">
+            <button class="node-rename-btn" type="button" aria-label="編輯名稱">編輯標題</button>
+            <button class="node-edit-btn" type="button" aria-label="編輯節點">編輯文字</button>
+          </div>
         </div>
         <button class="node-delete-btn" type="button" aria-label="刪除節點">×</button>
         <div class="port top"></div>
