@@ -672,7 +672,7 @@ class Renderer {
 
       div.classList.add('is-editing');
       store.setLastActiveNode(node.id);
-      this.focusViewportOnNode(node.id);
+      this.focusViewportOnNode(node.id, { zoomTo: 1.25 });
       content.contentEditable = 'true';
       content.focus({ preventScroll: true });
 
@@ -1493,7 +1493,7 @@ class Renderer {
     return this.focusViewportOnNode(activeNodeId);
   }
 
-  focusViewportOnNode(nodeId) {
+  focusViewportOnNode(nodeId, options = {}) {
     if (!nodeId) {
       return false;
     }
@@ -1505,12 +1505,14 @@ class Renderer {
 
     const center = this.getNodeCenterWorldPoint(node);
     const { scale } = store.getTransform();
+    const zoomTo = Number.isFinite(options.zoomTo) ? Math.max(0.1, options.zoomTo) : scale;
+    const nextScale = Math.max(scale, zoomTo);
     const viewportWidth = this.viewport?.clientWidth ?? window.innerWidth;
     const viewportHeight = this.viewport?.clientHeight ?? window.innerHeight;
-    const nextX = (viewportWidth / 2) - (center.x * scale);
-    const nextY = (viewportHeight / 2) - (center.y * scale);
+    const nextX = (viewportWidth / 2) - (center.x * nextScale);
+    const nextY = (viewportHeight / 2) - (center.y * nextScale);
 
-    store.setTransform(nextX, nextY, scale);
+    store.setTransform(nextX, nextY, nextScale);
     return true;
   }
 
