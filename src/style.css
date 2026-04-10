@@ -674,6 +674,44 @@ button:hover {
   box-shadow: 0 0 0 1px rgba(13, 17, 23, 0.7);
 }
 
+#context-menu {
+  position: fixed;
+  z-index: 4200;
+  min-width: 220px;
+  padding: 10px;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.92);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+#context-menu[hidden] {
+  display: none !important;
+}
+
+#context-menu button {
+  width: 100%;
+  border: 0;
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(96, 165, 250, 0.14), rgba(37, 99, 235, 0.18));
+  color: #f8fafc;
+  padding: 14px 16px;
+  font-weight: 700;
+  font-size: 0.98rem;
+  cursor: pointer;
+  text-align: left;
+}
+
+#context-menu button:hover {
+  background: linear-gradient(180deg, rgba(96, 165, 250, 0.22), rgba(37, 99, 235, 0.26));
+}
+
+#context-menu button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .minimap-node {
   position: absolute;
   border-radius: 4px;

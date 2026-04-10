@@ -5,6 +5,7 @@ import { nodeManager } from './NodeManager.js';
 import { connectionManager } from './ConnectionManager.js';
 import { trayManager } from './TrayManager.js';
 import { shortcutManager } from './ShortcutManager.js';
+import { contextMenuManager } from './ContextMenuManager.js';
 import { persistenceManager } from './PersistenceManager.js';
 import { cloudSyncManager } from './CloudSyncManager.js';
 import { store } from './StateStore.js';
@@ -109,6 +110,9 @@ const initApp = () => {
 
     updateDiag("Initializing ShortcutManager...");
     shortcutManager.init();
+
+    updateDiag("Initializing ContextMenuManager...");
+    contextMenuManager.init();
     
     updateDiag("Wiring Toolbar...");
     // Wire Undo/Redo

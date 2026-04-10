@@ -12,6 +12,7 @@ import {
   isSvgMarkupText,
   readBlobAsText,
 } from './core/localAssetStore.js';
+import { contextMenuManager } from './ContextMenuManager.js';
 
 const isTouchLikePointer = (event) => event?.pointerType === 'touch' || event?.pointerType === 'pen';
 
@@ -55,9 +56,18 @@ class InputController {
     window.addEventListener('keyup', e => {
       if (e.code === 'Space') this.spacePressed = false;
     });
-    // Prevent default context menu on right click and handle panning
+    // Right click opens the custom context menu when applicable.
     window.addEventListener('contextmenu', e => {
-      e.preventDefault();
+      if (contextMenuManager.handleContextMenu(e)) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+
+      const target = e.target instanceof Element ? e.target : null;
+      if (target?.closest?.('#viewport, #canvas, #grid-bg, #svg-layer, #node-layer, .node')) {
+        e.preventDefault();
+      }
     });
 
     const shouldHandleBlankPaste = (event) => {
