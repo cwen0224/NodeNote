@@ -675,8 +675,8 @@ class Renderer {
       const isTouchLikeInput = ['touch', 'pen'].includes(store.state.interaction?.lastPointer?.type)
         || (typeof navigator !== 'undefined' && Number.isFinite(navigator.maxTouchPoints) && navigator.maxTouchPoints > 0);
       this.focusViewportOnNode(node.id, {
-        zoomTo: 1.25,
-        focusYRatio: isTouchLikeInput ? 0.28 : 0.5,
+        zoomTo: isTouchLikeInput ? 1.4 : 1.25,
+        touchSafe: isTouchLikeInput,
       });
       content.contentEditable = 'true';
       content.focus({ preventScroll: true });
@@ -1508,7 +1508,9 @@ class Renderer {
       return false;
     }
 
-    const center = this.getNodeCenterWorldPoint(node);
+    const focusPoint = options.touchSafe
+      ? this.getNodeTouchFocusWorldPoint(node)
+      : this.getNodeCenterWorldPoint(node);
     const { scale } = store.getTransform();
     const zoomTo = Number.isFinite(options.zoomTo) ? Math.max(0.1, options.zoomTo) : scale;
     const nextScale = Math.max(scale, zoomTo);
@@ -1519,11 +1521,26 @@ class Renderer {
     const viewportOffsetTop = visualViewport?.offsetTop ?? 0;
     const focusXRatio = Number.isFinite(options.focusXRatio) ? Math.max(0, Math.min(1, options.focusXRatio)) : 0.5;
     const focusYRatio = Number.isFinite(options.focusYRatio) ? Math.max(0, Math.min(1, options.focusYRatio)) : 0.5;
-    const nextX = (viewportOffsetLeft + (viewportWidth * focusXRatio)) - (center.x * nextScale);
-    const nextY = (viewportOffsetTop + (viewportHeight * focusYRatio)) - (center.y * nextScale);
+    const nextX = (viewportOffsetLeft + (viewportWidth * focusXRatio)) - (focusPoint.x * nextScale);
+    const nextY = (viewportOffsetTop + (viewportHeight * focusYRatio)) - (focusPoint.y * nextScale);
 
     store.setTransform(nextX, nextY, nextScale);
     return true;
+  }
+
+  getNodeTouchFocusWorldPoint(node) {
+    const rect = this.getNodeWorldRect(node.id);
+    if (!rect) {
+      return {
+        x: node.x + 120,
+        y: node.y + 72,
+      };
+    }
+
+    return {
+      x: rect.left + Math.min(140, Math.max(96, rect.width * 0.18)),
+      y: rect.top + Math.min(96, Math.max(64, rect.height * 0.18)),
+    };
   }
 
   getViewportZoomAnchorPoint(clientX = null, clientY = null) {
