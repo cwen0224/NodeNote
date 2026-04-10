@@ -1740,6 +1740,95 @@ button:hover {
   color: #fff;
 }
 
+.cloud-delete-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3950;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(2, 6, 23, 0.58);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.cloud-delete-overlay[hidden] {
+  display: none;
+}
+
+.cloud-delete-panel {
+  width: min(92vw, 460px);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cloud-delete-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.cloud-delete-header h2 {
+  font-size: 1.05rem;
+  line-height: 1.2;
+  margin-bottom: 4px;
+}
+
+.cloud-delete-header p {
+  color: var(--text-muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.cloud-delete-close {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  font-size: 1rem;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+
+.cloud-delete-message {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.cloud-delete-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.cloud-delete-actions button {
+  min-height: 44px;
+  border-radius: 12px;
+  padding: 0 12px;
+  font-size: 0.88rem;
+}
+
+.cloud-delete-danger {
+  background: rgba(248, 113, 113, 0.16);
+  border-color: rgba(248, 113, 113, 0.34);
+  color: #fecaca;
+}
+
+.cloud-delete-danger:hover,
+.cloud-delete-danger:focus-visible {
+  background: rgba(248, 113, 113, 0.24);
+  border-color: rgba(248, 113, 113, 0.58);
+  color: #fff;
+}
+
 .cloud-sync-panel {
   width: min(92vw, 760px);
   max-height: min(88vh, 760px);

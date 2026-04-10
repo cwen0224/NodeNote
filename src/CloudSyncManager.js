@@ -155,6 +155,11 @@ class CloudSyncManager {
     this.sheetProjectCatalog = [];
     this.sheetProjectCatalogLoading = false;
     this.sheetProjectCatalogRequestId = 0;
+    this.deleteOverlay = null;
+    this.deletePanel = null;
+    this.deleteDialogMessage = null;
+    this.deleteDialogProjectKey = '';
+    this.deleteDialogProjectName = '';
     this.workspaceInteractionLocked = false;
     this.boundVisibilityChange = this.handleVisibilityChange.bind(this);
   }
@@ -169,6 +174,7 @@ class CloudSyncManager {
     this.statusBadge = document.getElementById('sync-status-badge');
     this.buildDialog();
     this.buildProjectDialog();
+    this.buildDeleteDialog();
     this.buildWorkspaceLockOverlay();
     this.bindEvents();
     this.applyStateToUI();
@@ -570,7 +576,7 @@ class CloudSyncManager {
       } else if (action === 'create') {
         this.createProjectSelection();
       } else if (action === 'delete') {
-        this.deleteProjectDataSelection();
+        this.openDeleteDialog();
       } else if (action === 'refresh-list') {
         void this.loadSheetProjectCatalog({ force: true });
       } else if (action === 'close') {
@@ -610,6 +616,119 @@ class CloudSyncManager {
       }
     });
     this.renderSheetProjectCatalog();
+  }
+
+  buildDeleteDialog() {
+    if (document.getElementById('cloud-delete-modal')) {
+      this.deleteOverlay = document.getElementById('cloud-delete-modal');
+      this.deletePanel = this.deleteOverlay?.querySelector?.('.cloud-delete-panel') || null;
+      this.deleteDialogMessage = this.deleteOverlay?.querySelector?.('[data-delete-message]') || null;
+      return;
+    }
+
+    this.deleteOverlay = document.createElement('div');
+    this.deleteOverlay.id = 'cloud-delete-modal';
+    this.deleteOverlay.className = 'cloud-delete-overlay';
+    this.deleteOverlay.hidden = true;
+    this.deleteOverlay.innerHTML = `
+      <div class="cloud-delete-panel glass-panel">
+        <div class="cloud-delete-header">
+          <div>
+            <h2>刪除資料</h2>
+            <p>請選擇要刪除的範圍。</p>
+          </div>
+          <button type="button" class="cloud-delete-close" data-delete-action="close" aria-label="關閉刪除視窗">×</button>
+        </div>
+        <div class="cloud-delete-message" data-delete-message>請選擇要刪除哪些資料。</div>
+        <div class="cloud-delete-actions">
+          <button type="button" data-delete-action="local">本機資料</button>
+          <button type="button" data-delete-action="cloud">雲端資料</button>
+          <button type="button" data-delete-action="both" class="cloud-delete-danger">兩者都刪除</button>
+          <button type="button" data-delete-action="cancel">取消</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(this.deleteOverlay);
+    this.deletePanel = this.deleteOverlay.querySelector('.cloud-delete-panel');
+    this.deleteDialogMessage = this.deleteOverlay.querySelector('[data-delete-message]');
+    this.deleteOverlay.addEventListener('click', (event) => {
+      if (event.target === this.deleteOverlay) {
+        this.closeDeleteDialog();
+      }
+    });
+    this.deletePanel?.addEventListener('click', (event) => {
+      const actionButton = event.target.closest?.('[data-delete-action]');
+      if (!actionButton) {
+        return;
+      }
+
+      const action = actionButton.dataset.deleteAction;
+      if (action === 'close' || action === 'cancel') {
+        this.closeDeleteDialog();
+        return;
+      }
+
+      if (action === 'local') {
+        void this.deleteProjectDataSelection({ deleteLocalData: true, deleteCloudData: false });
+        return;
+      }
+
+      if (action === 'cloud') {
+        void this.deleteProjectDataSelection({ deleteLocalData: false, deleteCloudData: true });
+        return;
+      }
+
+      if (action === 'both') {
+        void this.deleteProjectDataSelection({ deleteLocalData: true, deleteCloudData: true });
+      }
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && this.deleteOverlay && !this.deleteOverlay.hidden) {
+        this.closeDeleteDialog();
+      }
+    });
+  }
+
+  openDeleteDialog() {
+    if (!this.deleteOverlay) {
+      this.buildDeleteDialog();
+    }
+
+    const projectKey = sanitizeString(
+      this.projectSelectedProjectKey || this.config.sheetProjectKey || this.sheetProjectCatalog?.[0]?.projectKey || '',
+      'default'
+    );
+    const projectName = sanitizeString(
+      this.projectProjectNameInput?.value || this.config.sheetProjectName || store.getDocumentSnapshot?.()?.meta?.title || projectKey,
+      ''
+    );
+
+    this.deleteDialogProjectKey = projectKey;
+    this.deleteDialogProjectName = projectName;
+    if (this.deleteDialogMessage) {
+      this.deleteDialogMessage.textContent = projectName
+        ? `你要刪除哪一種資料？目前專案：${projectName}（${projectKey}）`
+        : `你要刪除哪一種資料？目前專案：${projectKey}`;
+    }
+
+    this.closeProjectDialog();
+    if (this.deleteOverlay) {
+      this.deleteOverlay.hidden = false;
+      const firstButton = this.deleteOverlay.querySelector?.('[data-delete-action="local"]');
+      if (firstButton?.focus) {
+        firstButton.focus();
+      }
+    }
+  }
+
+  closeDeleteDialog() {
+    if (this.deleteOverlay) {
+      this.deleteOverlay.hidden = true;
+    }
+    this.deleteDialogProjectKey = '';
+    this.deleteDialogProjectName = '';
   }
 
   buildWorkspaceLockOverlay() {
@@ -909,47 +1028,31 @@ class CloudSyncManager {
     return result;
   }
 
-  async deleteProjectDataSelection() {
+  async deleteProjectDataSelection({ deleteLocalData = false, deleteCloudData = false } = {}) {
     const projectKey = sanitizeString(
-      this.projectSelectedProjectKey || this.config.sheetProjectKey || this.sheetProjectCatalog?.[0]?.projectKey || '',
+      this.deleteDialogProjectKey || this.projectSelectedProjectKey || this.config.sheetProjectKey || this.sheetProjectCatalog?.[0]?.projectKey || '',
       'default'
     );
     const projectName = sanitizeString(
-      this.projectProjectNameInput?.value || this.config.sheetProjectName || store.getDocumentSnapshot?.()?.meta?.title || projectKey,
+      this.deleteDialogProjectName || this.projectProjectNameInput?.value || this.config.sheetProjectName || store.getDocumentSnapshot?.()?.meta?.title || projectKey,
       ''
     );
 
     if (!projectKey) {
       this.setStatus('error', '請先從清單選取專案');
       this.appendSyncLog('error', 'project', '刪除資料失敗', '請先從清單選取專案');
+      this.closeDeleteDialog();
       return false;
     }
 
-    const choice = window.prompt(
-      [
-        '要刪除哪些資料？',
-        '1 = 本機資料',
-        '2 = 雲端資料',
-        '3 = 兩者都刪除',
-        '輸入 1 / 2 / 3，或 local / cloud / both',
-      ].join('\n'),
-      '3'
-    );
-    const normalizedChoice = sanitizeString(choice, '').toLowerCase().trim();
-    const wantsLocal = ['1', 'local', 'local-only', '本機', '本機資料', '本機草稿'].includes(normalizedChoice);
-    const wantsCloud = ['2', 'cloud', 'cloud-only', '雲端', '雲端資料'].includes(normalizedChoice);
-    const wantsBoth = ['3', 'both', 'all', '全部', '兩者', '兩者都刪除'].includes(normalizedChoice);
-
-    if (!wantsLocal && !wantsCloud && !wantsBoth) {
+    if (!deleteLocalData && !deleteCloudData) {
       this.appendSyncLog('info', 'project', '刪除資料已取消', `projectKey=${projectKey}`);
+      this.closeDeleteDialog();
       return false;
     }
-
-    const deleteLocalData = wantsLocal || wantsBoth;
-    const deleteCloudData = wantsCloud || wantsBoth;
 
     this.syncInFlight = true;
-    this.updateStatusBadge('Deleting project data...');
+    this.updateStatusBadge('正在刪除資料...');
     this.updateDialogStatus('正在刪除資料...');
     this.appendSyncLog('info', 'project', '刪除資料', `projectKey=${projectKey} local=${deleteLocalData} cloud=${deleteCloudData}`);
 
@@ -1034,10 +1137,12 @@ class CloudSyncManager {
         this.setStatus('idle', `已刪除雲端資料：${projectName || projectKey}`);
       }
 
+      this.closeDeleteDialog();
       return true;
     } catch (error) {
       this.setStatus('error', '刪除資料失敗');
       this.appendSyncLog('error', 'project', '刪除資料失敗', this.getErrorMessage(error));
+      this.closeDeleteDialog();
       return false;
     } finally {
       this.syncInFlight = false;
