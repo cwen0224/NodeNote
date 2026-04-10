@@ -1438,7 +1438,7 @@ class NodeManager {
     const pastePoint = anchorWorldPoint || this.getPasteAnchorWorldPoint();
     const node = {
       id,
-      type: 'note',
+      type: 'image',
       folderId,
       title,
       x: pastePoint.x,

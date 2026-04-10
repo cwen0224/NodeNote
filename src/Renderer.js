@@ -589,11 +589,12 @@ class Renderer {
   createNodeElement(node) {
     const div = document.createElement('div');
     const isFolderNode = node.type === 'folder';
+    const isImageNode = node.type === 'image';
     const isDumiNode = isDumiNodeId(node?.id);
     const nodeLabel = this.getNodeLabel(node) || node.id;
     const folderTheme = isFolderNode ? getFolderTheme(node.depth ?? (store.getCurrentDepth?.() ?? 0)) : null;
 
-    div.className = `node glass-panel${isFolderNode ? ' is-folder' : ''}${isDumiNode ? ' is-dumi' : ''}`;
+    div.className = `node glass-panel${isFolderNode ? ' is-folder' : ''}${isImageNode ? ' is-image' : ''}${isDumiNode ? ' is-dumi' : ''}`;
     div.dataset.id = node.id;
     div.dataset.type = node.type || 'note';
     if (isFolderNode && folderTheme) {
@@ -628,6 +629,20 @@ class Renderer {
       div.innerHTML = `
         <div class="dumi-node-face">
           <span class="node-id node-title-editable" title="${this.escapeHtml(nodeLabel)}">${this.escapeHtml(nodeLabel)}</span>
+        </div>
+        <button class="node-delete-btn" type="button" aria-label="刪除節點">×</button>
+        <div class="port top"></div>
+        <div class="port bottom"></div>
+        <div class="port left"></div>
+        <div class="port right"></div>
+      `;
+    } else if (isImageNode) {
+      div.innerHTML = `
+        <div class="node-body node-body-image">
+          <div class="node-header">
+            <span class="node-id" title="${this.escapeHtml(nodeLabel)}">${this.escapeHtml(nodeLabel)}</span>
+          </div>
+          <div class="node-assets" aria-label="圖片資產"></div>
         </div>
         <button class="node-delete-btn" type="button" aria-label="刪除節點">×</button>
         <div class="port top"></div>
@@ -682,7 +697,7 @@ class Renderer {
     };
 
     const focusContent = () => {
-      if (!content || isFolderNode || isDumiNode) {
+      if (!content || isFolderNode || isDumiNode || isImageNode) {
         return;
       }
 
@@ -710,7 +725,7 @@ class Renderer {
       selection?.addRange(range);
     };
 
-    if (content && !isFolderNode && !isDumiNode) {
+    if (content && !isFolderNode && !isDumiNode && !isImageNode) {
       content.addEventListener('paste', async (e) => {
         const clipboardItems = Array.from(e.clipboardData?.items || []);
         const imageItem = clipboardItems.find((item) => item.kind === 'file' && item.type?.startsWith('image/'));
@@ -837,6 +852,16 @@ class Renderer {
     if (renameBtn) {
       renameBtn.addEventListener('mousedown', (e) => e.stopPropagation());
       renameBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        renameTitle();
+      });
+    }
+
+    if (isImageNode) {
+      div.addEventListener('dblclick', (e) => {
+        if (e.target.closest('.node-delete-btn') || e.target.closest('.port')) {
+          return;
+        }
         e.stopPropagation();
         renameTitle();
       });

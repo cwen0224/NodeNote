@@ -757,6 +757,10 @@ button:hover {
   grid-template-rows: 42px minmax(0, 1fr);
 }
 
+.node-body-image {
+  grid-template-rows: 42px minmax(0, 1fr);
+}
+
 .node.is-dumi {
   min-width: 146px;
   min-height: 54px;
@@ -793,6 +797,22 @@ button:hover {
 .node.is-dumi .node-header,
 .node.is-dumi .node-content {
   display: none;
+}
+
+.node.is-image .node-content,
+.node.is-image .node-footer-actions {
+  display: none;
+}
+
+.node.is-image .node-assets {
+  grid-row: 2;
+  padding: 10px 12px 12px;
+}
+
+.node.is-image .node-assets .node-asset-image {
+  max-height: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .node.is-dumi .node-delete-btn {

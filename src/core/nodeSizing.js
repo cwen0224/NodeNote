@@ -156,6 +156,7 @@ export function estimateNodeSquareSize(content = '', {
 
 export function resolveNodeSize(node = {}, options = {}) {
   const isFolder = isPlainObject(node) && node.type === 'folder';
+  const isImage = isPlainObject(node) && node.type === 'image';
   const isDumi = isDumiNodeId(node?.id);
   const content = isFolder ? getFolderNodeText(node) : (isDumi ? getDumiNodeText(node) : getNodeContent(node));
   const minSide = options.minSide ?? (isFolder ? NODE_FOLDER_MIN_SIDE : NODE_MIN_SIDE);
@@ -164,6 +165,16 @@ export function resolveNodeSize(node = {}, options = {}) {
   if (isDumi) {
     const title = typeof node.title === 'string' ? node.title : content;
     return estimateDumiNodeRect(title);
+  }
+  if (isImage) {
+    const title = typeof node.title === 'string' ? node.title : content;
+    return estimateNodeSquareSize(title, {
+      ...options,
+      minSide,
+      maxSide,
+      footerHeight: 0,
+      extraHeight: assetHeight,
+    });
   }
   if (content.length > 0) {
     return estimateNodeSquareSize(content, {
