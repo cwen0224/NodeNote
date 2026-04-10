@@ -1380,7 +1380,6 @@ class NodeManager {
     nextAsset.id = typeof nextAsset.id === 'string' && nextAsset.id ? nextAsset.id : `asset_${Date.now().toString(36)}`;
     nextAsset.type = typeof nextAsset.type === 'string' && nextAsset.type ? nextAsset.type : 'image';
     nextAsset.label = typeof nextAsset.label === 'string' ? nextAsset.label : '';
-    nextAsset.dataUrl = typeof nextAsset.dataUrl === 'string' ? nextAsset.dataUrl : '';
     nextAsset.storage = typeof nextAsset.storage === 'string' ? nextAsset.storage : 'local';
     nextAsset.localAssetId = typeof nextAsset.localAssetId === 'string' ? nextAsset.localAssetId : nextAsset.id;
     nextAsset.mimeType = typeof nextAsset.mimeType === 'string' ? nextAsset.mimeType : 'image/png';
@@ -1448,7 +1447,6 @@ class NodeManager {
         id: savedAsset.id,
         type: 'image',
         label: imageFile.name || title,
-        dataUrl,
         mimeType: imageFile.type || 'image/png',
         localAssetId: savedAsset.id,
         storage: 'local',

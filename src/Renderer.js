@@ -748,7 +748,6 @@ class Renderer {
               id: savedAsset.id,
               type: 'image',
               label: imageFile.name || '貼入圖片',
-              dataUrl,
               mimeType: imageFile.type || 'image/png',
               localAssetId: savedAsset.id,
               storage: 'local',

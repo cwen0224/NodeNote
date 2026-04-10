@@ -73,6 +73,9 @@ function normalizeAssetRecord(asset = {}, fallbackId = '') {
   const next = clone(asset);
   next.id = normalizeString(next.id, fallbackId);
   next.type = normalizeString(next.type, normalizeString(next.kind, 'asset')) || 'asset';
+  if (Object.prototype.hasOwnProperty.call(next, 'dataUrl')) {
+    delete next.dataUrl;
+  }
   const candidateUrl = normalizeUrlLikeString(
     next.url
     || next.src
