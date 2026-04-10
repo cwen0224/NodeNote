@@ -863,6 +863,8 @@ button:hover {
   font-size: 0.7rem;
   color: rgba(255, 255, 255, 0.82);
   font-family: monospace;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .node:not(.is-folder):not(.is-dumi) .node-header {
@@ -872,6 +874,8 @@ button:hover {
 .node-id {
   flex: 1 1 auto;
   min-width: 0;
+  max-width: 100%;
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -879,6 +883,15 @@ button:hover {
   font-weight: 700;
   letter-spacing: 0.01em;
   color: rgba(255, 255, 255, 0.96);
+}
+
+.node-header-actions {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.node.is-folder .node-header .node-id {
+  max-width: calc(100% - 58px);
 }
 
 .node-title-editable {
