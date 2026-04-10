@@ -161,6 +161,21 @@ class PersistenceManager {
     return true;
   }
 
+  clearAutosaveSnapshot(scopeKey = this.scopeKey) {
+    const storageKey = this.getAutosaveStorageKey(scopeKey);
+    try {
+      localStorage.removeItem(storageKey);
+      if (scopeKey === this.scopeKey) {
+        this.restored = false;
+        this.revision = 0;
+      }
+      return true;
+    } catch (error) {
+      console.warn('Clear autosave failed', error);
+      return false;
+    }
+  }
+
   createSnapshot() {
     const editedAt = new Date().toISOString();
     return {

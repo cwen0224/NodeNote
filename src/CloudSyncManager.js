@@ -541,7 +541,7 @@ class CloudSyncManager {
         <div class="cloud-project-actions">
           <button type="button" data-project-action="open">開啟選取專案</button>
           <button type="button" data-project-action="create">建立新專案</button>
-          <button type="button" class="cloud-project-danger" data-project-action="delete">刪除雲端資料</button>
+          <button type="button" class="cloud-project-danger" data-project-action="delete">刪除資料</button>
           <button type="button" data-project-action="close">關閉</button>
         </div>
       </div>
@@ -570,7 +570,7 @@ class CloudSyncManager {
       } else if (action === 'create') {
         this.createProjectSelection();
       } else if (action === 'delete') {
-        this.deleteCloudProjectSelection();
+        this.deleteProjectDataSelection();
       } else if (action === 'refresh-list') {
         void this.loadSheetProjectCatalog({ force: true });
       } else if (action === 'close') {
@@ -909,7 +909,7 @@ class CloudSyncManager {
     return result;
   }
 
-  async deleteCloudProjectSelection() {
+  async deleteProjectDataSelection() {
     const projectKey = sanitizeString(
       this.projectSelectedProjectKey || this.config.sheetProjectKey || this.sheetProjectCatalog?.[0]?.projectKey || '',
       'default'
@@ -921,65 +921,123 @@ class CloudSyncManager {
 
     if (!projectKey) {
       this.setStatus('error', '請先從清單選取專案');
-      this.appendSyncLog('error', 'project', '刪除雲端資料失敗', '請先從清單選取專案');
+      this.appendSyncLog('error', 'project', '刪除資料失敗', '請先從清單選取專案');
       return false;
     }
 
-    const confirmedKey = window.prompt(`確定刪除雲端資料，請輸入專案鍵：${projectKey}`, projectKey);
-    if (sanitizeString(confirmedKey, '') !== projectKey) {
-      this.appendSyncLog('info', 'project', '刪除雲端資料已取消', `projectKey=${projectKey}`);
+    const choice = window.prompt(
+      [
+        '要刪除哪些資料？',
+        '1 = 本機資料',
+        '2 = 雲端資料',
+        '3 = 兩者都刪除',
+        '輸入 1 / 2 / 3，或 local / cloud / both',
+      ].join('\n'),
+      '3'
+    );
+    const normalizedChoice = sanitizeString(choice, '').toLowerCase().trim();
+    const wantsLocal = ['1', 'local', 'local-only', '本機', '本機資料', '本機草稿'].includes(normalizedChoice);
+    const wantsCloud = ['2', 'cloud', 'cloud-only', '雲端', '雲端資料'].includes(normalizedChoice);
+    const wantsBoth = ['3', 'both', 'all', '全部', '兩者', '兩者都刪除'].includes(normalizedChoice);
+
+    if (!wantsLocal && !wantsCloud && !wantsBoth) {
+      this.appendSyncLog('info', 'project', '刪除資料已取消', `projectKey=${projectKey}`);
       return false;
     }
+
+    const deleteLocalData = wantsLocal || wantsBoth;
+    const deleteCloudData = wantsCloud || wantsBoth;
 
     this.syncInFlight = true;
-    this.updateStatusBadge('Deleting cloud project...');
-    this.updateDialogStatus('正在刪除雲端資料...');
-    this.appendSyncLog('info', 'project', '刪除雲端資料', `projectKey=${projectKey}`);
+    this.updateStatusBadge('Deleting project data...');
+    this.updateDialogStatus('正在刪除資料...');
+    this.appendSyncLog('info', 'project', '刪除資料', `projectKey=${projectKey} local=${deleteLocalData} cloud=${deleteCloudData}`);
 
     try {
-      if (this.config.provider === 'github') {
-        await deleteGitHubSnapshot({
-          owner: this.config.owner,
-          repo: this.config.repo,
-          path: this.config.path,
-          token: this.config.token,
-          branch: this.config.branch,
-        });
-      } else {
-        const response = await requestJsonp(buildSheetRequestUrl({
-          baseUrl: this.config.sheetWebAppUrl,
-          action: 'delete-project',
-          projectKey,
-          clientId: this.sheetClientId,
-          secret: this.config.sheetSecret,
-        }));
-
-        if (response?.ok === false) {
-          throw new Error(response.error || '刪除雲端資料失敗');
+      if (deleteLocalData) {
+        const localCleared = persistenceManager.clearAutosaveSnapshot(this.getWorkspaceScopeKey(this.config));
+        this.skipNextAutosave = true;
+        if (!localCleared) {
+          throw new Error('刪除本機資料失敗');
         }
       }
 
-      this.resetSheetSyncContext();
-      this.sheetHydrationState = 'deleted';
-      this.cloudProjectDeleted = true;
-      this.sheetBaselineDocument = null;
-      this.sheetLastRevision = 0;
-      this.sheetLastFingerprint = null;
-      this.saveConfig({
-        ...this.config,
-        sheetProjectName: '',
-      });
-      this.fillProjectDialogFromConfig();
-      this.updateProjectDialogStatus();
-      this.updateProviderPanels();
-      this.refreshTransportMode();
-      this.setStatus('idle', `已刪除雲端資料：${projectName || projectKey}`);
-      this.appendSyncLog('info', 'project', '刪除雲端資料完成', `projectKey=${projectKey}`);
-      void this.loadSheetProjectCatalog({ force: true });
+      if (deleteCloudData) {
+        if (this.config.provider === 'github') {
+          await deleteGitHubSnapshot({
+            owner: this.config.owner,
+            repo: this.config.repo,
+            path: this.config.path,
+            token: this.config.token,
+            branch: this.config.branch,
+          });
+        } else {
+          const response = await requestJsonp(buildSheetRequestUrl({
+            baseUrl: this.config.sheetWebAppUrl,
+            action: 'delete-project',
+            projectKey,
+            clientId: this.sheetClientId,
+            secret: this.config.sheetSecret,
+          }));
+
+          if (response?.ok === false) {
+            throw new Error(response.error || '刪除雲端資料失敗');
+          }
+        }
+
+        this.resetSheetSyncContext();
+        this.sheetHydrationState = 'deleted';
+        this.cloudProjectDeleted = true;
+        this.sheetBaselineDocument = null;
+        this.sheetLastRevision = 0;
+        this.sheetLastFingerprint = null;
+        this.saveConfig({
+          ...this.config,
+          sheetProjectName: '',
+        });
+        this.fillProjectDialogFromConfig();
+        this.updateProjectDialogStatus();
+        this.updateProviderPanels();
+        this.refreshTransportMode();
+        this.appendSyncLog('info', 'project', '刪除雲端資料完成', `projectKey=${projectKey}`);
+        void this.loadSheetProjectCatalog({ force: true });
+      }
+
+      if (deleteLocalData && !deleteCloudData) {
+        const cloudAvailable = this.config.provider === 'sheets'
+          ? this.isConfigReady() && !this.cloudProjectDeleted && this.sheetHydrationState !== 'deleted'
+          : this.isConfigReady();
+        if (cloudAvailable) {
+          await this.pullNow({
+            skipConfirm: true,
+            silentOnMissing: true,
+            preferRemote: true,
+            hydrateViewport: true,
+            lockWorkspace: true,
+          });
+        } else {
+          store.replaceDocument(createDefaultDocument(), { resetHistory: true, saveToHistory: false });
+          store.setTransform(0, 0, 1);
+          renderer.renderAll();
+        }
+        this.setStatus('idle', '已清除本機資料');
+        this.appendSyncLog('info', 'project', '清除本機資料完成', `projectKey=${projectKey}`);
+      }
+
+      if (deleteLocalData && deleteCloudData) {
+        store.replaceDocument(createDefaultDocument(), { resetHistory: true, saveToHistory: false });
+        store.setTransform(0, 0, 1);
+        renderer.renderAll();
+        this.setStatus('idle', `已刪除本機與雲端資料：${projectName || projectKey}`);
+        this.appendSyncLog('info', 'project', '刪除資料完成', `projectKey=${projectKey}`);
+      } else if (!deleteLocalData && deleteCloudData) {
+        this.setStatus('idle', `已刪除雲端資料：${projectName || projectKey}`);
+      }
+
       return true;
     } catch (error) {
-      this.setStatus('error', '刪除雲端資料失敗');
-      this.appendSyncLog('error', 'project', '刪除雲端資料失敗', this.getErrorMessage(error));
+      this.setStatus('error', '刪除資料失敗');
+      this.appendSyncLog('error', 'project', '刪除資料失敗', this.getErrorMessage(error));
       return false;
     } finally {
       this.syncInFlight = false;
