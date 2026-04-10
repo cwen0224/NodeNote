@@ -23,6 +23,11 @@ import {
 } from './core/connectionGeometry.js';
 import { isDumiNodeId, resolveConnectionPortSides } from './core/connectionData.js';
 import { stripMarkdownFormatting } from './core/documentIO.js';
+import {
+  getLocalImageAsset,
+  readImageFileAsDataUrl,
+  saveLocalImageAsset,
+} from './core/localAssetStore.js';
 
 class Renderer {
   constructor() {
@@ -636,6 +641,7 @@ class Renderer {
           <div class="node-header">
             <span class="node-id" title="${this.escapeHtml(nodeLabel)}">${this.escapeHtml(nodeLabel)}</span>
           </div>
+          <div class="node-assets" aria-label="圖片資產"></div>
           <div class="node-content" contenteditable="false" spellcheck="false"></div>
           <div class="node-footer-actions">
             <button class="node-rename-btn" type="button" aria-label="編輯名稱">編輯標題</button>
@@ -653,10 +659,14 @@ class Renderer {
     // Internal Events (preventing panning/zooming while interacting with a node)
     const content = div.querySelector('.node-content');
     const titleEl = div.querySelector('.node-id');
+    const assetContainer = div.querySelector('.node-assets');
     if (content) {
       content.textContent = isDumiNode ? '' : (node.content ?? '');
     }
     this.applyNodeSizing(div, node);
+    if (assetContainer && !isFolderNode && !isDumiNode) {
+      void this.renderNodeAssets(assetContainer, node);
+    }
 
     const renameTitle = () => {
       const currentTitle = String(node.title || '').trim() || node.id;
@@ -701,7 +711,42 @@ class Renderer {
     };
 
     if (content && !isFolderNode && !isDumiNode) {
-      content.addEventListener('paste', (e) => {
+      content.addEventListener('paste', async (e) => {
+        const clipboardItems = Array.from(e.clipboardData?.items || []);
+        const imageItem = clipboardItems.find((item) => item.kind === 'file' && item.type?.startsWith('image/'));
+        if (imageItem) {
+          const imageFile = imageItem.getAsFile();
+          if (!imageFile) {
+            return;
+          }
+
+          e.preventDefault();
+          try {
+            const dataUrl = await readImageFileAsDataUrl(imageFile);
+            const savedAsset = await saveLocalImageAsset({
+              dataUrl,
+              label: imageFile.name || '貼入圖片',
+              mimeType: imageFile.type || 'image/png',
+              source: 'clipboard',
+            });
+            nodeManager.addNodeImageAsset(node.id, {
+              id: savedAsset.id,
+              type: 'image',
+              label: imageFile.name || '貼入圖片',
+              mimeType: imageFile.type || 'image/png',
+              localAssetId: savedAsset.id,
+              storage: 'local',
+              source: 'clipboard',
+            });
+            if (assetContainer) {
+              void this.renderNodeAssets(assetContainer, node);
+            }
+          } catch (error) {
+            console.error('Paste image failed', error);
+          }
+          return;
+        }
+
         const clipboardText = e.clipboardData?.getData('text/plain') ?? '';
         if (!clipboardText) {
           return;
@@ -889,6 +934,59 @@ class Renderer {
     });
 
     this.layoutConnectionLabels(labelEntries);
+  }
+
+  async renderNodeAssets(assetContainer, node) {
+    if (!assetContainer || !node) {
+      return;
+    }
+
+    const assets = Array.isArray(node.assets) ? node.assets : [];
+    const imageAssets = assets.filter((asset) => {
+      if (!asset || typeof asset !== 'object') {
+        return false;
+      }
+      const type = typeof asset.type === 'string' ? asset.type.toLowerCase() : '';
+      const mimeType = typeof asset.mimeType === 'string' ? asset.mimeType.toLowerCase() : '';
+      return type === 'image' || mimeType.startsWith('image/');
+    });
+
+    assetContainer.innerHTML = '';
+    assetContainer.hidden = imageAssets.length === 0;
+    if (!imageAssets.length) {
+      return;
+    }
+
+    for (const asset of imageAssets) {
+      const figure = document.createElement('figure');
+      figure.className = 'node-asset-item';
+      const img = document.createElement('img');
+      img.alt = asset.label || '圖片';
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      img.className = 'node-asset-image';
+      const caption = document.createElement('figcaption');
+      caption.className = 'node-asset-caption';
+      caption.textContent = asset.label || '圖片';
+      figure.appendChild(img);
+      figure.appendChild(caption);
+      assetContainer.appendChild(figure);
+
+      try {
+        const localAsset = asset.localAssetId ? await getLocalImageAsset(asset.localAssetId) : null;
+        const dataUrl = localAsset?.dataUrl || asset.dataUrl || '';
+        if (dataUrl) {
+          img.src = dataUrl;
+          figure.classList.remove('is-missing');
+        } else {
+          figure.classList.add('is-missing');
+          caption.textContent = `${caption.textContent || '圖片'}（本機不可用）`;
+        }
+      } catch (error) {
+        figure.classList.add('is-missing');
+        caption.textContent = `${caption.textContent || '圖片'}（載入失敗）`;
+      }
+    }
   }
 
   buildRoundedOrthogonalPath(points = [], radius = 18) {

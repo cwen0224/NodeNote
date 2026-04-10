@@ -9,6 +9,7 @@ export const DUMI_NODE_MAX_WIDTH = 220;
 export const DUMI_NODE_HEIGHT = 54;
 export const NODE_HEADER_HEIGHT = 42;
 export const NODE_FOOTER_HEIGHT = 40;
+export const NODE_ASSET_HEIGHT = 180;
 export const NODE_CONTENT_HORIZONTAL_PADDING = 48;
 export const NODE_CONTENT_VERTICAL_PADDING = 24;
 export const NODE_AVG_CHAR_WIDTH = 7;
@@ -81,6 +82,23 @@ function getFolderNodeText(node = {}) {
   return parts.filter(Boolean).join('\n');
 }
 
+function hasImageAssets(node = {}) {
+  if (!isPlainObject(node)) {
+    return false;
+  }
+
+  const assets = Array.isArray(node.assets) ? node.assets : [];
+  return assets.some((asset) => {
+    if (!isPlainObject(asset)) {
+      return false;
+    }
+
+    const type = typeof asset.type === 'string' ? asset.type.toLowerCase() : '';
+    const mimeType = typeof asset.mimeType === 'string' ? asset.mimeType.toLowerCase() : '';
+    return type === 'image' || mimeType.startsWith('image/');
+  });
+}
+
 function getExplicitSize(node = {}) {
   if (!isPlainObject(node)) {
     return null;
@@ -113,6 +131,7 @@ export function estimateNodeSquareSize(content = '', {
   minSide = NODE_MIN_SIDE,
   maxSide = NODE_MAX_SIDE,
   footerHeight = 0,
+  extraHeight = 0,
 } = {}) {
   const text = typeof content === 'string' ? content : '';
   const lines = text.length ? text.split(/\r?\n/) : [''];
@@ -120,7 +139,7 @@ export function estimateNodeSquareSize(content = '', {
   const longestLine = lines.reduce((max, line) => Math.max(max, line.length), 0);
 
   const widthNeed = Math.ceil((longestLine * NODE_AVG_CHAR_WIDTH) + NODE_CONTENT_HORIZONTAL_PADDING);
-  const heightNeed = Math.ceil(NODE_HEADER_HEIGHT + NODE_CONTENT_VERTICAL_PADDING + footerHeight + (lineCount * NODE_LINE_HEIGHT));
+  const heightNeed = Math.ceil(NODE_HEADER_HEIGHT + NODE_CONTENT_VERTICAL_PADDING + footerHeight + extraHeight + (lineCount * NODE_LINE_HEIGHT));
   const desiredSide = Math.max(minSide, widthNeed, heightNeed);
   const side = clampSide(desiredSide, minSide, maxSide);
 
@@ -141,6 +160,7 @@ export function resolveNodeSize(node = {}, options = {}) {
   const content = isFolder ? getFolderNodeText(node) : (isDumi ? getDumiNodeText(node) : getNodeContent(node));
   const minSide = options.minSide ?? (isFolder ? NODE_FOLDER_MIN_SIDE : NODE_MIN_SIDE);
   const maxSide = options.maxSide ?? (isFolder ? NODE_FOLDER_MAX_SIDE : NODE_MAX_SIDE);
+  const assetHeight = isFolder || isDumi || !hasImageAssets(node) ? 0 : NODE_ASSET_HEIGHT;
   if (isDumi) {
     const title = typeof node.title === 'string' ? node.title : content;
     return estimateDumiNodeRect(title);
@@ -151,6 +171,7 @@ export function resolveNodeSize(node = {}, options = {}) {
       minSide,
       maxSide,
       footerHeight: isFolder ? 0 : NODE_FOOTER_HEIGHT,
+      extraHeight: assetHeight,
     });
   }
 
@@ -171,5 +192,6 @@ export function resolveNodeSize(node = {}, options = {}) {
     minSide,
     maxSide,
     footerHeight: isFolder ? 0 : NODE_FOOTER_HEIGHT,
+    extraHeight: assetHeight,
   });
 }

@@ -743,7 +743,14 @@ button:hover {
 }
 
 .node-body-regular {
-  grid-template-rows: 42px minmax(0, 1fr) 40px;
+  grid-template-rows: 42px auto minmax(0, 1fr) 40px;
+}
+
+.node:not(.is-folder):not(.is-dumi) .node-header,
+.node:not(.is-folder):not(.is-dumi) .node-assets,
+.node:not(.is-folder):not(.is-dumi) .node-content,
+.node:not(.is-folder):not(.is-dumi) .node-footer-actions {
+  min-width: 0;
 }
 
 .node-body-folder {
@@ -872,6 +879,10 @@ button:hover {
   grid-row: 1;
 }
 
+.node:not(.is-folder):not(.is-dumi) .node-assets {
+  grid-row: 2;
+}
+
 .node-id {
   flex: 1 1 auto;
   min-width: 0;
@@ -932,7 +943,7 @@ button:hover {
 }
 
 .node:not(.is-folder):not(.is-dumi) .node-content {
-  grid-row: 2;
+  grid-row: 3;
 }
 
 .node-footer-actions {
@@ -947,7 +958,7 @@ button:hover {
 }
 
 .node:not(.is-folder):not(.is-dumi) .node-footer-actions {
-  grid-row: 3;
+  grid-row: 4;
   align-self: stretch;
 }
 
@@ -1001,6 +1012,58 @@ button:hover {
   touch-action: manipulation;
   -webkit-user-select: text;
   -webkit-touch-callout: default;
+}
+
+.node-assets {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  padding: 10px 12px 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.node-assets[hidden] {
+  display: none;
+}
+
+.node-asset-item {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  pointer-events: none;
+}
+
+.node-asset-image {
+  display: block;
+  width: 100%;
+  max-height: 180px;
+  object-fit: contain;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.42);
+  pointer-events: none;
+}
+
+.node-asset-caption {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  word-break: break-word;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.node-asset-item.is-missing .node-asset-image {
+  opacity: 0.42;
+  filter: grayscale(1);
 }
 
 .node-content::-webkit-scrollbar {

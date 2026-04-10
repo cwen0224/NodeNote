@@ -9,6 +9,7 @@ import { createNodeId, materializeClipboardPayload } from './core/graphClipboard
 import { resolveNodeSize } from './core/nodeSizing.js';
 import { MAX_FOLDER_DEPTH } from './core/folderTheme.js';
 import { computeNodesBounds } from './core/selectionGeometry.js';
+import { deleteLocalImageAsset } from './core/localAssetStore.js';
 import {
   createUniqueParamKey,
   deepClone,
@@ -18,6 +19,25 @@ import {
 } from './core/connectionData.js';
 
 const isTouchLikePointer = (event) => event?.pointerType === 'touch' || event?.pointerType === 'pen';
+
+function getNodeLocalAssetIds(node = {}) {
+  const assets = Array.isArray(node?.assets) ? node.assets : [];
+  return [...new Set(assets
+    .map((asset) => {
+      if (!isPlainObject(asset)) {
+        return '';
+      }
+
+      const localAssetId = typeof asset.localAssetId === 'string' ? asset.localAssetId.trim() : '';
+      const id = typeof asset.id === 'string' ? asset.id.trim() : '';
+      const storage = typeof asset.storage === 'string' ? asset.storage.trim().toLowerCase() : '';
+      if (storage !== 'local' && !localAssetId) {
+        return '';
+      }
+      return localAssetId || id;
+    })
+    .filter(Boolean))];
+}
 
 class NodeManager {
   constructor() {
@@ -1107,6 +1127,30 @@ class NodeManager {
       return Object.values(entity.params).some((linkValue) => getLinkTargetId(linkValue) === nodeId);
     });
 
+    const collectFolderNodeIds = (folderId, acc = new Set()) => {
+      const folder = store.document.folders?.[folderId];
+      if (!folder || !Array.isArray(folder.children)) {
+        return acc;
+      }
+
+      folder.children.forEach((child) => {
+        if (!child || typeof child !== 'object') {
+          return;
+        }
+
+        if (child.kind === 'node' && typeof child.id === 'string') {
+          acc.add(child.id);
+          return;
+        }
+
+        if (child.kind === 'folder' && typeof child.id === 'string') {
+          collectFolderNodeIds(child.id, acc);
+        }
+      });
+
+      return acc;
+    };
+
     const deletionIds = new Set();
     const deletionFolderIds = new Set();
     const replacementMap = new Map();
@@ -1146,6 +1190,7 @@ class NodeManager {
         return;
       }
 
+      this.cleanupNodeLocalAssets(node);
       const previousLabel = getNodeLabel(node) || oldId;
       const parentFolderId = node.folderId || store.getRootFolderId?.() || store.document.rootFolderId || 'folder_root';
       const parentFolder = store.document.folders?.[parentFolderId];
@@ -1153,6 +1198,7 @@ class NodeManager {
       node.id = nextId;
       node.title = previousLabel;
       node.content = '';
+      node.assets = [];
       const size = resolveNodeSize(node);
       node.size = {
         width: size.width,
@@ -1187,10 +1233,20 @@ class NodeManager {
     });
 
     deletionIds.forEach((id) => {
+      const node = store.document.nodes?.[id];
+      if (node) {
+        this.cleanupNodeLocalAssets(node);
+      }
       store.removeNodeFromFolder(id);
     });
 
     deletionFolderIds.forEach((id) => {
+      collectFolderNodeIds(id).forEach((nodeId) => {
+        const node = store.document.nodes?.[nodeId];
+        if (node) {
+          this.cleanupNodeLocalAssets(node);
+        }
+      });
       store.removeFolderRecursive(id);
     });
 
@@ -1294,6 +1350,87 @@ class NodeManager {
         store.saveHistory();
       }, 1000);
     }
+  }
+
+  addNodeImageAsset(id, asset = {}) {
+    const entity = store.getEntityById?.(id);
+    if (!entity || isDumiNodeId(entity.id)) {
+      return false;
+    }
+
+    const nextAsset = isPlainObject(asset) ? deepClone(asset) : {};
+    nextAsset.id = typeof nextAsset.id === 'string' && nextAsset.id ? nextAsset.id : `asset_${Date.now().toString(36)}`;
+    nextAsset.type = typeof nextAsset.type === 'string' && nextAsset.type ? nextAsset.type : 'image';
+    nextAsset.label = typeof nextAsset.label === 'string' ? nextAsset.label : '';
+    nextAsset.storage = typeof nextAsset.storage === 'string' ? nextAsset.storage : 'local';
+    nextAsset.localAssetId = typeof nextAsset.localAssetId === 'string' ? nextAsset.localAssetId : nextAsset.id;
+    nextAsset.mimeType = typeof nextAsset.mimeType === 'string' ? nextAsset.mimeType : 'image/png';
+    nextAsset.source = typeof nextAsset.source === 'string' ? nextAsset.source : 'clipboard';
+
+    const nextAssets = Array.isArray(entity.assets) ? entity.assets.slice() : [];
+    nextAssets.push(nextAsset);
+    entity.assets = nextAssets;
+
+    const size = resolveNodeSize(entity);
+    entity.size = {
+      width: size.width,
+      height: size.height,
+    };
+
+    const currentDocument = typeof store.getCurrentDocument === 'function'
+      ? store.getCurrentDocument()
+      : null;
+    if (currentDocument) {
+      currentDocument.assets = Array.isArray(currentDocument.assets) ? currentDocument.assets.slice() : [];
+      currentDocument.assets.push({
+        ...deepClone(nextAsset),
+        nodeId: entity.id,
+      });
+    }
+
+    store.setLastActiveNode(id);
+    store.emit('nodes:updated', store.getCurrentDocument().nodes);
+    store.saveHistory();
+    return true;
+  }
+
+  cleanupNodeLocalAssets(nodeOrId = null) {
+    const node = typeof nodeOrId === 'string'
+      ? store.getEntityById?.(nodeOrId)
+      : nodeOrId;
+    if (!node) {
+      return;
+    }
+
+    const localAssetIds = getNodeLocalAssetIds(node);
+    if (!localAssetIds.length) {
+      return;
+    }
+
+    const currentDocument = typeof store.getCurrentDocument === 'function'
+      ? store.getCurrentDocument()
+      : null;
+    if (currentDocument && Array.isArray(currentDocument.assets)) {
+      currentDocument.assets = currentDocument.assets.filter((asset) => {
+        if (!isPlainObject(asset)) {
+          return true;
+        }
+
+        if (asset.nodeId && asset.nodeId === node.id) {
+          return false;
+        }
+
+        const localAssetId = typeof asset.localAssetId === 'string' ? asset.localAssetId.trim() : '';
+        const id = typeof asset.id === 'string' ? asset.id.trim() : '';
+        return !localAssetIds.includes(localAssetId || id);
+      });
+    }
+
+    localAssetIds.forEach((assetId) => {
+      void deleteLocalImageAsset(assetId).catch((error) => {
+        console.error('Delete local image asset failed', error);
+      });
+    });
   }
 
   selectNodeForInteraction(nodeId, additive = false) {
