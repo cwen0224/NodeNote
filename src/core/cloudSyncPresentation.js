@@ -3,17 +3,17 @@ import { formatClockStamp, withLogHint } from './cloudSyncUtils.js';
 function getProviderLabels(provider) {
   return provider === 'sheets'
     ? {
-        label: 'Sync',
-        ready: 'Google Sheet 同步已就緒',
-        off: 'Google Sheet 同步未就緒',
-        syncing: 'Google Sheet 同步中',
-        syncedPrefix: '上次 Google Sheet 同步',
-        dialogReady: '已就緒，會輪詢 Google Sheet 並同步本機修改。',
+        label: '存檔',
+        ready: 'Google Sheet 存檔已就緒',
+        off: 'Google Sheet 存檔未就緒',
+        syncing: 'Google Sheet 存檔中',
+        syncedPrefix: '上次 Google Sheet 存檔',
+        dialogReady: '已就緒，會輪詢 Google Sheet 並存檔本機修改。',
         dialogOff: '請填入 Google Sheet Web App URL / Project Key。',
-        dialogBusy: '正在同步 Google Sheet 內容...',
+        dialogBusy: '正在存檔到 Google Sheet...',
       }
     : {
-        label: 'Backup',
+        label: '備份',
         ready: 'GitHub 備份已就緒',
         off: 'GitHub 備份未就緒',
         syncing: 'GitHub 備份同步中',

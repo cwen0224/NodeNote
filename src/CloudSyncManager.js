@@ -207,7 +207,7 @@ class CloudSyncManager {
       branch: 'master',
       path: DEFAULT_SYNC_PATH,
       token: '',
-      autoSync: true,
+      autoSync: false,
       restoreOnStartupWhenEmpty: false,
       sheetWebAppUrl: DEFAULT_SHEET_WEB_APP_URL,
       sheetProjectKey: '',
@@ -1069,7 +1069,7 @@ class CloudSyncManager {
           </section>
           <label class="cloud-sync-toggle">
             <input type="checkbox" data-cloud-field="autoSync" />
-            <span>自動同步最新快照</span>
+            <span>自動存檔最新快照</span>
           </label>
         <label class="cloud-sync-toggle">
           <input type="checkbox" data-cloud-field="restoreOnStartupWhenEmpty" />
@@ -1579,7 +1579,7 @@ class CloudSyncManager {
   }
 
   getProviderLabel() {
-    return this.config.provider === 'sheets' ? 'Sync' : 'Backup';
+    return this.config.provider === 'sheets' ? '存檔' : '備份';
   }
 
   getProviderTitleLabel() {
@@ -2153,10 +2153,28 @@ class CloudSyncManager {
     await this.pushSnapshot(snapshot);
   }
 
-  async syncNow({ force = false } = {}) {
+  armAutoSyncForThisDevice() {
+    if (this.config.autoSync) {
+      return false;
+    }
+
+    this.saveConfig({
+      autoSync: true,
+    });
+    this.updateStatusBadge();
+    this.updateDialogStatus();
+    this.appendSyncLog('info', 'cloud', '已啟用自動存檔', '這台裝置之後會自動送出雲端快照');
+    return true;
+  }
+
+  async syncNow({ force = false, armAutoSync = false } = {}) {
     if (this.syncTimer) {
       window.clearTimeout(this.syncTimer);
       this.syncTimer = null;
+    }
+
+    if (armAutoSync) {
+      this.armAutoSyncForThisDevice();
     }
 
     const snapshot = this.pendingSnapshot || this.createSnapshot();
@@ -2179,7 +2197,7 @@ class CloudSyncManager {
     }
 
     this.appendSyncLog('info', 'sheet', '手動同步並驗證已觸發');
-    const synced = await this.syncNow({ force });
+    const synced = await this.syncNow({ force, armAutoSync: true });
     if (!synced) {
       return false;
     }

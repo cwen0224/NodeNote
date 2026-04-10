@@ -133,8 +133,8 @@ const initApp = () => {
       folderBackBtn.textContent = '返回';
     }
     if (syncBtn) {
-      syncBtn.textContent = '同步';
-      syncBtn.title = '同步並驗證 Google Sheet';
+      syncBtn.textContent = '存檔';
+      syncBtn.title = '存檔到雲端，第一次按下後會啟用自動存檔';
     }
     if (openProjectBtn) {
       openProjectBtn.textContent = '專案';
@@ -228,7 +228,7 @@ const initApp = () => {
     }
     if (syncBtn) {
       syncBtn.onclick = async () => {
-        await cloudSyncManager.syncNow({ force: true });
+        await cloudSyncManager.syncNow({ force: true, armAutoSync: true });
       };
     }
     if (openProjectBtn) {
