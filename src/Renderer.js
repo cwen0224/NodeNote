@@ -55,6 +55,7 @@ class Renderer {
     this.visibilityCheckRaf = null;
     this.pendingVisibilityCheck = false;
     this.connectionRouteCache = new Map();
+    this.touchKeyboardFocusTimers = [];
 
     this.setupMinimapEvents();
     this.initMinimapState();
@@ -679,12 +680,17 @@ class Renderer {
       store.setLastActiveNode(node.id);
       const isTouchLikeInput = ['touch', 'pen'].includes(store.state.interaction?.lastPointer?.type)
         || (typeof navigator !== 'undefined' && Number.isFinite(navigator.maxTouchPoints) && navigator.maxTouchPoints > 0);
+      this.clearTouchKeyboardFocusTimers();
       this.focusViewportOnNode(node.id, {
         zoomTo: isTouchLikeInput ? 1.4 : 1.25,
         touchSafe: isTouchLikeInput,
+        focusYRatio: isTouchLikeInput ? 0.28 : 0.5,
       });
       content.contentEditable = 'true';
       content.focus({ preventScroll: true });
+      if (isTouchLikeInput) {
+        this.scheduleTouchKeyboardSafeFocus(node.id);
+      }
 
       const range = document.createRange();
       range.selectNodeContents(content);
@@ -752,6 +758,7 @@ class Renderer {
       content.addEventListener('blur', () => {
         div.classList.remove('is-editing');
         content.contentEditable = 'false';
+        this.clearTouchKeyboardFocusTimers();
       });
     }
 
@@ -1552,12 +1559,57 @@ class Renderer {
     const viewportOffsetLeft = visualViewport?.offsetLeft ?? 0;
     const viewportOffsetTop = visualViewport?.offsetTop ?? 0;
     const focusXRatio = Number.isFinite(options.focusXRatio) ? Math.max(0, Math.min(1, options.focusXRatio)) : 0.5;
-    const focusYRatio = Number.isFinite(options.focusYRatio) ? Math.max(0, Math.min(1, options.focusYRatio)) : 0.5;
+    const baseFocusYRatio = options.touchSafe ? 0.3 : 0.5;
+    const keyboardInset = visualViewport
+      ? Math.max(0, (window.innerHeight ?? viewportHeight) - (visualViewport.height + (visualViewport.offsetTop ?? 0)))
+      : 0;
+    const keyboardBias = options.touchSafe
+      ? Math.min(0.18, keyboardInset / Math.max(viewportHeight, 1) * 0.45)
+      : 0;
+    const requestedFocusYRatio = Number.isFinite(options.focusYRatio)
+      ? Math.max(0, Math.min(1, options.focusYRatio))
+      : baseFocusYRatio;
+    const focusYRatio = Math.max(0.08, Math.min(0.5, requestedFocusYRatio - keyboardBias));
     const nextX = (viewportOffsetLeft + (viewportWidth * focusXRatio)) - (focusPoint.x * nextScale);
     const nextY = (viewportOffsetTop + (viewportHeight * focusYRatio)) - (focusPoint.y * nextScale);
 
     store.setTransform(nextX, nextY, nextScale);
     return true;
+  }
+
+  clearTouchKeyboardFocusTimers() {
+    if (!Array.isArray(this.touchKeyboardFocusTimers) || this.touchKeyboardFocusTimers.length === 0) {
+      return;
+    }
+
+    for (const timerId of this.touchKeyboardFocusTimers) {
+      clearTimeout(timerId);
+    }
+    this.touchKeyboardFocusTimers = [];
+  }
+
+  scheduleTouchKeyboardSafeFocus(nodeId) {
+    if (!nodeId) {
+      return;
+    }
+
+    const applyFocus = () => {
+      if (!store.state.nodes?.[nodeId]) {
+        return;
+      }
+
+      this.focusViewportOnNode(nodeId, {
+        zoomTo: 1.4,
+        touchSafe: true,
+        focusYRatio: 0.24,
+      });
+    };
+
+    const timers = [
+      window.setTimeout(applyFocus, 180),
+      window.setTimeout(applyFocus, 420),
+    ];
+    this.touchKeyboardFocusTimers.push(...timers);
   }
 
   getNodeTouchFocusWorldPoint(node) {
