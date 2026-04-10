@@ -8,6 +8,7 @@ export const DUMI_NODE_MIN_WIDTH = 146;
 export const DUMI_NODE_MAX_WIDTH = 220;
 export const DUMI_NODE_HEIGHT = 54;
 export const NODE_HEADER_HEIGHT = 42;
+export const NODE_FOOTER_HEIGHT = 40;
 export const NODE_CONTENT_HORIZONTAL_PADDING = 40;
 export const NODE_CONTENT_VERTICAL_PADDING = 24;
 export const NODE_AVG_CHAR_WIDTH = 7;
@@ -111,6 +112,7 @@ function getExplicitSize(node = {}) {
 export function estimateNodeSquareSize(content = '', {
   minSide = NODE_MIN_SIDE,
   maxSide = NODE_MAX_SIDE,
+  footerHeight = 0,
 } = {}) {
   const text = typeof content === 'string' ? content : '';
   const lines = text.length ? text.split(/\r?\n/) : [''];
@@ -118,7 +120,7 @@ export function estimateNodeSquareSize(content = '', {
   const longestLine = lines.reduce((max, line) => Math.max(max, line.length), 0);
 
   const widthNeed = Math.ceil((longestLine * NODE_AVG_CHAR_WIDTH) + NODE_CONTENT_HORIZONTAL_PADDING);
-  const heightNeed = Math.ceil(NODE_HEADER_HEIGHT + NODE_CONTENT_VERTICAL_PADDING + (lineCount * NODE_LINE_HEIGHT));
+  const heightNeed = Math.ceil(NODE_HEADER_HEIGHT + NODE_CONTENT_VERTICAL_PADDING + footerHeight + (lineCount * NODE_LINE_HEIGHT));
   const desiredSide = Math.max(minSide, widthNeed, heightNeed);
   const side = clampSide(desiredSide, minSide, maxSide);
 
@@ -148,6 +150,7 @@ export function resolveNodeSize(node = {}, options = {}) {
       ...options,
       minSide,
       maxSide,
+      footerHeight: isFolder ? 0 : NODE_FOOTER_HEIGHT,
     });
   }
 
@@ -167,5 +170,6 @@ export function resolveNodeSize(node = {}, options = {}) {
     ...options,
     minSide,
     maxSide,
+    footerHeight: isFolder ? 0 : NODE_FOOTER_HEIGHT,
   });
 }
