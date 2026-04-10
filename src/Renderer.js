@@ -22,6 +22,7 @@ import {
   selectOrthogonalRoute,
 } from './core/connectionGeometry.js';
 import { isDumiNodeId, resolveConnectionPortSides } from './core/connectionData.js';
+import { stripMarkdownFormatting } from './core/documentIO.js';
 
 class Renderer {
   constructor() {
@@ -694,6 +695,33 @@ class Renderer {
     };
 
     if (content && !isFolderNode && !isDumiNode) {
+      content.addEventListener('paste', (e) => {
+        const clipboardText = e.clipboardData?.getData('text/plain') ?? '';
+        if (!clipboardText) {
+          return;
+        }
+
+        e.preventDefault();
+        const plainText = stripMarkdownFormatting(clipboardText);
+        const selection = window.getSelection();
+        const range = selection && selection.rangeCount > 0
+          ? selection.getRangeAt(0)
+          : null;
+
+        if (range) {
+          range.deleteContents();
+          const textNode = document.createTextNode(plainText);
+          range.insertNode(textNode);
+          range.setStartAfter(textNode);
+          range.setEndAfter(textNode);
+          selection.removeAllRanges();
+          selection.addRange(range);
+        } else {
+          content.textContent = `${content.textContent || ''}${plainText}`;
+        }
+
+        nodeManager.updateNodeContent(node.id, content.innerText);
+      });
       content.addEventListener('wheel', (e) => {
         const canScrollY = content.scrollHeight > content.clientHeight + 1;
         if (!canScrollY) {

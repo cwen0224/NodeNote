@@ -108,13 +108,17 @@ function clearMarkdownFormattingFromText(value) {
   return next;
 }
 
+export function stripMarkdownFormatting(text = '') {
+  return clearMarkdownFormattingFromText(normalizeMarkdownLinkText(text));
+}
+
 function normalizeImportedStrings(value) {
   if (Array.isArray(value)) {
     return value.map((item) => normalizeImportedStrings(item));
   }
 
   if (!isPlainObject(value)) {
-    return clearMarkdownFormattingFromText(normalizeMarkdownLinkText(value));
+    return stripMarkdownFormatting(value);
   }
 
   const next = {};
