@@ -84,16 +84,6 @@ class NodeManager {
       if (e.target.closest('.node-delete-btn')) return;
       if (e.target.closest('.node-content') && nodeEl.classList.contains('is-editing')) return;
 
-      const contentEl = e.target.closest('.node-content');
-      const contentIsScrollable = Boolean(contentEl)
-        && (contentEl.scrollHeight > contentEl.clientHeight + 1 || contentEl.scrollWidth > contentEl.clientWidth + 1);
-      if (contentEl && contentIsScrollable) {
-        this.selectNodeForInteraction(nodeEl.dataset.id, e.ctrlKey || e.metaKey);
-        store.setLastActiveNode(nodeEl.dataset.id);
-        e.stopPropagation();
-        return;
-      }
-
       const nodeId = nodeEl.dataset.id;
       const currentSelectionIds = [...new Set(store.state.selection?.nodeIds || [])].filter((id) => store.state.nodes[id]);
       const isNodeSelected = currentSelectionIds.includes(nodeId);
@@ -246,17 +236,6 @@ class NodeManager {
     if (e.target.closest('.node-folder-open-btn')) return;
     if (e.target.closest('.node-delete-btn')) return;
     if (e.target.closest('.node-content') && nodeEl.classList.contains('is-editing')) return;
-
-    const contentEl = e.target.closest('.node-content');
-    const contentIsScrollable = Boolean(contentEl)
-      && (contentEl.scrollHeight > contentEl.clientHeight + 1 || contentEl.scrollWidth > contentEl.clientWidth + 1);
-    if (contentEl && contentIsScrollable) {
-      this.selectNodeForInteraction(nodeEl.dataset.id, false);
-      store.setLastActiveNode(nodeEl.dataset.id);
-      e.preventDefault();
-      e.stopPropagation();
-      return;
-    }
 
     const nodeId = nodeEl.dataset.id;
     const currentSelectionIds = [...new Set(store.state.selection?.nodeIds || [])].filter((id) => store.state.nodes[id]);
