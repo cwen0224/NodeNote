@@ -711,6 +711,11 @@ button:hover {
   user-select: none;
 }
 
+.node:not(.is-folder):not(.is-dumi) {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) 40px;
+}
+
 .node.is-selected {
   border: 1px solid rgba(88, 166, 255, 0.95);
   box-shadow: 0 0 0 1px rgba(88, 166, 255, 0.7), 0 10px 26px rgba(0, 0, 0, 0.48);
@@ -841,6 +846,10 @@ button:hover {
   font-family: monospace;
 }
 
+.node:not(.is-folder):not(.is-dumi) .node-header {
+  grid-row: 1;
+}
+
 .node-id {
   flex: 1 1 auto;
   min-width: 0;
@@ -884,6 +893,10 @@ button:hover {
   touch-action: none;
 }
 
+.node:not(.is-folder):not(.is-dumi) .node-content {
+  grid-row: 2;
+}
+
 .node-footer-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -893,6 +906,11 @@ button:hover {
   overflow: hidden;
   border-bottom-left-radius: 18px;
   border-bottom-right-radius: 18px;
+}
+
+.node:not(.is-folder):not(.is-dumi) .node-footer-actions {
+  grid-row: 3;
+  align-self: stretch;
 }
 
 .node-footer-actions .node-edit-btn,
