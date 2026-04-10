@@ -672,6 +672,7 @@ class Renderer {
 
       div.classList.add('is-editing');
       store.setLastActiveNode(node.id);
+      this.focusViewportOnNode(node.id);
       content.contentEditable = 'true';
       content.focus({ preventScroll: true });
 
@@ -1489,11 +1490,15 @@ class Renderer {
 
   focusViewportOnLastActiveNode() {
     const activeNodeId = store.state.interaction?.lastActiveNodeId;
-    if (!activeNodeId) {
+    return this.focusViewportOnNode(activeNodeId);
+  }
+
+  focusViewportOnNode(nodeId) {
+    if (!nodeId) {
       return false;
     }
 
-    const node = store.state.nodes[activeNodeId];
+    const node = store.state.nodes?.[nodeId];
     if (!node) {
       return false;
     }
